@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261001-pill-dati-tecnici" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261001-pill-dati-tecnici" />
+    <link rel="preload" href="./styles.css?v=20261001-spedizione-one-express-garanzia-10anni" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261001-spedizione-one-express-garanzia-10anni" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -908,6 +908,18 @@
                     <label class="field nf-narrow nf-posa-only"><span>Posa €/mq</span><input class="text-input" id="nf-posa" type="number" min="0" step="0.01" placeholder="0,00" /></label>
                     <div class="field nf-iva-field nf-posa-only"><span>IVA</span><button type="button" class="native-acc-iva on" id="nf-posa-iva" data-on="1">IVA ON</button></div>
                   </div>
+                  <!-- Calcolo spedizione dal tariffario One Express reale (stesso usato per
+                       il DDT, shipping-tariffs.js) — la provincia si deduce dalla città del
+                       cliente già inserita sopra, non serve un campo indirizzo in più.
+                       Richiesto dall'utente il 1 ott per non dover "fare i conti a parte". -->
+                  <div class="nf-row nf-shipping-calc-row">
+                    <label class="field nf-narrow"><span>Pallet L (cm)</span><input class="text-input" id="nf-pallet-length" type="number" min="0" step="1" placeholder="0" /></label>
+                    <label class="field nf-narrow"><span>Pallet P (cm)</span><input class="text-input" id="nf-pallet-width" type="number" min="0" step="1" placeholder="0" /></label>
+                    <label class="field nf-narrow"><span>Pallet H (cm)</span><input class="text-input" id="nf-pallet-height" type="number" min="0" step="1" placeholder="0" /></label>
+                    <label class="field nf-narrow"><span>Peso (kg)</span><input class="text-input" id="nf-pallet-weight" type="number" min="0" step="1" placeholder="0" /></label>
+                    <button type="button" id="nf-shipping-calc-btn" class="nf-add-btn">Calcola tariffa One Express</button>
+                  </div>
+                  <p class="nf-shipping-calc-result" id="nf-shipping-calc-result" hidden></p>
                   <div class="nf-materials-box">
                     <div class="nf-materials-head">
                       <div>
@@ -2730,7 +2742,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261001-pill-dati-tecnici" defer></script>
-    <script src="./app.js?v=20261001-pill-dati-tecnici" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261001-spedizione-one-express-garanzia-10anni" defer></script>
+    <script src="./app.js?v=20261001-spedizione-one-express-garanzia-10anni" type="module"></script>
   </body>
 </html>

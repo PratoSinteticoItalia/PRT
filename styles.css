@@ -20087,6 +20087,12 @@ details.nf-section:not([open]) > .nf-section-head::after {
 .nf-add-btn:hover { background: rgba(45,106,79,0.12); }
 .nf-catalog-select { min-height: 38px; font-size: 12.5px; padding: 6px 10px; max-width: 260px; }
 
+/* Calcolo spedizione One Express (vedi wireNativePreventivoForm in app.js) */
+.nf-shipping-calc-row { margin-top: 6px; }
+.nf-shipping-calc-result { font-size: 12px; line-height: 1.5; margin-top: 6px; padding: 8px 12px; border-radius: 8px; }
+.nf-shipping-calc-result.is-ok { background: rgba(45,106,79,0.08); color: #1f4637; }
+.nf-shipping-calc-result.is-error { background: rgba(217,119,6,0.1); color: #92400e; }
+
 .nf-summary {
   margin: 4px 0 12px; padding: 12px 14px; border-radius: 12px;
   background: rgba(45,106,79,0.06); border: 1px solid rgba(45,106,79,0.18);

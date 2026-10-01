@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261001-pill-dati-tecnici";
+} from "./lib/order-money.js?v=20261001-spedizione-one-express-garanzia-10anni";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261001-pill-dati-tecnici";
+import { regionForCity } from "./lib/geo.js?v=20261001-spedizione-one-express-garanzia-10anni";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261001-pill-dati-tecnici";
+} from "./lib/shipping-eligibility.js?v=20261001-spedizione-one-express-garanzia-10anni";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261001-pill-dati-tecnici";
+} from "./lib/profit-split.js?v=20261001-spedizione-one-express-garanzia-10anni";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261001-pill-dati-tecnici";
+} from "./lib/preventivo-pricing.js?v=20261001-spedizione-one-express-garanzia-10anni";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261001-pill-dati-tecnici";
+} from "./lib/sales-assignment.js?v=20261001-spedizione-one-express-garanzia-10anni";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261001-pill-dati-tecnici";
+} from "./lib/surveys.js?v=20261001-spedizione-one-express-garanzia-10anni";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261001-pill-dati-tecnici";
+const APP_SHELL_VERSION = "20261001-spedizione-one-express-garanzia-10anni";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -35357,7 +35357,7 @@ bindEvent(ui.salesGeneratorWhatsAppButton, "click", (event) => {
 });
 const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
   certifications: [
-    { icon: "🛡️", name: "Garanzia 8 anni",  sub: "Difetti di fabbricazione" },
+    { icon: "🛡️", name: "Garanzia 10 anni",  sub: "Difetti di fabbricazione" },
     { icon: "🧪",  name: "REACH 2024",       sub: "SVHC 223 sostanze" },
     { icon: "🧒",  name: "EN71-3:2013",      sub: "Sicurezza bambini" },
     { icon: "🏭",  name: "ISO 9001:2015",    sub: "Sistema qualità" },
@@ -35365,9 +35365,9 @@ const PREVENTIVO_STATIC_DEFAULTS = Object.freeze({
   conditions: [
     { label: "Validità",   text: "Offerta valida 30 giorni dalla data di emissione." },
     { label: "Pagamento",  text: "Saldo all'ordine via bonifico, carta, PayPal, Scalapay o HeyLight 0%." },
-    { label: "Spedizione", text: "Gratuita in Italia, 3–5 giorni lavorativi, piano strada." },
+    { label: "Spedizione", text: "Gratuita in Italia per ordini superiori a 1.000 € di imponibile (altrimenti a costo, vedi dettaglio nel preventivo), 3–5 giorni lavorativi, piano strada." },
     { label: "Resi",       text: "Entro 14 giorni se prodotto integro e non posato." },
-    { label: "Garanzia",   text: "8 anni su difetti di fabbricazione. Non copre usura normale." },
+    { label: "Garanzia",   text: "10 anni su difetti di fabbricazione. Non copre usura normale." },
     { label: "Privacy",    text: "Dati trattati ai sensi GDPR — privacy@pratosinteticoitalia.com" },
   ],
   installationWork: {
@@ -35446,7 +35446,7 @@ const PREVENTIVO_TEXTS_DEFAULTS = Object.freeze({
   brandLogoDataUrl: "",
   brandTagline: "Dal 2016 · Fornitura e Posa Professionale",
   brandCompany: "VERTEX SRLS · P.IVA 04863610616",
-  materialsDescFornitura: "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 500 euro di imponibile.",
+  materialsDescFornitura: "La fornitura viene preparata in rotoli da 2 metri di larghezza, con lunghezza a scelta in base alle misure del progetto. La spedizione avviene in 3/5 giorni lavorativi ed è gratuita per ordini superiori a 1.000 euro di imponibile.",
   materialsDescPosa: "La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm, telo separatore, giunte, fissaggi e finiture perimetrali. Il materiale è quantificato in base ai metri quadri inseriti.",
   materialsDescPosaPavimentazione: "La posa su pavimentazione prevede pulizia dell'area, posa del prato, incollaggio delle giunture e incollaggio perimetrale, con spazzolatura finale. Il materiale è quantificato in base ai metri quadri inseriti.",
   paymentMain: "Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight.",
@@ -36072,6 +36072,10 @@ function defaultPreventivoForm() {
       { slug: "", discount: 0, applyIva: true, customName: "", customPrice: "" },
     ],
     shippingCost: 0, shippingIva: true,
+    // Dimensioni pallet per il calcolo tariffa One Express (stesso tariffario
+    // reale usato per il DDT, shipping-tariffs.js) — vuoti finché l'ufficio
+    // non li compila, mai un valore inventato.
+    palletLength: "", palletWidth: "", palletHeight: "", palletWeight: "",
     posaPerSqm: 25, posaIva: true,
     materialsDiscountPct: 0, materialsIva: true,
     excludedMaterials: [], // key materiali NON inclusi (il cliente li ha già)
@@ -36349,8 +36353,57 @@ function wireNativePreventivoForm() {
   // righe non sono in focus mentre si digita nei mq, quindi è sicuro).
   document.getElementById("nf-sqm")?.addEventListener("input", () => renderNfMaterials());
   bindField("nf-shipping", "shippingCost", true);
+  bindField("nf-pallet-length", "palletLength", true);
+  bindField("nf-pallet-width", "palletWidth", true);
+  bindField("nf-pallet-height", "palletHeight", true);
+  bindField("nf-pallet-weight", "palletWeight", true);
   bindField("nf-posa", "posaPerSqm", true);
   bindField("nf-materials-disc", "materialsDiscountPct", true);
+
+  // Calcola il costo spedizione dallo stesso tariffario One Express reale
+  // usato per il DDT (shipping-tariffs.js, classifyPallet/calculateOneExpressEstimate
+  // già esistenti) — mai un numero ricostruito a parte. La provincia si deduce
+  // dalla città cliente già in form (stessa logica di getShippingDestination
+  // usata per gli ordini reali); se non riconosciuta, lo dice esplicitamente
+  // invece di azzardare un costo a caso. Il campo "Costo spedizione €" resta
+  // sempre modificabile a mano dopo — questo è un suggerimento, non un blocco.
+  const shippingCalcBtn = document.getElementById("nf-shipping-calc-btn");
+  const shippingCalcResult = document.getElementById("nf-shipping-calc-result");
+  shippingCalcBtn?.addEventListener("click", () => {
+    if (!shippingCalcResult) return;
+    const estimate = calculateOneExpressEstimate({ city: f.citta || "" }, {
+      palletLength: f.palletLength,
+      palletWidth: f.palletWidth,
+      palletHeight: f.palletHeight,
+      palletWeight: f.palletWeight,
+    });
+    shippingCalcResult.hidden = false;
+    // estimate.configured da solo non basta: resta true anche quando il
+    // pallet non è risolto (dimensioni vuote → classifyPallet ricade sulla
+    // classe più piccola P150 comunque, perché 0 "rientra" in qualsiasi
+    // soglia) — serve controllare anche missingReason/unsupported, altrimenti
+    // un pallet non compilato restituirebbe silenziosamente un costo a
+    // vanvera invece di un errore chiaro (verificato con un test diretto su
+    // calculateOneExpressEstimate prima di pubblicare).
+    if (!estimate.unsupported) {
+      f.shippingCost = estimate.estimatedCost;
+      const shipEl = document.getElementById("nf-shipping");
+      if (shipEl) shipEl.value = nfNumVal(estimate.estimatedCost);
+      shippingCalcResult.className = "nf-shipping-calc-result is-ok";
+      const destLabel = estimate.province || estimate.provinceCode || "—";
+      shippingCalcResult.textContent = `✓ ${estimate.carrierName} verso ${destLabel} (classe ${estimate.palletClass}): ${formatCurrency(estimate.estimatedCost)}. Puoi comunque correggere il campo sopra a mano.`;
+      updateNativeFormTotals();
+    } else {
+      const reasons = {
+        missing_destination: `Provincia non riconosciuta dalla città "${f.citta || "—"}" — prova ad aggiungere la sigla tra parentesi, es. "Faenza (RA)".`,
+        destination_not_supported: "Provincia non coperta dal tariffario One Express.",
+        unsupported_pallet: "Dimensioni o peso del pallet mancanti, non validi o fuori dai limiti gestibili.",
+        missing_rate: "Nessuna tariffa trovata per questa provincia/classe di pallet nel tariffario.",
+      };
+      shippingCalcResult.className = "nf-shipping-calc-result is-error";
+      shippingCalcResult.textContent = `⚠ ${reasons[estimate.missingReason] || "Impossibile calcolare la tariffa."} Inserisci il costo spedizione manualmente.`;
+    }
+  });
 
   // Segmenti (tipologia / superficie / listino).
   const bindSeg = (id, key) => {
@@ -36594,6 +36647,8 @@ function renderNativePreventivoForm() {
   setVal("nf-nome", f.nome); setVal("nf-cognome", f.cognome); setVal("nf-citta", f.citta);
   setVal("nf-tel", f.tel); setVal("nf-email", f.email); setVal("nf-ragione", f.ragione);
   setVal("nf-sqm", f.sqm || ""); setVal("nf-shipping", f.shippingCost || "");
+  setVal("nf-pallet-length", f.palletLength || ""); setVal("nf-pallet-width", f.palletWidth || "");
+  setVal("nf-pallet-height", f.palletHeight || ""); setVal("nf-pallet-weight", f.palletWeight || "");
   setVal("nf-posa", f.posaPerSqm || ""); setVal("nf-materials-disc", f.materialsDiscountPct || "");
   const setSeg = (id, val) => { const seg = document.getElementById(id); seg?.querySelectorAll("button").forEach((b) => b.classList.toggle("is-active", b.getAttribute("data-val") === val)); };
   setSeg("nf-tipologia", f.quoteType); setSeg("nf-surface", f.surface); setSeg("nf-customer-type", f.customerType);
@@ -36768,7 +36823,7 @@ function buildNativePreventivoPayload() {
       // statistiche inventate (recensioni/valutazioni non tracciate da
       // nessuna parte nel sistema, quindi non mostrate).
       badges: [
-        { icon: "shield", value: "8 anni", sub: "Garanzia di fabbrica" },
+        { icon: "shield", value: "10 anni", sub: "Garanzia di fabbrica" },
         { icon: "truck", value: "3–5 gg", sub: "Consegna in Italia" },
         { icon: "star", value: "Prezzo finale", sub: ivaStatus === "esclusa" ? "IVA esclusa" : ivaStatus === "mista" ? "IVA applicata secondo dettaglio" : "IVA inclusa, nessuna sorpresa" },
         { icon: "home", value: "Assistenza", sub: "Dedicata post-vendita" },
