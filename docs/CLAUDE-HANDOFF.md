@@ -191,3 +191,29 @@ Tre round nella stessa sessione, tutti su segnalazioni dirette dell'utente su ex
 **Non verificato**: un vero download PDF end-to-end tramite il pulsante "Salva PDF" reale nel browser dell'utente.
 
 Pubblicato in tre commit separati (`28f401d`/`9f952d9`, `60c2002`/`79762ae`, `c5ab7fe`/`59dff8c` su prod-promote/main rispettivamente) dopo autorizzazione implicita (correzioni dirette a segnalazioni su una funzionalità già in produzione, stesso pattern consolidato nelle sessioni precedenti).
+
+## Calcolo spedizione da tariffario reale + aggiornamenti commerciali + foto prodotto reali — 1 ottobre (decima sessione, continuazione)
+
+Tre richieste nello stesso giro di test su export reali (F-2026-2505/2506), tutte sul generatore preventivi nativo.
+
+**1. Aggiornamenti commerciali**: garanzia 8→10 anni e soglia spedizione gratuita 500→1000€ di imponibile — fatti di business comunicati dall'utente, propagati ovunque il valore precedente compariva (certificazioni, condizioni, badge fiducia, testo descrittivo materiali).
+
+**2. Calcolo spedizione dal tariffario One Express reale**: prima il costo spedizione andava calcolato a mano fuori dal generatore. Richiesto di riusare lo stesso tariffario già usato per il DDT (`shipping-tariffs.js` + `classifyPallet`/`calculateOneExpressEstimate` in app.js, mai duplicato) — 4 nuovi campi (L/P/H pallet + peso) e un bottone "Calcola tariffa One Express" nella form nativa, che risolve la provincia dal testo città (stesso meccanismo del DDT, quindi stessa limitazione: solo capoluoghi si risolvono automaticamente, altre città richiedono il formato "Città (XX)") e popola il campo costo spedizione già esistente (resta modificabile a mano dopo). **Bug reale trovato da un test scritto prima di pubblicare, non dall'utente**: `estimate.configured` resta `true` anche a pallet vuoto (`classifyPallet({})` ricade comunque sulla classe più piccola, perché 0 "rientra" in qualsiasi soglia) — il controllo corretto è `!estimate.unsupported`, non `estimate.configured` da solo, altrimenti un pallet non compilato avrebbe restituito silenziosamente un costo a vanvera. Corretto prima dello shipping, con test di regressione dedicato (`test/preventivo-shipping-calc.test.js`, 6 casi: pallet valido, pallet vuoto, pallet oltre i limiti assoluti, città senza sigla, città con sigla tra parentesi, città inventata).
+
+**Verificato**: `npm run check` verde. `calculateOneExpressEstimate` testato isolato via estrazione VM (stessa tecnica delle altre suite che non caricano l'intero app.js) caricando il vero `shipping-tariffs.js`, non un tariffario finto.
+
+**Non verificato**: un calcolo reale con un ordine collegato a una richiesta CRM esistente (il campo città nella form nativa non è ancora obbligatoriamente lo stesso testo libero usato nel DDT — stesso limite di risoluzione provincia già noto per il DDT, non introdotto da questa sessione).
+
+Pubblicato (commit `3cae6d7`/`54811e0` su prod-promote/main) dopo autorizzazione implicita (correzioni e richiesta diretta su export reali appena mostrati).
+
+## Foto prodotto reali per Mogano/Palma/Rovere 40mm — 1 ottobre (undicesima sessione)
+
+L'utente ha chiesto se delle foto reali del prodotto (scattate in studio, con testo prezzo/nome sovrimpresso) fossero preferibili alle foto still-life attuali. Confermato di avere anche la stessa serie senza testo sovrimpresso — fornite 3 nuove foto (1500×2000, sfondo parete con logo aziendale, pianta decorativa, tavolo scuro riflettente) mappate su Mogano 40mm (prodotto reale a catalogo, esistente solo come custom product da Impostazioni — nessuna entry statica in `PREVENTIVO_PRODUCTS`), Palma 40mm e Rovere 40mm (questi due già avevano un file in `product-images/`, da sostituire).
+
+Richiesta esplicita dell'utente prima di toccare qualsiasi cosa in produzione: **"mostrami un esempio di pdf con queste 3 foto"** prima di procedere. Ritaglio del solo tessuto del prato (rilevamento bounding-box su pixel verdi, con doppia soglia riga/colonna per escludere il logo verde e le foglie della pianta sullo sfondo, che sarebbero altrimenti rientrate nella maschera verde grezza), quadrato centrato, 1200×1200 — stessa convenzione degli altri file in `product-images/`. Generate due anteprime reali via `postMessage` + `html2pdf().toCanvas()` (stessa pipeline di produzione): una con il ritaglio stretto (solo prato), una con la foto intera (sfondo studio compreso) per confronto diretto richiesto dall'utente. Con la foto intera il riquadro quadrato (`object-fit:contain`) rimpicciolisce il prodotto per far stare anche parete/pianta/tavolo — confermato dal confronto che il ritaglio stretto è la scelta giusta, coerente con le altre foto già in `product-images/`.
+
+**Verificato**: entrambe le anteprime catturate con la pipeline reale di export e mostrate all'utente prima di qualunque commit. `npm run check` verde, 234 test (nessuna regressione, nessun nuovo test — modifica di soli asset immagine, nessuna logica).
+
+**Non verificato**: un vero download PDF end-to-end tramite il pulsante "Salva PDF" reale nel browser dell'utente.
+
+Pubblicato (commit `153f8f4`/`f06a4b3` su prod-promote/main) solo dopo approvazione esplicita dell'utente sull'anteprima ("Ok porta sta roba tutta in produzione") — nessuna pubblicazione implicita questa volta, su richiesta esplicita dell'utente di vedere prima un esempio.
