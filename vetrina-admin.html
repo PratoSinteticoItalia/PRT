@@ -142,6 +142,9 @@
       .video-item video { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; background: #000; flex-shrink: 0; }
       .video-item .meta { flex: 1; min-width: 0; }
       .video-item .t { font-size: .85rem; font-weight: 600; margin: 0 0 6px; }
+      .tv-badge { display: inline-block; font-size: .66rem; font-weight: 700; padding: .15em .55em; border-radius: 999px; margin-bottom: 4px; }
+      .tv-badge.ok { background: var(--brand-soft); color: var(--brand-dark); }
+      .tv-badge.warn { background: var(--amber-soft); color: #7c2d12; }
       .video-item .del {
         border: none; background: none; color: var(--danger); font-size: .78rem; cursor: pointer; padding: 2px 0;
       }
@@ -178,7 +181,7 @@
 
       <div class="card">
         <h2>Video negli intermezzi</h2>
-        <p class="empty" style="margin-top:-8px">Clip brevi, senza audio, che compaiono tra una sezione e l'altra del catalogo — in una cornice verticale, non a pagina intera. Vanno bene anche i video già usati per i social.</p>
+        <p class="empty" style="margin-top:-8px">Clip brevi, senza audio, a piena pagina tra una sezione e l'altra del catalogo. Prima del caricamento ogni video viene convertito automaticamente per la TV (720p, massimo 15 secondi, rotazione corretta): serve Chrome o Edge su computer e la scheda deve restare aperta in primo piano finché non finisce.</p>
         <div class="dropzone" id="video-dropzone">
           <span id="video-dropzone-text">Trascina un video qui, oppure tocca per scegliere un file</span>
           <input type="file" id="video-file-input" accept="video/*" />
@@ -221,6 +224,7 @@
       </div>
     </div>
 
+    <script src="/showroom-content/vendor/mp4-muxer.js"></script>
     <script>
       const dropzone = document.getElementById("dropzone");
       const fileInput = document.getElementById("file-input");
@@ -332,10 +336,125 @@
         uploadBtn.disabled = true;
       }
 
-      // Video di intermezzo: niente compressione lato client (richiederebbe
-      // ffmpeg/WebCodecs, fuori scopo) — il file va su così com'è tramite
-      // upload binario (vedi POST /api/showroom/photos/upload in server.js),
-      // molto più leggero di un video incapsulato in JSON base64.
+      // Video di intermezzo: prima di caricarli li convertiamo QUI, nel browser
+      // di chi li carica (WebCodecs + mp4-muxer), in un formato che qualsiasi
+      // smart TV riproduce: 1280x720 H.264 Baseline, ritagliato 16:9 come lo
+      // mostrerebbe object-fit:cover, senza audio, rotazione già applicata,
+      // max 15 secondi. Così non servono ffmpeg né CPU sul server del gestionale,
+      // e si evitano i problemi visti sulla TV (video ruotati, metà schermo
+      // nero) che nascono da file verticali/rotati dei telefoni.
+      const TV_W = 1280, TV_H = 720, TV_FPS = 30, TV_MAX_SECONDS = 15;
+
+      function canConvertForTv() {
+        return Boolean(window.VideoEncoder && window.VideoFrame && window.Mp4Muxer
+          && HTMLVideoElement.prototype.requestVideoFrameCallback);
+      }
+
+      async function convertVideoForTv(file, onProgress) {
+        const encoderConfig = {
+          codec: "avc1.42001f", width: TV_W, height: TV_H,
+          bitrate: 2000000, framerate: TV_FPS, avc: { format: "avc" },
+        };
+        const support = await VideoEncoder.isConfigSupported(encoderConfig);
+        if (!support.supported) throw new Error("encoder_unsupported");
+
+        const url = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        video.src = url;
+        try {
+          await new Promise((resolve, reject) => {
+            video.onloadedmetadata = resolve;
+            video.onerror = () => reject(new Error("video_unreadable"));
+          });
+          const vw = video.videoWidth, vh = video.videoHeight;
+          if (!vw || !vh) throw new Error("video_unreadable");
+          const limit = Math.min(video.duration || TV_MAX_SECONDS, TV_MAX_SECONDS);
+
+          const canvas = document.createElement("canvas");
+          canvas.width = TV_W;
+          canvas.height = TV_H;
+          const ctx = canvas.getContext("2d", { alpha: false });
+          ctx.imageSmoothingQuality = "high";
+          // Stesso ritaglio di object-fit:cover; in verticale si tiene la fascia
+          // un po' sopra il centro (volti/soggetti stanno di solito lì).
+          const scale = Math.max(TV_W / vw, TV_H / vh);
+          const dw = vw * scale, dh = vh * scale;
+          const dx = (TV_W - dw) / 2, dy = (TV_H - dh) * 0.4;
+
+          const muxer = new Mp4Muxer.Muxer({
+            target: new Mp4Muxer.ArrayBufferTarget(),
+            video: { codec: "avc", width: TV_W, height: TV_H },
+            fastStart: "in-memory",
+          });
+          let encoderError = null;
+          const encoder = new VideoEncoder({
+            output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+            error: (e) => { encoderError = e; },
+          });
+          encoder.configure(encoderConfig);
+
+          let firstTime = null, lastRel = -1, frames = 0, lastFrameAt = Date.now();
+          const gap = 1 / TV_FPS;
+          await new Promise((resolve, reject) => {
+            let finished = false;
+            // Se la scheda finisce in secondo piano il browser mette in pausa il
+            // video: non è un errore, si riprende appena torna visibile. Il
+            // timeout "bloccato" conta solo il tempo in cui la scheda è visibile.
+            function resume() {
+              if (!finished && !document.hidden && video.paused && !video.ended) video.play().catch(() => {});
+            }
+            document.addEventListener("visibilitychange", resume);
+            const stallTimer = setInterval(() => {
+              if (document.hidden) { lastFrameAt = Date.now(); return; }
+              resume();
+              if (Date.now() - lastFrameAt > 8000) finish(new Error("stalled"));
+            }, 1000);
+            function finish(err) {
+              if (finished) return;
+              finished = true;
+              clearInterval(stallTimer);
+              document.removeEventListener("visibilitychange", resume);
+              video.pause();
+              if (err) reject(err); else resolve();
+            }
+            function onFrame(_now, meta) {
+              if (finished) return;
+              if (encoderError) return finish(encoderError);
+              lastFrameAt = Date.now();
+              if (firstTime === null) firstTime = meta.mediaTime;
+              const rel = meta.mediaTime - firstTime;
+              if (rel > limit) return finish();
+              if ((lastRel < 0 || rel - lastRel >= gap * 0.9) && encoder.encodeQueueSize < 12) {
+                ctx.drawImage(video, dx, dy, dw, dh);
+                const frame = new VideoFrame(canvas, {
+                  timestamp: Math.round(rel * 1e6), duration: Math.round(1e6 / TV_FPS),
+                });
+                encoder.encode(frame, { keyFrame: frames % (TV_FPS * 2) === 0 });
+                frame.close();
+                lastRel = rel;
+                frames++;
+                onProgress(Math.min(1, rel / limit));
+              }
+              video.requestVideoFrameCallback(onFrame);
+            }
+            video.addEventListener("ended", () => finish(), { once: true });
+            video.addEventListener("error", () => finish(new Error("video_unreadable")), { once: true });
+            video.requestVideoFrameCallback(onFrame);
+            video.play().catch(() => {});
+          });
+          await encoder.flush();
+          muxer.finalize();
+          encoder.close();
+          if (frames < 5) throw new Error("no_frames");
+          return new Blob([muxer.target.buffer], { type: "video/mp4" });
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+
       const videoDropzone = document.getElementById("video-dropzone");
       const videoFileInput = document.getElementById("video-file-input");
       const videoPreview = document.getElementById("video-preview");
@@ -373,17 +492,8 @@
         videoStatusEl.className = "status" + (kind ? " " + kind : "");
       }
 
-      videoUploadBtn.addEventListener("click", () => {
-        if (!selectedVideoFile) return;
-        videoUploadBtn.disabled = true;
-        setVideoStatus("Caricamento in corso… 0%");
-        const title = document.getElementById("video-title").value.trim();
-        const params = new URLSearchParams({
-          category: "intermezzo",
-          title,
-          name: selectedVideoFile.name,
-          type: selectedVideoFile.type || "video/mp4",
-        });
+      function uploadVideoBlob(blob, { name, type, title, tvReady, note }) {
+        const params = new URLSearchParams({ category: "intermezzo", title, name, type, tv: tvReady ? "1" : "0" });
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/showroom/photos/upload?" + params.toString());
         xhr.withCredentials = true;
@@ -402,7 +512,7 @@
             videoUploadBtn.disabled = false;
             return;
           }
-          setVideoStatus("Video caricato! È già visibile in vetrina.", "ok");
+          setVideoStatus(note || "Video caricato! È già visibile in vetrina.", tvReady ? "ok" : "err");
           resetVideoForm();
           loadVideoMoments();
         };
@@ -410,7 +520,40 @@
           setVideoStatus("Caricamento non riuscito, riprova.", "err");
           videoUploadBtn.disabled = false;
         };
-        xhr.send(selectedVideoFile);
+        xhr.send(blob);
+      }
+
+      videoUploadBtn.addEventListener("click", async () => {
+        if (!selectedVideoFile) return;
+        videoUploadBtn.disabled = true;
+        const title = document.getElementById("video-title").value.trim();
+        const file = selectedVideoFile;
+        const baseName = file.name.replace(/\.[^.]+$/, "");
+        if (!canConvertForTv()) {
+          uploadVideoBlob(file, {
+            name: file.name, type: file.type || "video/mp4", title, tvReady: false,
+            note: "Caricato l'originale, ma NON andrà in onda sulla TV: questo browser non può convertire i video. Usa Chrome o Edge su computer.",
+          });
+          return;
+        }
+        const keepOpen = "(tieni questa scheda aperta e in primo piano)";
+        setVideoStatus(`Conversione per la TV… 0% ${keepOpen}`);
+        try {
+          const converted = await convertVideoForTv(file, (p) => {
+            setVideoStatus(`Conversione per la TV… ${Math.round(p * 100)}% ${keepOpen}`);
+          });
+          const mb = (n) => (n / 1024 / 1024).toFixed(1);
+          uploadVideoBlob(converted, {
+            name: `${baseName}-tv.mp4`, type: "video/mp4", title, tvReady: true,
+            note: `Video convertito per la TV (${mb(file.size)} MB → ${mb(converted.size)} MB) e caricato: già visibile in vetrina.`,
+          });
+        } catch (err) {
+          console.warn("conversione video non riuscita", err);
+          uploadVideoBlob(file, {
+            name: file.name, type: file.type || "video/mp4", title, tvReady: false,
+            note: "Conversione non riuscita: l'originale NON andrà in onda sulla TV. Eliminalo e riprova tenendo la scheda in primo piano.",
+          });
+        }
       });
 
       function resetVideoForm() {
@@ -440,6 +583,7 @@
               <video src="${item.attachment?.url || ""}" muted preload="metadata"></video>
               <div class="meta">
                 <p class="t">${escapeHtml(item.title || "(senza didascalia)")}</p>
+                <span class="tv-badge ${item.tvReady ? "ok" : "warn"}">${item.tvReady ? "Pronto per la TV" : "Non va in onda: elimina e ricarica"}</span><br />
                 <button class="del" data-id="${item.id}">Elimina</button>
               </div>`;
             list.appendChild(el);

@@ -132,6 +132,7 @@
       @keyframes slideInRight { from { opacity: 0; transform: translateX(6%); } to { opacity: 1; transform: translateX(0); } }
       @keyframes slideOutLeft { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-6%); } }
       @keyframes fadeUp { from { opacity: 0; transform: translateY(2.5%); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       @keyframes zoomSoft { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: scale(1); } }
       @keyframes kenBurnsSlow { from { transform: scale(1); } to { transform: scale(1.12); } }
 
@@ -183,7 +184,7 @@
          come le realizzazioni — deve essere protagonista, non un francobollo
          isolato nel vuoto) ---------- */
       .tpl-video-moment { position: absolute; inset: 0; overflow: hidden; background: #0c130f; }
-      .tpl-video-moment video { position: absolute; inset: -2%; width: 104%; height: 104%; object-fit: cover; }
+      .tpl-video-moment video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
       .tpl-video-moment .scrim {
         position: absolute; inset: 0;
         background: linear-gradient(0deg, rgba(10,20,14,.78) 0%, rgba(10,20,14,.22) 32%, transparent 58%);
@@ -259,6 +260,11 @@
         .product-immersive { flex: 1 1 38%; }
         .product-panel { flex: 1 1 62%; max-width: 100%; padding: 2vh 6vw; border-left: none; border-top: 1px solid var(--line); }
       }
+          #dbg {
+        position: fixed; top: 8px; left: 8px; z-index: 200; margin: 0; padding: 6px 9px; max-width: 70vw;
+        background: rgba(0,0,0,.72); color: #9fffa8; font: 12px/1.35 ui-monospace, Menlo, monospace;
+        white-space: pre-wrap; pointer-events: none; border-radius: 6px;
+      }
     </style>
   </head>
   <body>
@@ -291,6 +297,7 @@
     </div>
 
     <audio id="audio" preload="none" crossorigin="anonymous"></audio>
+    <pre id="dbg" hidden></pre>
 
     <script>
       const TRACKS = [
@@ -518,7 +525,7 @@
           </div>` : "";
         return `
           <div class="tpl-video-moment">
-            <video src="${v.attachment?.url || ""}" muted autoplay loop playsinline preload="auto"></video>
+            <video src="${v.attachment?.url || ""}" muted loop playsinline webkit-playsinline preload="auto"></video>
             <div class="scrim"></div>
             ${copy}
           </div>`;
@@ -587,15 +594,48 @@
 
       const ENTER_BY_KIND = {
         product: "slideInRight", divider: "fadeUp", realizzazione: "zoomSoft",
-        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", "video-moment": "zoomSoft", bumper: "fadeUp",
+        stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", "video-moment": "fadeIn", bumper: "fadeUp",
       };
+
+      let videoWatchdog = null;
+      function stopVideos(root) {
+        root.querySelectorAll("video").forEach((v) => {
+          try { v.pause(); v.removeAttribute("src"); v.load(); } catch (_) {}
+        });
+      }
+
+      // Pannello di diagnostica: si attiva aprendo la pagina con ?debug=1 e
+      // mostra gli ultimi eventi audio/video (utile per capire cosa fa una TV
+      // senza console).
+      const DEBUG = new URLSearchParams(location.search).has("debug");
+      const dbgLines = [];
+      function dbg(msg) {
+        if (!DEBUG) return;
+        dbgLines.push(`${new Date().toLocaleTimeString("it-IT")} ${msg}`);
+        if (dbgLines.length > 18) dbgLines.shift();
+        const el = document.getElementById("dbg");
+        el.hidden = false;
+        el.textContent = dbgLines.join("\n");
+      }
+      function bindMediaDebug(el, label) {
+        if (!DEBUG) return;
+        ["loadedmetadata", "canplay", "playing", "pause", "waiting", "stalled", "ended", "error"].forEach((ev) => {
+          el.addEventListener(ev, () => {
+            const extra = ev === "loadedmetadata" ? ` ${el.videoWidth || ""}x${el.videoHeight || ""} ${Math.round(el.duration)}s`
+              : ev === "error" ? ` code=${el.error && el.error.code} ${el.error && el.error.message || ""}` : "";
+            dbg(`${label} ${ev}${extra}`);
+          });
+        });
+      }
 
       function showSlide(item) {
         const rendered = renderSlide(item);
         const nextIdx = (activeLayerIdx + 1) % 2;
         const nextEl = layerEls[nextIdx];
         const inner = nextEl.querySelector(".slide-inner");
+        stopVideos(inner);
         inner.innerHTML = rendered.html;
+        dbg(`slide ${seqPos + 1}/${sequence.length} ${rendered.kind}`);
         if (rendered.kind === "stat") animateStatCountUp(inner);
         if (rendered.kind === "product") renderQrCode(inner);
 
@@ -612,6 +652,7 @@
             // funzioni sempre.
             video.muted = true;
             video.defaultMuted = true;
+            bindMediaDebug(video, "video");
             video.addEventListener("error", () => { if (playing) advance(); }, { once: true });
           }
         }
@@ -621,15 +662,32 @@
         void inner.offsetWidth;
         inner.style.animation = `${anim} .85s cubic-bezier(.22,.85,.3,1) both`;
 
-        layerEls[activeLayerIdx].classList.remove("active");
+        const prevEl = layerEls[activeLayerIdx];
+        prevEl.classList.remove("active");
         nextEl.classList.add("active");
         activeLayerIdx = nextIdx;
+        // Il video della slide appena lasciata continuerebbe a girare (e a
+        // occupare il decoder, unico su molte TV) nascosto sotto: lo si ferma
+        // e si libera dopo la dissolvenza.
+        setTimeout(() => { if (!prevEl.classList.contains("active")) stopVideos(prevEl); }, 800);
         document.body.classList.toggle("on-dark", rendered.dark);
         // .play() va chiamato SOLO dopo che il layer è "active" (opacity:1):
         // chiamato prima, su un layer ancora nascosto, alcuni motori (i
         // browser TV in primis) sospendono subito il video e non lo
         // riprendono da soli quando poi diventa visibile.
-        if (video) video.play().catch(() => {});
+        clearTimeout(videoWatchdog);
+        if (video) {
+          video.play().catch((e) => dbg(`video.play() rifiutato: ${e && e.name}`));
+          // Se entro 4,5 s il video non è davvero partito (decoder non
+          // supportato, rete lenta) meglio passare oltre che lasciare uno
+          // schermo nero o a metà.
+          videoWatchdog = setTimeout(() => {
+            if (playing && video.isConnected && (video.paused || video.currentTime < 0.1 || video.readyState < 3)) {
+              dbg("video non partito entro 4,5s: salto la slide");
+              advance();
+            }
+          }, 4500);
+        }
 
         const duration = DURATIONS[rendered.kind] || 7000;
         runProgress(duration);
@@ -692,6 +750,17 @@
       // passa alla successiva (torna alla prima dopo l'ultima). Il retry su
       // errore resta, nel caso un file singolo non si carichi.
       audioEl.addEventListener("ended", () => loadStation(stationIdx + 1, true));
+      bindMediaDebug(audioEl, "audio");
+      // Le smart TV possono sospendere l'audio quando parte un video: finché
+      // la vetrina è avviata, se la musica risulta in pausa senza motivo la si
+      // riprende.
+      let audioStarted = false;
+      setInterval(() => {
+        if (audioStarted && audioEl.paused && !audioEl.error) {
+          dbg("audio in pausa: riprendo");
+          audioEl.play().catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
+        }
+      }, 4000);
       let stationRetryTimer = null;
       audioEl.addEventListener("error", () => {
         clearTimeout(stationRetryTimer);
@@ -734,7 +803,6 @@
       function toggleMute() {
         audioEl.muted = !audioEl.muted;
         document.getElementById("btn-mute").innerHTML = audioEl.muted ? "&#128263;" : "&#128266;";
-        localStorage.setItem("showroom-muted", audioEl.muted ? "1" : "0");
       }
 
       function wireHud() {
@@ -762,8 +830,11 @@
           localStorage.setItem("showroom-volume", vol.value);
         });
 
-        audioEl.muted = localStorage.getItem("showroom-muted") === "1";
-        document.getElementById("btn-mute").innerHTML = audioEl.muted ? "&#128263;" : "&#128266;";
+        // Il muto non si ricorda tra una sessione e l'altra: su una TV senza
+        // tastiera un tocco accidentale lo renderebbe permanente.
+        localStorage.removeItem("showroom-muted");
+        audioEl.muted = false;
+        document.getElementById("btn-mute").innerHTML = "&#128266;";
       }
 
       function start() {
@@ -772,7 +843,13 @@
         const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
         if (req) { try { Promise.resolve(req.call(el)).catch(() => {}); } catch (_) {} }
         requestWakeLock();
+        audioStarted = true;
         loadStation(stationIdx, true);
+        if (DEBUG) {
+          const probe = (t) => (document.createElement(t.startsWith("audio") ? "audio" : "video").canPlayType(t) || "no");
+          dbg(`UA ${navigator.userAgent.slice(0, 90)}`);
+          dbg(`schermo ${innerWidth}x${innerHeight}; h264 ${probe('video/mp4; codecs="avc1.42E01E"')}, mp3 ${probe("audio/mpeg")}`);
+        }
         tickClock();
         advance();
         flashHud();
@@ -795,7 +872,12 @@
       async function refreshShowroomPhotos() {
         const items = await fetchShowroomPhotoItems();
         const realizzazioni = items.filter((item) => item.category === "realizzazioni" && item.attachment?.url);
-        const videoMoments = items.filter((item) => item.category === "intermezzo" && item.mediaType === "video" && item.attachment?.url);
+        // Solo i video convertiti per la TV dalla pagina admin (tvReady): gli
+        // originali dei telefoni escono ruotati o a metà schermo sulle smart TV.
+        // ?allvideos=1 li include comunque (per prove).
+        const allowRaw = new URLSearchParams(location.search).has("allvideos");
+        const videoMoments = items.filter((item) => item.category === "intermezzo" && item.mediaType === "video"
+          && item.attachment?.url && (item.tvReady || allowRaw));
         // Se la fetch fallisce o torna vuota si tiene quello che c'era prima
         // invece di svuotare la vetrina — stesso criterio già in uso altrove.
         if (realizzazioni.length) data.realizzazioni = realizzazioni;
