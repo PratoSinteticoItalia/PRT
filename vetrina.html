@@ -696,9 +696,9 @@
           if (token !== videoToken) return;
           try { tvVideo.pause(); tvVideo.removeAttribute("src"); tvVideo.load(); } catch (_) {}
           videoHoldsMedia = false;
-          if (wasHolding && audioStarted && audioEl.paused) {
+          if (wasHolding && audioStarted && musicPaused()) {
             dbg("video finito: riprendo la musica");
-            audioEl.play().catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
+            Promise.resolve(musicPlay()).catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
           }
         }, 700);
       }
@@ -707,7 +707,7 @@
         videoSlideActive = true;
         videoToken++;
         videoHoldsMedia = true;
-        try { audioEl.pause(); } catch (_) {}
+        if (!webMusic) { try { audioEl.pause(); } catch (_) {} }
         tvStuck = 0;
         tvLastT = -1;
         document.body.classList.add("video-slide");
@@ -758,11 +758,11 @@
           if (rvfcLast && rvfcPrev && rvfcLast.now > rvfcPrev.now) fps = ((rvfcLast.frames - rvfcPrev.frames) * 1000 / (rvfcLast.now - rvfcPrev.now)).toFixed(0);
           rvfcPrev = rvfcLast;
           const buf = tvVideo.buffered.length ? tvVideo.buffered.end(tvVideo.buffered.length - 1).toFixed(1) : "0";
-          dbg(`video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} buf=${buf} ${tvVideo.paused ? "PAUSA" : "play"} fps=${fps} frame=${q ? q.totalVideoFrames : "?"} persi=${q ? q.droppedVideoFrames : "?"}`);
+          dbg(`video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} buf=${buf} ${tvVideo.paused ? "PAUSA" : "play"} fps=${fps} frame=${q ? q.totalVideoFrames : "?"} persi=${q ? q.droppedVideoFrames : "?"} | musica ${musicPaused() ? "PAUSA" : "ok"} ${Math.round(musicClock())}s`);
         }
-        if (diagTick % 15 === 0) dbg(`audio ${audioEl.paused ? "PAUSA" : "ok"} t=${Math.round(audioEl.currentTime)} vol=${audioEl.volume}${audioEl.muted ? " MUTO" : ""}`);
+        if (diagTick % 15 === 0) dbg(`audio ${musicPaused() ? "PAUSA" : "ok"} t=${Math.round(musicClock())} vol=${musicVolume}${musicMuted ? " MUTO" : ""}${webMusic ? " (WebAudio)" : ""}`);
         if (DEBUG) {
-          const a = `audio ${audioEl.paused ? "PAUSA" : "ok"} ${Math.round(audioEl.currentTime)}s vol=${audioEl.volume}${audioEl.muted ? " MUTO" : ""}`;
+          const a = `audio ${musicPaused() ? "PAUSA" : "ok"} ${Math.round(musicClock())}s vol=${musicVolume}${musicMuted ? " MUTO" : ""}${webMusic ? " WA" : ""}`;
           const v = videoSlideActive ? `video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} ns=${tvVideo.networkState} ${tvVideo.paused ? "pausa" : "play"}` : "video -";
           dbgStatus = `${a} | ${v}`;
           renderDbg();
@@ -849,13 +849,162 @@
       }
 
       /* ---------- audio: playlist handpan in loop, locale (no stream esterno) ---------- */
+      // La TV ha un solo "lettore" multimediale: un <audio> e un <video> insieme
+      // si mettono in pausa a vicenda. Per questo la musica passa, quando
+      // possibile, dal motore audio del browser (Web Audio), che decodifica gli
+      // mp3 via software e non usa il lettore della TV: così può suonare mentre
+      // gira un video. Se Web Audio manca o fallisce si ricade sull'elemento
+      // <audio> (con la pausa durante i video). ?music=element lo forza.
       const audioEl = document.getElementById("audio");
+      const FORCE_ELEMENT = new URLSearchParams(location.search).get("music") === "element";
+      let webMusic = null;
+      let musicVolume = 0.5;
+      let musicMuted = false;
       let stationIdx = Number(localStorage.getItem("showroom-station-idx")) || 0;
+
+      // Indice dei frame di un mp3 (MPEG Layer III): serve a decodificare la
+      // traccia a blocchi di ~15 s invece di tenerne in memoria i 4-14 minuti
+      // di PCM (centinaia di MB, troppi per una TV).
+      function indexMp3(b) {
+        let i = 0;
+        if (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) i = 10 + (((b[6] & 0x7f) << 21) | ((b[7] & 0x7f) << 14) | ((b[8] & 0x7f) << 7) | (b[9] & 0x7f));
+        const BR1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+        const BR2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+        const SR = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+        const frames = [];
+        let sampleRate = 0, spf = 1152;
+        while (i + 4 <= b.length) {
+          if (b[i] !== 0xff || (b[i + 1] & 0xe0) !== 0xe0) { i++; continue; }
+          const ver = (b[i + 1] >> 3) & 3, layer = (b[i + 1] >> 1) & 3, bri = b[i + 2] >> 4, sri = (b[i + 2] >> 2) & 3, pad = (b[i + 2] >> 1) & 1;
+          if (ver === 1 || layer !== 1 || bri === 0 || bri === 15 || sri === 3) { i++; continue; }
+          const rate = SR[ver][sri];
+          const len = Math.floor((ver === 3 ? 144 : 72) * (ver === 3 ? BR1 : BR2)[bri] * 1000 / rate) + pad;
+          if (i + len > b.length) break;
+          const nx = i + len;
+          const nextOk = nx + 4 > b.length || (b[nx] === 0xff && (b[nx + 1] & 0xe0) === 0xe0) || (b[nx] === 0x54 && b[nx + 1] === 0x41 && b[nx + 2] === 0x47);
+          if (!nextOk) { i++; continue; }
+          sampleRate = rate;
+          spf = ver === 3 ? 1152 : 576;
+          frames.push({ offset: i, length: len });
+          i = nx;
+        }
+        return { frames, sampleRate, spf };
+      }
+
+      class WebMusic {
+        constructor(AC) {
+          this.ctx = new AC();
+          this.gain = this.ctx.createGain();
+          this.gain.connect(this.ctx.destination);
+          this.volume = 0.5;
+          this.muted = false;
+          this.token = 0;
+          this.sources = [];
+          this.timer = null;
+          this.pumpingFor = null;
+          this.track = null;
+          this.onEnded = null;
+          this.onError = null;
+          this.ctx.onstatechange = () => dbg(`audioctx ${this.ctx.state}`);
+        }
+        applyGain() { this.gain.gain.value = this.muted ? 0 : this.volume; }
+        setVolume(v) { this.volume = v; this.applyGain(); }
+        setMuted(m) { this.muted = m; this.applyGain(); }
+        paused() { return this.ctx.state !== "running"; }
+        pause() { return this.ctx.suspend(); }
+        resume() { return this.ctx.resume(); }
+        elapsed() { return this.track ? Math.max(0, this.ctx.currentTime - this.track.t0) : 0; }
+        stop() {
+          this.token++;
+          clearInterval(this.timer);
+          this.sources.forEach((s) => { try { s.stop(); } catch (_) {} });
+          this.sources = [];
+          this.track = null;
+        }
+        destroy() { this.stop(); try { this.ctx.close(); } catch (_) {} }
+        async playTrack(url) {
+          this.stop();
+          const token = this.token;
+          // resume() va chiamato subito, dentro il gesto dell'utente (autoplay)
+          this.ctx.resume().catch(() => {});
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`fetch ${res.status}`);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          if (token !== this.token) return;
+          const info = indexMp3(bytes);
+          if (!info.frames.length) throw new Error("mp3 non riconosciuto");
+          const t0 = this.ctx.currentTime + 0.2;
+          this.track = { bytes, ...info, next: 0, t0, playAt: t0 };
+          dbg(`musica webaudio: ${info.frames.length} frame ${info.sampleRate}Hz, ctx ${this.ctx.sampleRate}Hz`);
+          await this.pump(token);
+          if (token !== this.token) return;
+          this.timer = setInterval(() => this.pump(token).catch((e) => this.onError && this.onError(e)), 1000);
+        }
+        async pump(token) {
+          if (this.pumpingFor === token) return;
+          this.pumpingFor = token;
+          try {
+            const t = this.track;
+            while (token === this.token && t.next < t.frames.length && t.playAt - this.ctx.currentTime < 30) {
+              await this.decodeNext(token);
+            }
+            if (token === this.token && t.next >= t.frames.length && t.playAt - this.ctx.currentTime <= 0.05 && this.ctx.state === "running") {
+              this.stop();
+              if (this.onEnded) this.onEnded();
+            }
+          } finally {
+            if (this.pumpingFor === token) this.pumpingFor = null;
+          }
+        }
+        async decodeNext(token) {
+          const t = this.track;
+          const chunk = Math.round(15 * t.sampleRate / t.spf);
+          // qualche frame prima e dopo il blocco servono solo a "scaldare" il
+          // decoder e il ricampionatore: vengono scartati, così i blocchi
+          // consecutivi si saldano senza click.
+          const lead = Math.min(3, t.next);
+          const b = Math.min(t.frames.length, t.next + chunk);
+          const tail = Math.min(2, t.frames.length - b);
+          const first = t.frames[t.next - lead], last = t.frames[b + tail - 1];
+          const buf = await this.ctx.decodeAudioData(t.bytes.slice(first.offset, last.offset + last.length).buffer);
+          if (token !== this.token) return;
+          const leadSec = lead * t.spf / t.sampleRate;
+          const bodySec = (b - t.next) * t.spf / t.sampleRate;
+          const src = this.ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(this.gain);
+          const when = Math.max(t.playAt, this.ctx.currentTime + 0.05);
+          src.start(when, leadSec, bodySec);
+          src.onended = () => { this.sources = this.sources.filter((x) => x !== src); };
+          this.sources.push(src);
+          t.playAt = when + bodySec;
+          t.next = b;
+        }
+      }
+
+      function musicPaused() { return webMusic ? webMusic.paused() : audioEl.paused; }
+      function musicPlay() { return webMusic ? webMusic.resume() : audioEl.play(); }
+      function musicClock() { return webMusic ? webMusic.elapsed() : audioEl.currentTime; }
+      function setMusicVolume(v) { musicVolume = v; audioEl.volume = v; if (webMusic) webMusic.setVolume(v); }
+      function setMusicMuted(m) { musicMuted = m; audioEl.muted = m; if (webMusic) webMusic.setMuted(m); }
+
+      function fallbackToElementMusic(reason) {
+        dbg(`Web Audio non riuscito (${reason}): uso <audio>`);
+        if (webMusic) { try { webMusic.destroy(); } catch (_) {} webMusic = null; }
+        audioEl.volume = musicVolume;
+        audioEl.muted = musicMuted;
+        loadStation(stationIdx, true);
+      }
+
       function loadStation(idx, autoplay) {
         stationIdx = ((idx % TRACKS.length) + TRACKS.length) % TRACKS.length;
-        audioEl.src = TRACKS[stationIdx].url;
         localStorage.setItem("showroom-station-idx", String(stationIdx));
         document.getElementById("station").value = String(stationIdx);
+        if (webMusic) {
+          webMusic.playTrack(TRACKS[stationIdx].url).catch((e) => fallbackToElementMusic(e && e.message || e));
+          return;
+        }
+        audioEl.src = TRACKS[stationIdx].url;
         if (autoplay) audioEl.play().catch(() => {});
       }
       // Ogni traccia dura 4-14 minuti, non è uno stream infinito: alla fine
@@ -863,14 +1012,14 @@
       // errore resta, nel caso un file singolo non si carichi.
       audioEl.addEventListener("ended", () => loadStation(stationIdx + 1, true));
       bindMediaDebug(audioEl, "audio");
-      // Le smart TV possono sospendere l'audio quando parte un video: finché
-      // la vetrina è avviata, se la musica risulta in pausa senza motivo la si
-      // riprende.
+      // Le smart TV possono sospendere l'audio: finché la vetrina è avviata, se
+      // la musica risulta in pausa senza motivo la si riprende (mai mentre un
+      // video tiene il canale media: i due si metterebbero in pausa a vicenda).
       let audioStarted = false;
       setInterval(() => {
-        if (audioStarted && audioEl.paused && !audioEl.error && !videoHoldsMedia) {
+        if (audioStarted && musicPaused() && !audioEl.error && !videoHoldsMedia) {
           dbg("audio in pausa: riprendo");
-          audioEl.play().catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
+          Promise.resolve(musicPlay()).catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
         }
       }, 4000);
       let stationRetryTimer = null;
@@ -914,8 +1063,8 @@
       });
 
       function toggleMute() {
-        audioEl.muted = !audioEl.muted;
-        document.getElementById("btn-mute").innerHTML = audioEl.muted ? "&#128263;" : "&#128266;";
+        setMusicMuted(!musicMuted);
+        document.getElementById("btn-mute").innerHTML = musicMuted ? "&#128263;" : "&#128266;";
       }
 
       function wireHud() {
@@ -936,17 +1085,17 @@
 
         const vol = document.getElementById("vol");
         const savedVol = localStorage.getItem("showroom-volume");
-        audioEl.volume = savedVol !== null ? Number(savedVol) : 0.5;
-        vol.value = String(audioEl.volume);
+        setMusicVolume(savedVol !== null ? Number(savedVol) : 0.5);
+        vol.value = String(musicVolume);
         vol.addEventListener("input", () => {
-          audioEl.volume = Number(vol.value);
+          setMusicVolume(Number(vol.value));
           localStorage.setItem("showroom-volume", vol.value);
         });
 
         // Il muto non si ricorda tra una sessione e l'altra: su una TV senza
         // tastiera un tocco accidentale lo renderebbe permanente.
         localStorage.removeItem("showroom-muted");
-        audioEl.muted = false;
+        setMusicMuted(false);
         document.getElementById("btn-mute").innerHTML = "&#128266;";
       }
 
@@ -957,7 +1106,32 @@
         if (req) { try { Promise.resolve(req.call(el)).catch(() => {}); } catch (_) {} }
         requestWakeLock();
         audioStarted = true;
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC && !FORCE_ELEMENT) {
+          try {
+            webMusic = new WebMusic(AC);
+            webMusic.setVolume(musicVolume);
+            webMusic.setMuted(musicMuted);
+            webMusic.onEnded = () => loadStation(stationIdx + 1, true);
+            webMusic.onError = (e) => fallbackToElementMusic(e && e.message || e);
+          } catch (e) {
+            webMusic = null;
+            dbg(`Web Audio non disponibile: ${e && e.message}`);
+          }
+        }
+        dbg(`musica: ${webMusic ? "Web Audio" : "elemento <audio>"}`);
         loadStation(stationIdx, true);
+        // Se il contesto audio non parte (autoplay bloccato, TV che non lo
+        // supporta davvero) si torna al vecchio <audio> invece di restare muti.
+        if (webMusic) {
+          setTimeout(() => {
+            if (!webMusic || !webMusic.paused() || videoHoldsMedia) return;
+            webMusic.resume().catch(() => {});
+            setTimeout(() => {
+              if (webMusic && webMusic.paused() && !videoHoldsMedia) fallbackToElementMusic("contesto audio non partito");
+            }, 3000);
+          }, 3000);
+        }
         {
           const probe = (t) => (document.createElement(t.startsWith("audio") ? "audio" : "video").canPlayType(t) || "no");
           dbg(`schermo ${innerWidth}x${innerHeight} dpr=${window.devicePixelRatio} cpu=${navigator.hardwareConcurrency || "?"} ram=${navigator.deviceMemory || "?"}GB`);
