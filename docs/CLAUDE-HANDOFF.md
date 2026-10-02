@@ -217,3 +217,10 @@ Richiesta esplicita dell'utente prima di toccare qualsiasi cosa in produzione: *
 **Non verificato**: un vero download PDF end-to-end tramite il pulsante "Salva PDF" reale nel browser dell'utente.
 
 Pubblicato (commit `153f8f4`/`f06a4b3` su prod-promote/main) solo dopo approvazione esplicita dell'utente sull'anteprima ("Ok porta sta roba tutta in produzione") — nessuna pubblicazione implicita questa volta, su richiesta esplicita dell'utente di vedere prima un esempio.
+
+## 2 ottobre — card preventivo editoriali e dettaglio posa
+- Layout approvato: foto quadrata contain, caratteristiche centrali, totale su fondo salvia; accenti ottone. Tre card compatte, due più ampie, una con foto grande e prezzo sotto il nome.
+- Pagina 2: materiali, posa (imponibile, IVA e totale già incluso), extra, schede tecniche distinte, certificazioni e condizioni. Intestazioni della distinta esplicite.
+- `installationCost` nel payload nativo usa `computeQuote` (`posaNet`); vecchi payload senza il campo non inventano importi. Nessun cambiamento alle tariffe/calcoli commerciali.
+- Export delle pagine successive mantiene il rapporto d'aspetto anche con contenuti lunghi, evitando la precedente compressione verticale. Contenuti eccezionalmente lunghi vengono ridotti; paginazione dinamica per sezioni resta futura.
+- Verifica: build/check, 236 test; cattura html2pdf/toCanvas nel browser locale per 1/2/3 prodotti e posa valorizzata. Fixture solo in tmp, non pubblicata. Il download PDF è stato invocato, ma il file salvato non è stato recuperato per un confronto raster finale.
