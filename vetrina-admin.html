@@ -201,6 +201,17 @@
       </div>
 
       <div class="card">
+        <h2>Diagnostica TV</h2>
+        <p class="empty" style="margin-top:-8px">Cosa fa la pagina sulla TV (eventi audio e video). Lascia la TV accesa qualche minuto sulla vetrina, poi tocca Aggiorna.</p>
+        <div style="display:flex;gap:10px">
+          <button class="btn-primary" id="diag-refresh" style="margin-top:0;flex:1">Aggiorna</button>
+          <button class="btn-primary" id="diag-clear" style="margin-top:0;flex:1;background:#6b7280">Azzera</button>
+        </div>
+        <div class="status" id="diag-status"></div>
+        <pre id="diag-log" style="margin:8px 0 0;max-height:440px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Menlo,monospace;background:#0f1a14;color:#bff0c8;padding:10px;border-radius:8px">Tocca Aggiorna.</pre>
+      </div>
+
+      <div class="card">
         <h2>Nuova foto</h2>
         <div class="dropzone" id="dropzone">
           <span id="dropzone-text">Trascina una foto qui, oppure tocca per scegliere un file</span>
@@ -800,6 +811,41 @@
           statusEl.textContent = "Salvataggio non riuscito, riprova.";
           statusEl.className = "status err";
         }
+      });
+
+      async function loadDiag() {
+        const log = document.getElementById("diag-log");
+        const st = document.getElementById("diag-status");
+        st.textContent = "";
+        try {
+          const res = await fetch("/api/showroom/diag", { credentials: "same-origin" });
+          if (res.status === 401 || res.status === 403) {
+            authBanner.classList.add("show");
+            st.textContent = "Non sei loggato come ufficio.";
+            st.className = "status err";
+            return;
+          }
+          const { items } = await res.json();
+          if (!items.length) { log.textContent = "Nessun evento ricevuto: la TV non ha ancora aperto la vetrina (o il server è stato riavviato)."; return; }
+          const out = [];
+          let lastSid = null;
+          items.forEach((it) => {
+            if (it.sid !== lastSid) { out.push(`── sessione ${it.sid} · ${it.ua}`); lastSid = it.sid; }
+            out.push(it.line);
+          });
+          log.textContent = out.join("\n");
+          log.scrollTop = log.scrollHeight;
+          st.textContent = `${items.length} eventi`;
+          st.className = "status ok";
+        } catch (_) {
+          st.textContent = "Impossibile leggere la diagnostica.";
+          st.className = "status err";
+        }
+      }
+      document.getElementById("diag-refresh").addEventListener("click", loadDiag);
+      document.getElementById("diag-clear").addEventListener("click", async () => {
+        try { await fetch("/api/showroom/diag", { method: "DELETE", credentials: "same-origin" }); } catch (_) {}
+        loadDiag();
       });
 
       loadCollections();
