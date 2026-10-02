@@ -194,7 +194,7 @@
       }
       #tvVideo.on { opacity: 1; visibility: visible; }
       #tvVideoCopy {
-        position: fixed; left: 4.5%; bottom: 6%; z-index: 4; display: none; align-items: center; gap: .9rem; color: #fff;
+        position: fixed; left: 4.5%; bottom: 6%; z-index: 4; display: none; align-items: center; color: #fff;
       }
       #tvVideoCopy.on { display: flex; }
       .video-pill {
@@ -202,7 +202,10 @@
         background: rgba(10,20,14,.6); border: 1px solid rgba(216,243,220,.45);
         font: 700 .72rem "DM Sans"; letter-spacing: .08em; text-transform: uppercase; color: var(--brand-soft);
       }
-      .video-title { font: 600 1.5rem "DM Sans"; margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,.75); }
+      .video-title {
+        font: 600 1.5rem "DM Sans"; margin: 0 0 0 .9rem; padding: .3em .8em; border-radius: 10px;
+        background: rgba(10,20,14,.62);
+      }
       body.video-slide #progress, body.video-slide #clock { display: none; }
       /* Le animazioni dei layer non visibili (sfondi mesh, particelle) non
          servono: fermarle libera la GPU della TV. */
@@ -610,14 +613,33 @@
         el.hidden = false;
         el.textContent = dbgLines.join("\n") + (dbgStatus ? "\n— " + dbgStatus : "");
       }
+      // Gli eventi vengono sempre mandati al server (vedi "Diagnostica TV" nella
+      // pagina admin), così non serve fotografare lo schermo della TV.
+      const diagSid = Math.random().toString(36).slice(2, 10);
+      const diagBuf = [];
+      let diagSent = 0;
+      function flushDiag() {
+        if (!diagBuf.length) return;
+        const lines = diagBuf.splice(0, 50);
+        diagSent += lines.length;
+        try {
+          fetch("/api/showroom/diag", {
+            method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
+            body: JSON.stringify({ sid: diagSid, ua: navigator.userAgent, lines }),
+          }).catch(() => {});
+        } catch (_) {}
+      }
+      setInterval(flushDiag, 5000);
+      window.addEventListener("error", (e) => dbg(`ERRORE JS: ${e.message} @${(e.filename || "").slice(-24)}:${e.lineno}`));
       function dbg(msg) {
+        const line = `${new Date().toLocaleTimeString("it-IT")} ${msg}`;
+        if (diagSent + diagBuf.length < 500) diagBuf.push(line);
         if (!DEBUG) return;
-        dbgLines.push(`${new Date().toLocaleTimeString("it-IT")} ${msg}`);
+        dbgLines.push(line);
         if (dbgLines.length > 16) dbgLines.shift();
         renderDbg();
       }
       function bindMediaDebug(el, label) {
-        if (!DEBUG) return;
         ["loadedmetadata", "canplay", "playing", "pause", "waiting", "stalled", "ended", "error", "emptied"].forEach((ev) => {
           el.addEventListener(ev, () => {
             const extra = ev === "loadedmetadata" ? ` ${el.videoWidth || ""}x${el.videoHeight || ""} ${Math.round(el.duration)}s`
@@ -636,6 +658,7 @@
       let videoWatchdog = null;
       let tvStuck = 0;
       let tvLastT = -1;
+      let diagTick = 0;
       bindMediaDebug(tvVideo, "video");
       // Il video si mostra solo quando sta davvero girando: mai un riquadro
       // nero o a metà in attesa del primo frame.
@@ -703,6 +726,12 @@
           if (tvStuck === 2) { dbg("video fermo: provo a riprendere"); tvVideo.play().catch(() => {}); }
           if (tvStuck >= 4) { dbg("video bloccato: salto la slide"); advance(); }
         }
+        diagTick++;
+        if (videoSlideActive && diagTick % 2 === 0) {
+          const q = tvVideo.getVideoPlaybackQuality ? tvVideo.getVideoPlaybackQuality() : null;
+          dbg(`video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} ns=${tvVideo.networkState} ${tvVideo.paused ? "PAUSA" : "play"} frame=${q ? q.totalVideoFrames : "?"} persi=${q ? q.droppedVideoFrames : "?"}`);
+        }
+        if (diagTick % 15 === 0) dbg(`audio ${audioEl.paused ? "PAUSA" : "ok"} t=${Math.round(audioEl.currentTime)} vol=${audioEl.volume}${audioEl.muted ? " MUTO" : ""}`);
         if (DEBUG) {
           const a = `audio ${audioEl.paused ? "PAUSA" : "ok"} ${Math.round(audioEl.currentTime)}s vol=${audioEl.volume}${audioEl.muted ? " MUTO" : ""}`;
           const v = videoSlideActive ? `video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} ns=${tvVideo.networkState} ${tvVideo.paused ? "pausa" : "play"}` : "video -";

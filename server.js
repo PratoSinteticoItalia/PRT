@@ -168,6 +168,11 @@ const MIME_TYPES = {
 // File audio/video serviti dal disco con Range + Content-Length (le smart TV
 // e i player embedded rifiutano un <audio>/<video> senza Accept-Ranges o con
 // risposta chunked senza dimensione).
+// Diagnostica della pagina TV: la TV non ha una console, quindi la pagina
+// manda qui i suoi eventi audio/video. Solo in memoria (si azzera al riavvio).
+const SHOWROOM_DIAG_MAX = 600;
+const showroomDiagLog = [];
+const showroomDiagHits = new Map();
 const MEDIA_STREAM_EXTENSIONS = new Set([".mp3", ".m4a", ".ogg", ".wav", ".mp4", ".webm"]);
 
 const SHOPIFY_OAUTH_SCOPES = [
@@ -18005,6 +18010,39 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, store.showroomSettings);
   }
 
+  // Telemetria della pagina TV (vedi showroomDiagLog). Scrittura pubblica ma
+  // piccola e con limite per IP; lettura/azzeramento solo ufficio.
+  if (url.pathname === "/api/showroom/diag" && req.method === "POST") {
+    const ip = getClientIp(req);
+    const minute = Math.floor(Date.now() / 60000);
+    const hit = showroomDiagHits.get(ip);
+    if (!hit || hit.minute !== minute) showroomDiagHits.set(ip, { minute, count: 1 });
+    else if (++hit.count > 40) return sendJson(res, 429, { error: "rate_limited" });
+    if (showroomDiagHits.size > 200) showroomDiagHits.clear();
+    const body = await readBody(req, { maxBytes: 16 * 1024 });
+    const sid = String(body.sid || "").slice(0, 24);
+    const ua = String(body.ua || "").slice(0, 160);
+    const at = new Date().toISOString();
+    for (const line of (Array.isArray(body.lines) ? body.lines : []).slice(0, 60)) {
+      showroomDiagLog.push({ at, sid, ua, line: String(line).slice(0, 200) });
+    }
+    if (showroomDiagLog.length > SHOWROOM_DIAG_MAX) showroomDiagLog.splice(0, showroomDiagLog.length - SHOWROOM_DIAG_MAX);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (url.pathname === "/api/showroom/diag" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    return sendJson(res, 200, { items: showroomDiagLog.slice(-400) });
+  }
+
+  if (url.pathname === "/api/showroom/diag" && req.method === "DELETE") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    showroomDiagLog.length = 0;
+    return sendJson(res, 200, { ok: true });
+  }
+
   // Foto assegnata a mano a un prodotto del catalogo vetrina (una per
   // productId, sovrascrive la scelta random tra le realizzazioni in
   // vetrina.html). GET pubblico come le altre risorse vetrina.
@@ -20344,7 +20382,7 @@ const server = createServer(async (req, res) => {
   try {
     if (url.pathname.startsWith("/api/")) {
       const method = String(req.method || "GET").toUpperCase();
-      const shouldLockState = !["/api/healthz", "/api/events", "/api/session/revision"].includes(url.pathname)
+      const shouldLockState = !["/api/healthz", "/api/events", "/api/session/revision", "/api/showroom/diag"].includes(url.pathname)
         && method !== "GET"
         && method !== "HEAD"
         && method !== "OPTIONS"
