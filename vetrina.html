@@ -654,6 +654,11 @@
       const tvVideo = document.getElementById("tvVideo");
       const tvCopy = document.getElementById("tvVideoCopy");
       let videoSlideActive = false;
+      // La TV ha un solo canale media: far partire il video mette in pausa la
+      // musica e viceversa. Finché un video è in onda (e nei 700ms di
+      // smontaggio) la musica resta in pausa e nessuno la riavvia a forza,
+      // altrimenti i due si mettono in pausa a vicenda e il video va a scatti.
+      let videoHoldsMedia = false;
       let videoToken = 0;
       let videoWatchdog = null;
       let tvStuck = 0;
@@ -684,17 +689,25 @@
         tvVideo.classList.remove("on");
         tvCopy.classList.remove("on");
         const token = ++videoToken;
+        const wasHolding = videoHoldsMedia;
         // Liberato il decoder solo dopo la dissolvenza (e solo se nel frattempo
-        // non è partito un altro video).
+        // non è partito un altro video); poi la musica riparte da dove era.
         setTimeout(() => {
           if (token !== videoToken) return;
           try { tvVideo.pause(); tvVideo.removeAttribute("src"); tvVideo.load(); } catch (_) {}
+          videoHoldsMedia = false;
+          if (wasHolding && audioStarted && audioEl.paused) {
+            dbg("video finito: riprendo la musica");
+            audioEl.play().catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
+          }
         }, 700);
       }
 
       function startTvVideo(v) {
         videoSlideActive = true;
         videoToken++;
+        videoHoldsMedia = true;
+        try { audioEl.pause(); } catch (_) {}
         tvStuck = 0;
         tvLastT = -1;
         document.body.classList.add("video-slide");
@@ -855,7 +868,7 @@
       // riprende.
       let audioStarted = false;
       setInterval(() => {
-        if (audioStarted && audioEl.paused && !audioEl.error) {
+        if (audioStarted && audioEl.paused && !audioEl.error && !videoHoldsMedia) {
           dbg("audio in pausa: riprendo");
           audioEl.play().catch((e) => dbg(`audio.play() rifiutato: ${e && e.name}`));
         }
