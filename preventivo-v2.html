@@ -822,6 +822,50 @@
     width: 210mm !important; max-width: 210mm !important;
     margin: 0 !important; box-shadow: none !important; border-radius: 0 !important;
   }
+
+  /* Proposta editoriale: foto, caratteristiche e totale su assi coerenti. */
+  .offer-v3 .cards .card{grid-template-columns:120px minmax(0,1fr) 235px;grid-template-areas:"photo info proposal";border-radius:9px;border-left:3px solid var(--v3-gold);min-height:132px}
+  .offer-v3 .cards .card .ph{margin:12px;height:96px;background:#fff;border-radius:4px}
+  .offer-v3 .product-info{grid-area:info;padding:12px 8px;min-width:0}
+  .offer-v3 .product-name{font-family:'Source Serif 4',serif;font-size:19px;line-height:1.2;color:var(--v3-green-d);margin:5px 0 8px}
+  .offer-v3 .recommended-label{color:var(--v3-gold);font-size:9px;font-weight:700}
+  .offer-v3 .cards .card .proposal{margin:10px;padding:12px;background:#f2f5f0;border-radius:5px;text-align:right;align-self:stretch}
+  .offer-v3 .cards .card .price .big{font-size:28px;color:var(--v3-green-d)}
+  .offer-v3 .cards .card .price .u{font-size:9px;text-transform:uppercase;letter-spacing:.04em}
+  .offer-v3 .cards .card .tot{border:0;font-size:10px;color:var(--v3-muted);margin-top:9px;padding:0}
+  .offer-v3 .cards .card .pillrow{display:flex;flex-direction:column;gap:3px;margin:4px 0 0}
+  .offer-v3 .cards .card .pill2{background:none;border-radius:0;padding:0;font-size:10px;white-space:normal;font-weight:400}
+  .offer-v3 .cards[data-count="3"] .card{grid-template-columns:120px minmax(0,1fr) 235px}
+  .offer-v3 .cards[data-count="2"] .card{grid-template-columns:145px minmax(0,1fr) 235px;min-height:158px}
+  .offer-v3 .cards[data-count="2"] .ph{height:121px}
+  .offer-v3 .cards[data-count="1"] .card{grid-template-columns:220px minmax(0,1fr);grid-template-areas:"photo info" "photo proposal";min-height:238px}
+  .offer-v3 .cards[data-count="1"] .ph{height:196px}
+  .offer-v3 .cards[data-count="1"] .product-info{padding:16px 12px 0}
+  .offer-v3 .cards[data-count="1"] .proposal{text-align:left}
+  .offer-v3 .cards[data-count="1"] .product-name{font-size:25px}
+  .offer-v3 .cards .card.reco{box-shadow:none;border:1px solid var(--v3-gold);border-left:3px solid var(--v3-gold)}
+  .offer-v3 .matwrap{border-top-color:var(--v3-gold)}
+  .offer-v3 [data-field="materialsBox"] .eyebrow{color:var(--v3-gold)}
+  .installation-cost{padding:12px 15px;background:#f2f5f0;color:#193f32;font-size:11px;font-weight:700;line-height:1.5}
+  [data-field="techBlock"]{margin-top:16px}
+  .tech-card{box-shadow:none}
+
+  #page-2 .sect{margin-top:12px}
+  #page-2 .matwrap{padding:10px 14px}
+  #page-2 .install-work{margin:12px 0;border-color:var(--v3-line)}
+  #page-2 .install-work-head{padding:7px 14px}
+  #page-2 .install-work-intro{padding:8px 14px 0}
+  #page-2 .install-work-steps{padding:8px 14px;gap:7px 18px}
+  #page-2 .install-work-note{padding:6px 14px}
+  #page-2 .tech-grid{margin-bottom:10px}
+  #page-2 .tech-card-head{padding:8px 12px}
+  #page-2 .tech-row{padding:4px 0}
+  #page-2 .cert{padding:7px}
+  #page-2 .certs{margin-bottom:10px}
+  #page-2 .conds{margin:10px 0}
+  #page-2 .conds-grid{padding:9px 12px;gap:7px 20px;line-height:1.5}
+  #page-2 .installation-cost{padding:8px 14px}
+  .offer-v3 .matledger .ledger-labels{font-size:9px;text-transform:uppercase;background:#f3f1eb;padding:5px 0}
   </style>
   <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-fix2"></script>
 </head>
@@ -931,21 +975,13 @@
     </div>
   </div>
 
-  <!-- Schede tecniche prodotti -->
-  <div data-field="techBlock">
-    <div class="section-eyebrow">Scheda tecnica prodotti offerti</div>
-    <div class="tech-grid" data-field="techCards"></div>
-  </div>
-
-  <!-- Certificazioni -->
-  <div class="certs" data-field="certsRow"></div>
-
   <!-- Materiali e quantità reali -->
   <div class="sect" data-field="materialsBox">
     <div class="sect-h"><span class="eyebrow">Materiali e quantità</span><span class="rule"></span></div>
     <div class="matwrap">
       <div class="desc" data-field="materialsDesc">—</div>
       <div class="matledger-h"><span class="mlt">Distinta materiali</span><span class="mlc" data-field="materialsCtx">—</span></div>
+      <div class="matledger"><div class="mrow ledger-labels"><span class="mname">Materiale</span><span class="mqty">Quantità</span><span class="munit">Prezzo unit.</span><span class="mtot">Importo</span></div></div>
       <div class="matledger" data-field="materialsList"></div>
       <div class="matnote" data-field="materialsDiscountRow" style="display:none">
         <span>Sconto materiali già applicato ai totali</span>
@@ -959,6 +995,7 @@
     <div class="install-work-head">
       <span class="install-work-title" data-field="installWorkTitle">Cosa include il servizio di posa</span>
     </div>
+    <div class="installation-cost" data-field="installationCost"></div>
     <div class="install-work-intro" data-field="installWorkIntro">—</div>
     <div class="install-work-steps" data-field="installWorkSteps"></div>
     <div class="install-work-note" data-field="installWorkNote">—</div>
@@ -984,6 +1021,15 @@
       <tbody id="extra-services-body"></tbody>
     </table>
   </div>
+
+  <!-- Schede tecniche prodotti -->
+  <div data-field="techBlock">
+    <div class="section-eyebrow">Scheda tecnica prodotti offerti</div>
+    <div class="tech-grid" data-field="techCards"></div>
+  </div>
+
+  <!-- Certificazioni -->
+  <div class="certs" data-field="certsRow"></div>
 
   <!-- Condizioni generali di vendita (incl. inclusioni/esclusioni) -->
   <div class="conds">
@@ -1252,53 +1298,32 @@
     if (!wrap) return;
     const isPosa = String(data.mode || "").includes("posa");
     const suggestedSlug = data.suggestedSlug || "";
-    const CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
     const opts = (data.options || []).slice(0, 3);
     // data-count resta solo per il min-height della foto (più alta con 1
     // prodotto solo) — il layout è sempre una colonna verticale, vedi CSS
     // .offer-v3 .cards (redesign tipografico, card impilate).
     wrap.setAttribute("data-count", String(opts.length));
-    const noSym = (n) => fmtEur(n).replace(" €", "");
     wrap.innerHTML = opts.map((opt) => {
       const reco = opt.slug && opt.slug === suggestedSlug;
-      const sub = opt.discount > 0
-        ? `prezzo listino ${noSym(opt.pricePerSqm)} €/m² · sconto ${opt.discount}% incluso`
-        : `prezzo materiale ${noSym(opt.pricePerSqm)} €/m²`;
-      const incl = [
-        `<div class="li">${CHECK} ${isPosa ? "Posa professionale inclusa" : "Materiale certificato"}</div>`,
-        `<div class="li">${CHECK} Spedizione ${escHtml(String(opt.shippingLabel || "inclusa").toLowerCase())}</div>`,
-        opt.discount > 0 ? `<div class="li disc">${CHECK} Sconto commerciale ${opt.discount}%</div>` : "",
-      ].join("");
-      const brk = `
-        <div class="brk">
-          <div class="br"><span>Materiale prato</span><b>${noSym(opt.pricePerSqm)} €/m²</b></div>
-          ${isPosa ? `<div class="br"><span>Posa professionale</span><b>${noSym(opt.installation)} €/m²</b></div>` : ""}
-          <div class="br"><span>Spedizione</span><b>${escHtml(opt.shippingLabel || "—")}</b></div>
-        </div>`;
-      // Pill derivate dai dati tecnici (vedi buildProductPillsFromTech in
-      // app.js) — mai mostrate con 3 prodotti impilati, lo spazio lì non
-      // basta nemmeno per una riga in più (verificato più volte in questa
-      // sessione); con 2 sostituiscono il box tecnico "brk" invece di
-      // sommarcisi (stesso ingombro verticale circa, vedi CSS).
       const pills = Array.isArray(opt.pills) ? opt.pills.filter(Boolean) : [];
       const pillrow = pills.length ? `<div class="pillrow">${pills.map((p) => `<span class="pill2">${escHtml(p)}</span>`).join("")}</div>` : "";
       return `
         <div class="card${reco ? " reco" : ""}">
           ${photoFrameHtml(opt)}
-          <div class="cardbar">${reco ? '<span class="reco-eyebrow">★ Consigliato</span>' : ''}<span class="cbname">${escHtml(opt.name)}</span></div>
-          <div class="proposal">
-            <div class="cbody">
-              <div class="pdesc">COD. ${escHtml(opt.code || "—")}${opt.tagline ? ` · ${escHtml(opt.tagline)}` : ""}</div>
-              <div class="price">
-                <div class="u">${isPosa ? "Totale chiavi in mano" : "Totale fornitura"}</div>
-                <div><span class="big">${fmtEur(opt.total)}</span></div>
-                <div class="sub">${data.ivaStatus === "esclusa" ? "IVA esclusa" : data.ivaStatus === "mista" ? "IVA applicata secondo dettaglio" : "IVA inclusa"} · ${escHtml(String(data.sqm || 0))} m²</div>
-              </div>
-              <div class="tot"><span class="t">Equivalente al m² </span><span class="tv">${fmtEur(opt.finalSqmPrice)}/m²</span><div class="unit-detail">${sub}</div></div>
-            </div>
-            ${brk}
-            <div class="incl">${incl}</div>
+          <div class="product-info">
+            <div class="pdesc">COD. ${escHtml(opt.code || "—")}</div>
+            <div class="product-name">${escHtml(opt.name)}</div>
+            ${reco ? '<div class="recommended-label">Consigliato</div>' : ''}
+            ${opt.tagline ? `<div class="pdesc">${escHtml(opt.tagline)}</div>` : ''}
             ${pillrow}
+          </div>
+          <div class="proposal">
+            <div class="price">
+              <div class="u">${isPosa ? "Totale chiavi in mano" : "Totale fornitura"}</div>
+              <div><span class="big">${fmtEur(opt.total)}</span></div>
+              <div class="sub">${data.ivaStatus === "esclusa" ? "IVA esclusa" : data.ivaStatus === "mista" ? "IVA applicata secondo dettaglio" : "IVA inclusa"} · ${escHtml(String(data.sqm || 0))} m²</div>
+            </div>
+            <div class="tot">Equivalente ${fmtEur(opt.finalSqmPrice)}/m²</div>
           </div>
         </div>`;
     }).join("");
@@ -1387,6 +1412,14 @@
       return;
     }
     box.style.display = "";
+    const cost = data.installationCost;
+    const costEl = document.querySelector('[data-field="installationCost"]');
+    if (costEl) {
+      costEl.hidden = !cost || !Number.isFinite(cost.net);
+      costEl.textContent = cost && Number.isFinite(cost.net)
+        ? `${data.sqm} m² × ${fmtEur(cost.unitPrice)}/m² = ${fmtEur(cost.net)}${cost.applyIva ? ` + IVA ${data.vat || 22}%: ${fmtEur(cost.total)} IVA inclusa` : ' · IVA non applicata'} — già incluso nel totale chiavi in mano`
+        : '';
+    }
     setField("installWorkTitle", work.title || "Cosa include il servizio di posa");
     setField("installWorkIntro", work.intro || "");
     setField("installWorkNote", work.note || "");
@@ -1886,19 +1919,8 @@
       // Cattura OGNI pagina come foglio A4 separato → esattamente N pagine,
       // niente fogli bianchi da slicing automatico del canvas unico.
       //
-      // Ogni pagina è pensata per stare su un foglio A4 (vedi le regole CSS
-      // di pagina 1/2 e fitGardenPlannerAttachment per la tavola Garden
-      // Planner, ridotta PRIMA di arrivare qui). Un tentativo di ridurre
-      // anche l'intera `.page` qui con zoom/transform in caso di overflow
-      // residuo è stato provato e scartato: zoom corrompe la cattura di
-      // html2canvas (testo duplicato, verificato) e transform non aggiorna
-      // scrollHeight, quindi il canvas catturato resta alle dimensioni
-      // naturali e il successivo stretch-to-fit (sotto) lo comprime di
-      // nuovo in modo scorretto. Il clamp Math.min(H, …) sotto resta quindi
-      // l'unica rete di sicurezza per un overflow residuo estremo (3
-      // prodotti con condizioni/accessori/lavori extra molto lunghi): taglia
-      // in fondo invece di corrompere — una paginazione vera è da fare in un
-      // intervento dedicato, vedi docs/CLAUDE-HANDOFF.md.
+      // Each captured page keeps its proportions; optional content must never
+      // be stretched vertically or clipped to fit an A4 sheet.
       const pages = [...document.querySelectorAll(".page")].filter((p) => getComputedStyle(p).display !== "none");
       const c = { scale: 2, useCORS: true, backgroundColor: "#ffffff" };
       // Pagina 1: pipeline completa → ottengo l'istanza jsPDF
@@ -1909,9 +1931,12 @@
       for (let i = 1; i < pages.length; i++) {
         const canvas = await window.html2pdf().set({ image: { type: "jpeg", quality: 0.98 }, html2canvas: c }).from(pages[i]).toCanvas().get("canvas");
         const img = canvas.toDataURL("image/jpeg", 0.98);
-        const hmm = Math.min(H, W * (canvas.height / canvas.width));
+        // Preserve the page aspect ratio even for unusually long optional content.
+        const ratio = Math.min(W / canvas.width, H / canvas.height);
+        const wmm = canvas.width * ratio;
+        const hmm = canvas.height * ratio;
         pdf.addPage();
-        pdf.addImage(img, "JPEG", 0, 0, W, hmm);
+        pdf.addImage(img, "JPEG", (W - wmm) / 2, 0, wmm, hmm);
       }
       pdf.save(pdfFilename);
     } catch (e) {
