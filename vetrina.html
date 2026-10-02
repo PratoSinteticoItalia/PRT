@@ -183,19 +183,30 @@
       /* ---------- template: video-moment (clip di intermezzo, a piena pagina
          come le realizzazioni — deve essere protagonista, non un francobollo
          isolato nel vuoto) ---------- */
-      .tpl-video-moment { position: absolute; inset: 0; overflow: hidden; background: #0c130f; }
-      .tpl-video-moment video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-      .tpl-video-moment .scrim {
-        position: absolute; inset: 0;
-        background: linear-gradient(0deg, rgba(10,20,14,.78) 0%, rgba(10,20,14,.22) 32%, transparent 58%);
+      .tpl-video-moment { position: absolute; inset: 0; background: #0c130f; }
+      /* Un solo <video> persistente sopra i layer (non uno nuovo per slide):
+         le smart TV hanno pochi decoder e un elemento creato/distrutto a ogni
+         slide li esaurisce. Niente loop, sfumature o blur sopra il video: ogni
+         sovrapposizione obbliga la TV a ricomporre i frame uno per uno. */
+      #tvVideo {
+        position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000;
+        z-index: 3; opacity: 0; visibility: hidden; transition: opacity .5s ease;
       }
-      .tpl-video-moment .copy { position: absolute; left: 4.5%; bottom: 6%; right: 4.5%; color: #fff; display: flex; align-items: center; gap: .9rem; }
+      #tvVideo.on { opacity: 1; visibility: visible; }
+      #tvVideoCopy {
+        position: fixed; left: 4.5%; bottom: 6%; z-index: 4; display: none; align-items: center; gap: .9rem; color: #fff;
+      }
+      #tvVideoCopy.on { display: flex; }
       .video-pill {
         display: inline-flex; align-items: center; padding: .38em 1em; border-radius: 999px;
-        background: rgba(216,243,220,.16); border: 1px solid rgba(216,243,220,.4); backdrop-filter: blur(6px);
+        background: rgba(10,20,14,.6); border: 1px solid rgba(216,243,220,.45);
         font: 700 .72rem "DM Sans"; letter-spacing: .08em; text-transform: uppercase; color: var(--brand-soft);
       }
-      .video-title { font: 600 1.5rem "DM Sans"; margin: 0; }
+      .video-title { font: 600 1.5rem "DM Sans"; margin: 0; text-shadow: 0 2px 10px rgba(0,0,0,.75); }
+      body.video-slide #progress, body.video-slide #clock { display: none; }
+      /* Le animazioni dei layer non visibili (sfondi mesh, particelle) non
+         servono: fermarle libera la GPU della TV. */
+      .layer:not(.active) * { animation-play-state: paused !important; }
 
       /* ---------- template: bumper (logo) ---------- */
       .tpl-bumper {
@@ -297,6 +308,8 @@
     </div>
 
     <audio id="audio" preload="none" crossorigin="anonymous"></audio>
+    <video id="tvVideo" muted playsinline webkit-playsinline preload="auto" disablepictureinpicture></video>
+    <div id="tvVideoCopy"></div>
     <pre id="dbg" hidden></pre>
 
     <script>
@@ -305,7 +318,7 @@
         { id: "handpan-2", name: "Healing Handpan", url: "/showroom-content/music/handpan-2.mp3" },
         { id: "handpan-3", name: "Flowing Rivers Handpan", url: "/showroom-content/music/handpan-3.mp3" },
       ];
-      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, tip: 6500, "video-moment": 9000, bumper: 4500 };
+      const DURATIONS = { divider: 3200, product: 7500, realizzazione: 8500, stat: 6000, quote: 6500, tip: 6500, "video-moment": 16000, bumper: 4500 };
       const CATEGORY_ORDER = ["Residenziale", "Uso intensivo", "Animali domestici", "Terrazzi & Balconi"];
 
       const layerEls = [document.getElementById("layerA"), document.getElementById("layerB")];
@@ -514,21 +527,10 @@
             </div>
           </div>`;
       }
-      // Clip di intermezzo (mute, in loop): stesso trattamento a piena
-      // pagina delle realizzazioni — il video deve essere protagonista, non
-      // una miniatura isolata su uno sfondo scuro generico.
-      function renderVideoMoment(v) {
-        const copy = v.title ? `
-          <div class="copy">
-            <span class="video-pill">Dal nostro mondo</span>
-            <p class="video-title">${v.title}</p>
-          </div>` : "";
-        return `
-          <div class="tpl-video-moment">
-            <video src="${v.attachment?.url || ""}" muted loop playsinline webkit-playsinline preload="auto"></video>
-            <div class="scrim"></div>
-            ${copy}
-          </div>`;
+      // Il video vero sta nell'elemento persistente #tvVideo (vedi startTvVideo):
+      // il layer contiene solo lo sfondo scuro su cui appare.
+      function renderVideoMoment() {
+        return '<div class="tpl-video-moment"></div>';
       }
 
       function renderBumper(brand) {
@@ -597,29 +599,26 @@
         stat: "fadeUp", quote: "fadeUp", tip: "fadeUp", "video-moment": "fadeIn", bumper: "fadeUp",
       };
 
-      let videoWatchdog = null;
-      function stopVideos(root) {
-        root.querySelectorAll("video").forEach((v) => {
-          try { v.pause(); v.removeAttribute("src"); v.load(); } catch (_) {}
-        });
-      }
-
       // Pannello di diagnostica: si attiva aprendo la pagina con ?debug=1 e
-      // mostra gli ultimi eventi audio/video (utile per capire cosa fa una TV
-      // senza console).
+      // mostra gli ultimi eventi audio/video e lo stato aggiornato ogni secondo
+      // (utile per capire cosa fa una TV senza console).
       const DEBUG = new URLSearchParams(location.search).has("debug");
       const dbgLines = [];
+      let dbgStatus = "";
+      function renderDbg() {
+        const el = document.getElementById("dbg");
+        el.hidden = false;
+        el.textContent = dbgLines.join("\n") + (dbgStatus ? "\n— " + dbgStatus : "");
+      }
       function dbg(msg) {
         if (!DEBUG) return;
         dbgLines.push(`${new Date().toLocaleTimeString("it-IT")} ${msg}`);
-        if (dbgLines.length > 18) dbgLines.shift();
-        const el = document.getElementById("dbg");
-        el.hidden = false;
-        el.textContent = dbgLines.join("\n");
+        if (dbgLines.length > 16) dbgLines.shift();
+        renderDbg();
       }
       function bindMediaDebug(el, label) {
         if (!DEBUG) return;
-        ["loadedmetadata", "canplay", "playing", "pause", "waiting", "stalled", "ended", "error"].forEach((ev) => {
+        ["loadedmetadata", "canplay", "playing", "pause", "waiting", "stalled", "ended", "error", "emptied"].forEach((ev) => {
           el.addEventListener(ev, () => {
             const extra = ev === "loadedmetadata" ? ` ${el.videoWidth || ""}x${el.videoHeight || ""} ${Math.round(el.duration)}s`
               : ev === "error" ? ` code=${el.error && el.error.code} ${el.error && el.error.message || ""}` : "";
@@ -628,12 +627,96 @@
         });
       }
 
+      // ---- video di intermezzo: un solo <video> persistente per tutta la vita
+      // della pagina (vedi commento nel CSS), riusato cambiando src.
+      const tvVideo = document.getElementById("tvVideo");
+      const tvCopy = document.getElementById("tvVideoCopy");
+      let videoSlideActive = false;
+      let videoToken = 0;
+      let videoWatchdog = null;
+      let tvStuck = 0;
+      let tvLastT = -1;
+      bindMediaDebug(tvVideo, "video");
+      // Il video si mostra solo quando sta davvero girando: mai un riquadro
+      // nero o a metà in attesa del primo frame.
+      tvVideo.addEventListener("playing", () => {
+        if (!videoSlideActive) return;
+        tvVideo.classList.add("on");
+        if (tvCopy.innerHTML) tvCopy.classList.add("on");
+      });
+      // Niente loop (il riavvolgimento blocca molti player TV): a fine clip si
+      // passa alla slide successiva.
+      tvVideo.addEventListener("ended", () => { if (videoSlideActive && playing) advance(); });
+      tvVideo.addEventListener("error", () => { if (videoSlideActive && playing) advance(); });
+
+      function hideTvVideo() {
+        videoSlideActive = false;
+        clearTimeout(videoWatchdog);
+        document.body.classList.remove("video-slide");
+        tvVideo.classList.remove("on");
+        tvCopy.classList.remove("on");
+        const token = ++videoToken;
+        // Liberato il decoder solo dopo la dissolvenza (e solo se nel frattempo
+        // non è partito un altro video).
+        setTimeout(() => {
+          if (token !== videoToken) return;
+          try { tvVideo.pause(); tvVideo.removeAttribute("src"); tvVideo.load(); } catch (_) {}
+        }, 700);
+      }
+
+      function startTvVideo(v) {
+        videoSlideActive = true;
+        videoToken++;
+        tvStuck = 0;
+        tvLastT = -1;
+        document.body.classList.add("video-slide");
+        tvCopy.innerHTML = v.title ? `<span class="video-pill">Dal nostro mondo</span><p class="video-title">${v.title}</p>` : "";
+        // L'attributo muted da solo non basta su tutti i motori: la proprietà
+        // JS va forzata perché l'autoplay senza gesto utente funzioni.
+        tvVideo.muted = true;
+        tvVideo.defaultMuted = true;
+        tvVideo.loop = false;
+        tvVideo.src = v.attachment.url;
+        tvVideo.load();
+        // play() dopo che il layer è visibile (chiamato prima, alcune TV
+        // sospendono subito il video e non lo riprendono).
+        requestAnimationFrame(() => {
+          if (videoSlideActive) tvVideo.play().catch((e) => dbg(`video.play() rifiutato: ${e && e.name}`));
+        });
+        clearTimeout(videoWatchdog);
+        videoWatchdog = setTimeout(() => {
+          if (playing && videoSlideActive && !tvVideo.classList.contains("on")) {
+            dbg("video non partito entro 4,5s: salto la slide");
+            advance();
+          }
+        }, 4500);
+      }
+
+      // Controllo ogni secondo: video fermo (frame congelato) → prima si
+      // prova a riprendere, poi si salta la slide; in debug aggiorna anche lo
+      // stato mostrato a schermo.
+      setInterval(() => {
+        if (videoSlideActive && playing && tvVideo.classList.contains("on") && !tvVideo.ended) {
+          const t = tvVideo.currentTime;
+          tvStuck = t === tvLastT ? tvStuck + 1 : 0;
+          tvLastT = t;
+          if (tvStuck === 2) { dbg("video fermo: provo a riprendere"); tvVideo.play().catch(() => {}); }
+          if (tvStuck >= 4) { dbg("video bloccato: salto la slide"); advance(); }
+        }
+        if (DEBUG) {
+          const a = `audio ${audioEl.paused ? "PAUSA" : "ok"} ${Math.round(audioEl.currentTime)}s vol=${audioEl.volume}${audioEl.muted ? " MUTO" : ""}`;
+          const v = videoSlideActive ? `video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} ns=${tvVideo.networkState} ${tvVideo.paused ? "pausa" : "play"}` : "video -";
+          dbgStatus = `${a} | ${v}`;
+          renderDbg();
+        }
+      }, 1000);
+
       function showSlide(item) {
         const rendered = renderSlide(item);
         const nextIdx = (activeLayerIdx + 1) % 2;
         const nextEl = layerEls[nextIdx];
         const inner = nextEl.querySelector(".slide-inner");
-        stopVideos(inner);
+        hideTvVideo();
         inner.innerHTML = rendered.html;
         dbg(`slide ${seqPos + 1}/${sequence.length} ${rendered.kind}`);
         if (rendered.kind === "stat") animateStatCountUp(inner);
@@ -642,54 +725,25 @@
         const img = inner.querySelector("img");
         if (img) img.addEventListener("error", () => { if (playing) advance(); }, { once: true });
 
-        let video = null;
-        if (rendered.kind === "video-moment") {
-          video = inner.querySelector(".tpl-video-moment video");
-          if (video) {
-            // L'attributo muted da solo non basta su tutti i motori quando il
-            // <video> arriva via innerHTML dinamico (non un vero page load):
-            // la proprietà JS va forzata perché l'autoplay senza gesto utente
-            // funzioni sempre.
-            video.muted = true;
-            video.defaultMuted = true;
-            bindMediaDebug(video, "video");
-            video.addEventListener("error", () => { if (playing) advance(); }, { once: true });
-          }
-        }
-
         const anim = ENTER_BY_KIND[rendered.kind] || "fadeUp";
         inner.style.animation = "none";
         void inner.offsetWidth;
         inner.style.animation = `${anim} .85s cubic-bezier(.22,.85,.3,1) both`;
 
-        const prevEl = layerEls[activeLayerIdx];
-        prevEl.classList.remove("active");
+        layerEls[activeLayerIdx].classList.remove("active");
         nextEl.classList.add("active");
         activeLayerIdx = nextIdx;
-        // Il video della slide appena lasciata continuerebbe a girare (e a
-        // occupare il decoder, unico su molte TV) nascosto sotto: lo si ferma
-        // e si libera dopo la dissolvenza.
-        setTimeout(() => { if (!prevEl.classList.contains("active")) stopVideos(prevEl); }, 800);
         document.body.classList.toggle("on-dark", rendered.dark);
-        // .play() va chiamato SOLO dopo che il layer è "active" (opacity:1):
-        // chiamato prima, su un layer ancora nascosto, alcuni motori (i
-        // browser TV in primis) sospendono subito il video e non lo
-        // riprendono da soli quando poi diventa visibile.
-        clearTimeout(videoWatchdog);
-        if (video) {
-          video.play().catch((e) => dbg(`video.play() rifiutato: ${e && e.name}`));
-          // Se entro 4,5 s il video non è davvero partito (decoder non
-          // supportato, rete lenta) meglio passare oltre che lasciare uno
-          // schermo nero o a metà.
-          videoWatchdog = setTimeout(() => {
-            if (playing && video.isConnected && (video.paused || video.currentTime < 0.1 || video.readyState < 3)) {
-              dbg("video non partito entro 4,5s: salto la slide");
-              advance();
-            }
-          }, 4500);
-        }
 
-        const duration = DURATIONS[rendered.kind] || 7000;
+        let duration = DURATIONS[rendered.kind] || 7000;
+        if (rendered.kind === "video-moment") {
+          startTvVideo(item.data);
+          // Durata reale del clip se nota (salvata dalla pagina admin); a fine
+          // clip comunque scatta 'ended'. Il timer è solo un paracadute.
+          const sec = Number(item.data.durationSec) || 0;
+          duration = sec > 0 ? Math.min(18000, Math.max(4000, sec * 1000 + 1500)) : 16000;
+          document.body.classList.add("video-slide");
+        }
         runProgress(duration);
         document.getElementById("hud-count").textContent = `${seqPos + 1}/${sequence.length}`;
         return duration;
@@ -772,6 +826,7 @@
       }
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+        if (document.visibilityState === "visible" && videoSlideActive && tvVideo.paused && !tvVideo.ended) tvVideo.play().catch(() => {});
       });
 
       function tickClock() {

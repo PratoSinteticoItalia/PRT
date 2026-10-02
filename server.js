@@ -10976,6 +10976,9 @@ function normalizeShowroomPhoto(item = {}) {
     // true se il video è stato convertito per la TV (720p H.264 senza
     // rotazione/audio) dalla pagina admin prima del caricamento.
     tvReady: item.tvReady === true,
+    // durata in secondi del clip convertito (la pagina TV la usa per sapere
+    // quanto tenere la slide senza aspettare metadata).
+    durationSec: Math.max(0, Math.min(120, Number(item.durationSec) || 0)),
     title: String(item.title || "").trim(),
     subtitle: String(item.subtitle || "").trim(),
     attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, id, "showroom") : null,
@@ -17949,6 +17952,7 @@ async function handleApi(req, res, url) {
       category,
       mediaType: type.startsWith("video/") ? "video" : "photo",
       tvReady: url.searchParams.get("tv") === "1",
+      durationSec: Number(url.searchParams.get("dur")) || 0,
       title: url.searchParams.get("title") || "",
       subtitle: url.searchParams.get("subtitle") || "",
       attachment,
