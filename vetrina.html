@@ -659,6 +659,11 @@
       let tvStuck = 0;
       let tvLastT = -1;
       let diagTick = 0;
+      let rvfcLast = null, rvfcPrev = null;
+      if (tvVideo.requestVideoFrameCallback) {
+        const rvfcLoop = (now, meta) => { rvfcLast = { now, frames: meta.presentedFrames }; tvVideo.requestVideoFrameCallback(rvfcLoop); };
+        tvVideo.requestVideoFrameCallback(rvfcLoop);
+      }
       bindMediaDebug(tvVideo, "video");
       // Il video si mostra solo quando sta davvero girando: mai un riquadro
       // nero o a metà in attesa del primo frame.
@@ -701,18 +706,25 @@
         tvVideo.loop = false;
         tvVideo.src = v.attachment.url;
         tvVideo.load();
-        // play() dopo che il layer è visibile (chiamato prima, alcune TV
-        // sospendono subito il video e non lo riprendono).
-        requestAnimationFrame(() => {
-          if (videoSlideActive) tvVideo.play().catch((e) => dbg(`video.play() rifiutato: ${e && e.name}`));
-        });
+        // Si parte solo con abbastanza dati in buffer (canplaythrough) per non
+        // andare a scatti aspettando la rete; se l'evento non arriva si parte
+        // comunque dopo 2,5 s. play() mai prima che il layer sia visibile.
+        const myToken = videoToken;
+        let kicked = false;
+        const kick = () => {
+          if (kicked || !videoSlideActive || myToken !== videoToken) return;
+          kicked = true;
+          tvVideo.play().catch((e) => dbg(`video.play() rifiutato: ${e && e.name}`));
+        };
+        tvVideo.addEventListener("canplaythrough", () => requestAnimationFrame(kick), { once: true });
+        setTimeout(() => requestAnimationFrame(kick), 2500);
         clearTimeout(videoWatchdog);
         videoWatchdog = setTimeout(() => {
           if (playing && videoSlideActive && !tvVideo.classList.contains("on")) {
-            dbg("video non partito entro 4,5s: salto la slide");
+            dbg("video non partito entro 7s: salto la slide");
             advance();
           }
-        }, 4500);
+        }, 7000);
       }
 
       // Controllo ogni secondo: video fermo (frame congelato) → prima si
@@ -729,7 +741,11 @@
         diagTick++;
         if (videoSlideActive && diagTick % 2 === 0) {
           const q = tvVideo.getVideoPlaybackQuality ? tvVideo.getVideoPlaybackQuality() : null;
-          dbg(`video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} ns=${tvVideo.networkState} ${tvVideo.paused ? "PAUSA" : "play"} frame=${q ? q.totalVideoFrames : "?"} persi=${q ? q.droppedVideoFrames : "?"}`);
+          let fps = "?";
+          if (rvfcLast && rvfcPrev && rvfcLast.now > rvfcPrev.now) fps = ((rvfcLast.frames - rvfcPrev.frames) * 1000 / (rvfcLast.now - rvfcPrev.now)).toFixed(0);
+          rvfcPrev = rvfcLast;
+          const buf = tvVideo.buffered.length ? tvVideo.buffered.end(tvVideo.buffered.length - 1).toFixed(1) : "0";
+          dbg(`video t=${tvVideo.currentTime.toFixed(1)} rs=${tvVideo.readyState} buf=${buf} ${tvVideo.paused ? "PAUSA" : "play"} fps=${fps} frame=${q ? q.totalVideoFrames : "?"} persi=${q ? q.droppedVideoFrames : "?"}`);
         }
         if (diagTick % 15 === 0) dbg(`audio ${audioEl.paused ? "PAUSA" : "ok"} t=${Math.round(audioEl.currentTime)} vol=${audioEl.volume}${audioEl.muted ? " MUTO" : ""}`);
         if (DEBUG) {
@@ -929,10 +945,10 @@
         requestWakeLock();
         audioStarted = true;
         loadStation(stationIdx, true);
-        if (DEBUG) {
+        {
           const probe = (t) => (document.createElement(t.startsWith("audio") ? "audio" : "video").canPlayType(t) || "no");
-          dbg(`UA ${navigator.userAgent.slice(0, 90)}`);
-          dbg(`schermo ${innerWidth}x${innerHeight}; h264 ${probe('video/mp4; codecs="avc1.42E01E"')}, mp3 ${probe("audio/mpeg")}`);
+          dbg(`schermo ${innerWidth}x${innerHeight} dpr=${window.devicePixelRatio} cpu=${navigator.hardwareConcurrency || "?"} ram=${navigator.deviceMemory || "?"}GB`);
+          dbg(`h264base ${probe('video/mp4; codecs="avc1.42E01E"')}, h264high ${probe('video/mp4; codecs="avc1.640028"')}, hevc ${probe('video/mp4; codecs="hvc1.1.6.L93.B0"')}, mp3 ${probe("audio/mpeg")}, rVFC ${tvVideo.requestVideoFrameCallback ? "si" : "no"}`);
         }
         tickClock();
         advance();
@@ -953,6 +969,7 @@
         }
       }
 
+      const prefetchedVideos = new Set();
       async function refreshShowroomPhotos() {
         const items = await fetchShowroomPhotoItems();
         const realizzazioni = items.filter((item) => item.category === "realizzazioni" && item.attachment?.url);
@@ -965,6 +982,13 @@
         // Se la fetch fallisce o torna vuota si tiene quello che c'era prima
         // invece di svuotare la vetrina — stesso criterio già in uso altrove.
         if (realizzazioni.length) data.realizzazioni = realizzazioni;
+        // I clip sono piccoli (1-4 MB): scaricarli in anticipo nella cache del
+        // browser toglie la rete dall'equazione quando la TV li riproduce.
+        videoMoments.forEach((v) => {
+          if (prefetchedVideos.has(v.attachment.url)) return;
+          prefetchedVideos.add(v.attachment.url);
+          fetch(v.attachment.url, { cache: "force-cache" }).then((r) => r.blob()).catch(() => {});
+        });
         if (videoMoments.length) data.videoMoments = videoMoments;
       }
 
