@@ -188,6 +188,12 @@
         </div>
         <div class="preview" id="video-preview"><video id="video-preview-el" muted controls></video></div>
 
+        <label for="video-quality">Qualità sulla TV</label>
+        <select id="video-quality">
+          <option value="standard">Standard (720p)</option>
+          <option value="light">Leggera (480p): scegli questa se sulla TV il video va a scatti</option>
+        </select>
+
         <label for="video-title">Didascalia (opzionale)</label>
         <input type="text" id="video-title" placeholder="Es. Posa completata a Bergamo" />
 
@@ -354,17 +360,24 @@
       // max 15 secondi. Così non servono ffmpeg né CPU sul server del gestionale,
       // e si evitano i problemi visti sulla TV (video ruotati, metà schermo
       // nero) che nascono da file verticali/rotati dei telefoni.
-      const TV_W = 1280, TV_H = 720, TV_FPS = 30, TV_MAX_SECONDS = 15;
+      const TV_MAX_SECONDS = 15;
+      // "Leggera" per le TV con decoder lento (video a scatti): 480p e bitrate
+      // dimezzato, circa 2 volte meno lavoro per la TV.
+      const TV_PROFILES = {
+        standard: { w: 1280, h: 720, fps: 30, bitrate: 2000000, codec: "avc1.42001f" },
+        light: { w: 848, h: 480, fps: 30, bitrate: 1100000, codec: "avc1.42001e" },
+      };
 
       function canConvertForTv() {
         return Boolean(window.VideoEncoder && window.VideoFrame && window.Mp4Muxer
           && HTMLVideoElement.prototype.requestVideoFrameCallback);
       }
 
-      async function convertVideoForTv(file, onProgress) {
+      async function convertVideoForTv(file, onProgress, profile = TV_PROFILES.standard) {
+        const { w: TV_W, h: TV_H, fps: TV_FPS } = profile;
         const encoderConfig = {
-          codec: "avc1.42001f", width: TV_W, height: TV_H,
-          bitrate: 2000000, framerate: TV_FPS, avc: { format: "avc" },
+          codec: profile.codec, width: TV_W, height: TV_H,
+          bitrate: profile.bitrate, framerate: TV_FPS, avc: { format: "avc" },
         };
         const support = await VideoEncoder.isConfigSupported(encoderConfig);
         if (!support.supported) throw new Error("encoder_unsupported");
@@ -407,8 +420,20 @@
           });
           encoder.configure(encoderConfig);
 
-          let firstTime = null, lastRel = -1, frames = 0, lastFrameAt = Date.now();
+          // Linea temporale FISSA (esattamente TV_FPS fotogrammi al secondo):
+          // la registrazione in tempo reale può perdere o ritardare un frame, ma
+          // ogni "slot" di 1/TV_FPS s riceve comunque l'ultimo frame disponibile.
+          // Tempi irregolari nel file danno scatti sulle TV con decoder deboli.
           const gap = 1 / TV_FPS;
+          let nextSlot = 0, haveFrame = false, firstTime = null, lastRel = 0, lastFrameAt = Date.now();
+          function emitSlot() {
+            const k = nextSlot++;
+            const frame = new VideoFrame(canvas, {
+              timestamp: Math.round(k * gap * 1e6), duration: Math.round(gap * 1e6),
+            });
+            encoder.encode(frame, { keyFrame: k % (TV_FPS * 2) === 0 });
+            frame.close();
+          }
           await new Promise((resolve, reject) => {
             let finished = false;
             // Se la scheda finisce in secondo piano il browser mette in pausa il
@@ -437,17 +462,22 @@
               lastFrameAt = Date.now();
               if (firstTime === null) firstTime = meta.mediaTime;
               const rel = meta.mediaTime - firstTime;
+              if (haveFrame) {
+                // gli slot prima di questo istante mostrano ancora il frame precedente
+                while (nextSlot * gap < rel - 1e-4 && nextSlot * gap <= limit) emitSlot();
+              }
               if (rel > limit) return finish();
-              if ((lastRel < 0 || rel - lastRel >= gap * 0.9) && encoder.encodeQueueSize < 12) {
-                ctx.drawImage(video, dx, dy, dw, dh);
-                const frame = new VideoFrame(canvas, {
-                  timestamp: Math.round(rel * 1e6), duration: Math.round(1e6 / TV_FPS),
-                });
-                encoder.encode(frame, { keyFrame: frames % (TV_FPS * 2) === 0 });
-                frame.close();
-                lastRel = rel;
-                frames++;
-                onProgress(Math.min(1, rel / limit));
+              ctx.drawImage(video, dx, dy, dw, dh);
+              haveFrame = true;
+              lastRel = rel;
+              onProgress(Math.min(1, rel / limit));
+              // encoder in ritardo: si ferma il video finché si è smaltito
+              if (encoder.encodeQueueSize > 20 && !video.paused) {
+                video.pause();
+                const wait = setInterval(() => {
+                  if (finished) return clearInterval(wait);
+                  if (encoder.encodeQueueSize < 4) { clearInterval(wait); resume(); }
+                }, 40);
               }
               video.requestVideoFrameCallback(onFrame);
             }
@@ -456,11 +486,15 @@
             video.requestVideoFrameCallback(onFrame);
             video.play().catch(() => {});
           });
+          if (haveFrame) {
+            while (nextSlot * gap <= lastRel + 1e-4) emitSlot();
+            emitSlot();
+          }
           await encoder.flush();
           muxer.finalize();
           encoder.close();
-          if (frames < 5) throw new Error("no_frames");
-          return { blob: new Blob([muxer.target.buffer], { type: "video/mp4" }), duration: lastRel + 1 / TV_FPS };
+          if (nextSlot < 5) throw new Error("no_frames");
+          return { blob: new Blob([muxer.target.buffer], { type: "video/mp4" }), duration: nextSlot * gap };
         } finally {
           URL.revokeObjectURL(url);
         }
@@ -551,9 +585,10 @@
         const keepOpen = "(tieni questa scheda aperta e in primo piano)";
         setVideoStatus(`Conversione per la TV… 0% ${keepOpen}`);
         try {
+          const quality = document.getElementById("video-quality").value;
           const converted = await convertVideoForTv(file, (p) => {
             setVideoStatus(`Conversione per la TV… ${Math.round(p * 100)}% ${keepOpen}`);
-          });
+          }, TV_PROFILES[quality] || TV_PROFILES.standard);
           const mb = (n) => (n / 1024 / 1024).toFixed(1);
           uploadVideoBlob(converted.blob, {
             name: `${baseName}-tv.mp4`, type: "video/mp4", title, tvReady: true, duration: converted.duration,
