@@ -158,7 +158,17 @@ const MIME_TYPES = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
+  ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
 };
+// File audio/video serviti dal disco con Range + Content-Length (le smart TV
+// e i player embedded rifiutano un <audio>/<video> senza Accept-Ranges o con
+// risposta chunked senza dimensione).
+const MEDIA_STREAM_EXTENSIONS = new Set([".mp3", ".m4a", ".ogg", ".wav", ".mp4", ".webm"]);
 
 const SHOPIFY_OAUTH_SCOPES = [
   "read_orders",
@@ -10963,6 +10973,9 @@ function normalizeShowroomPhoto(item = {}) {
     // "video" per le clip di intermezzo tra le sezioni del catalogo (mute,
     // in loop) — tutto il resto (realizzazioni, catalogo) resta "photo".
     mediaType: item.mediaType === "video" ? "video" : "photo",
+    // true se il video è stato convertito per la TV (720p H.264 senza
+    // rotazione/audio) dalla pagina admin prima del caricamento.
+    tvReady: item.tvReady === true,
     title: String(item.title || "").trim(),
     subtitle: String(item.subtitle || "").trim(),
     attachment: item.attachment ? normalizeAttachmentRecord(item.attachment, id, "showroom") : null,
@@ -11494,6 +11507,34 @@ function parseRangeHeader(rangeHeader, size) {
   end = Math.min(size - 1, end);
   if (start > end) return null;
   return { start, end };
+}
+
+function streamStaticMedia(req, res, filePath) {
+  const mimeType = MIME_TYPES[extname(filePath).toLowerCase()] || "application/octet-stream";
+  let size;
+  try {
+    size = statSync(filePath).size;
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+    return;
+  }
+  const range = parseRangeHeader(req.headers.range, size);
+  res.writeHead(range ? 206 : 200, {
+    "Content-Type": mimeType,
+    "Content-Length": range ? range.end - range.start + 1 : size,
+    "Accept-Ranges": "bytes",
+    ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${size}` } : {}),
+    "Cache-Control": "public, max-age=86400",
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (String(req.method || "GET").toUpperCase() === "HEAD") {
+    res.end();
+    return;
+  }
+  const stream = createReadStream(filePath, range ? { start: range.start, end: range.end } : undefined);
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
 }
 
 // req (opzionale) serve solo per leggere l'header Range: molti player video
@@ -17907,6 +17948,7 @@ async function handleApi(req, res, url) {
       id,
       category,
       mediaType: type.startsWith("video/") ? "video" : "photo",
+      tvReady: url.searchParams.get("tv") === "1",
       title: url.searchParams.get("title") || "",
       subtitle: url.searchParams.get("subtitle") || "",
       attachment,
@@ -20362,6 +20404,9 @@ const server = createServer(async (req, res) => {
     const mimeType = MIME_TYPES[ext] || "application/octet-stream";
     const isHtml = ext === ".html";
     const versioned = Boolean(url.search) && !isHtml;
+    if (MEDIA_STREAM_EXTENSIONS.has(ext.toLowerCase())) {
+      return streamStaticMedia(req, res, filePath, mimeType);
+    }
     const headers = getStaticHeaders(mimeType, { versioned, isHtml });
     const acceptsGzip = /gzip/i.test(req.headers["accept-encoding"] || "");
     // Prova a servire dalla cache pre-compressa (evita readFile + gzipSync runtime)
