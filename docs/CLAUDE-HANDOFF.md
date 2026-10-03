@@ -224,3 +224,9 @@ Pubblicato (commit `153f8f4`/`f06a4b3` su prod-promote/main) solo dopo approvazi
 - `installationCost` nel payload nativo usa `computeQuote` (`posaNet`); vecchi payload senza il campo non inventano importi. Nessun cambiamento alle tariffe/calcoli commerciali.
 - Export delle pagine successive mantiene il rapporto d'aspetto anche con contenuti lunghi, evitando la precedente compressione verticale. Contenuti eccezionalmente lunghi vengono ridotti; paginazione dinamica per sezioni resta futura.
 - Verifica: build/check, 236 test; cattura html2pdf/toCanvas nel browser locale per 1/2/3 prodotti e posa valorizzata. Fixture solo in tmp, non pubblicata. Il download PDF è stato invocato, ma il file salvato non è stato recuperato per un confronto raster finale.
+
+## 3 ottobre — preventivo: distinta unica materiali/accessori, netto/IVA/totale, foto su bianco
+- Modifiche fatte con Codex dall'utente, committate qui: HeyLight in evidenza con le altre modalità di pagamento visibili; accessori nella distinta materiali unica (quantità, sconto, IVA per riga); netto, IVA e totale più chiari; foto prodotto su fondo bianco (`product-images/*.jpg?v=20261003-white-background`); scelta esplicita tra più prodotti; distinte lunghe su più pagine.
+- `buildNativePreventivoPayload` ora passa anche `grandNet`, `vatAmount` e `materials.applyIva`. Nessun cambio a tariffe/calcoli commerciali.
+- Bump shell version a `20261003-preventivo-distinta-accessori` (app.js è cambiato: i file con `?v=` sono cache immutable per un anno).
+- Verifica indicata da Codex: layout con 1, 2, 3 prodotti, caso con 35 accessori, export PDF; 239 test passati (anche in questa sessione, con `npm run check`).
