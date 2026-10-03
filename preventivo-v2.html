@@ -835,9 +835,16 @@
   /* La scheda consigliata deve distinguersi a colpo d'occhio, non con un
      filo dorato in più rispetto al bordo sinistro già presente su ogni
      card (quello si notava a malapena — segnalato dall'utente, "l'outline
-     sembra quasi un errore"): bordo pieno, sfondo caldo, rilievo con
-     ombra, pannello prezzo bianco per distinguersi dal resto della card. */
-  .offer-v3 .cards .card.reco{border:2px solid var(--v3-gold);background:var(--v3-gold-soft);box-shadow:0 8px 20px rgba(176,137,74,.22)}
+     sembra quasi un errore"): bordo pieno e rilievo con ombra su tutta la
+     card, ma lo sfondo caldo resta solo sul blocco testo — la foto (e il
+     suo margine) restano bianchi fino a dove iniziano le scritte, non
+     convinceva "incorniciata" di caldo come il resto (richiesto
+     dall'utente dopo aver visto la prima versione). align-self:stretch
+     perché .product-info, come .proposal, non si estenda per intero
+     sull'altezza della riga solo per via del default .card{align-items:
+     center} (che centra invece di riempire). */
+  .offer-v3 .cards .card.reco{border:2px solid var(--v3-gold);box-shadow:0 8px 20px rgba(176,137,74,.22)}
+  .offer-v3 .cards .card.reco .product-info{background:var(--v3-gold-soft);align-self:stretch}
   .offer-v3 .cards .card.reco .proposal{background:#fff}
   .offer-v3 .cards .card.reco .price .big{color:var(--v3-gold)}
   .offer-v3 .cards .card .price .u{font-size:9px;text-transform:uppercase;letter-spacing:.04em}
