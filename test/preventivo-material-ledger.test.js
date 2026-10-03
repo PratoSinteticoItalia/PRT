@@ -14,9 +14,23 @@ function render(materials){
 test('distinta unica: conserva materiali e calcola accessori con sconto, quantità e IVA',()=>{
  const {grid}=render({list:[{label:'Colla',qty:'6 kg',unitLabel:'5 €/kg',total:30}],accessories:[{name:'Banda',price:12,qty:2,discount:10,applyIva:false}]});
  assert.match(grid.innerHTML,/Colla/);assert.match(grid.innerHTML,/30.00 €/);
- assert.match(grid.innerHTML,/Banda/);assert.match(grid.innerHTML,/10.80 €/);assert.match(grid.innerHTML,/21.60 €/);
- assert.match(grid.innerHTML,/IVA non applicata/);assert.match(grid.innerHTML,/sconto 10% incluso/);
+ // Prezzo unit. resta il prezzo di listino (12.00 €), lo sconto ha la sua colonna; l'Importo è già scontato.
+ assert.match(grid.innerHTML,/Banda/);assert.match(grid.innerHTML,/12.00 €/);assert.match(grid.innerHTML,/−10%/);assert.match(grid.innerHTML,/21.60 €/);
+ assert.doesNotMatch(grid.innerHTML,/10.80/);
+ assert.match(grid.innerHTML,/IVA non applicata/);
  assert.equal((grid.innerHTML.match(/class="mrow"/g)||[]).length,2);
+});
+test('sconto materiali: colonna sconto e importo per riga, trasporto escluso dallo sconto',()=>{
+ const {grid}=render({discount:10,list:[
+   {label:'Telo isolante',qty:'20,00 mq',unitLabel:'1,00 €/mq',total:20},
+   {label:'Trasporto',qty:'—',unitLabel:'—',total:null,totalLabel:'Gratuita'},
+ ]});
+ // Telo: 20 mq × 1,00 €/mq di listino, −10% → 18.00 € in colonna Importo.
+ assert.match(grid.innerHTML,/Telo isolante/);assert.match(grid.innerHTML,/1,00 €\/mq/);assert.match(grid.innerHTML,/−10%/);assert.match(grid.innerHTML,/18.00 €/);
+ // Trasporto non prende lo sconto materiali: niente percentuale sulla sua riga, resta "Gratuita".
+ const rows=grid.innerHTML.split('class="mrow"');
+ const transportRow=rows.find(r=>r.includes('Trasporto'));
+ assert.doesNotMatch(transportRow,/−10%/);assert.match(transportRow,/Gratuita/);
 });
 test('soli accessori: distinta visibile e nomi trattati come testo',()=>{
  const {box,grid}=render({accessories:[{name:'<img>',price:5,qty:3}]});

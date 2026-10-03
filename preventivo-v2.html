@@ -768,6 +768,7 @@
   .offer-v3 .matledger .mrow .mname{flex:1;color:var(--v3-ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .offer-v3 .matledger .mrow .mqty{color:var(--v3-faint);flex:0 0 auto;white-space:nowrap}
   .offer-v3 .matledger .mrow .munit{color:var(--v3-muted);flex:0 0 auto;width:82px;text-align:right;white-space:nowrap}
+  .offer-v3 .matledger .mrow .mdisc{color:var(--v3-clay);flex:0 0 auto;width:42px;text-align:right;white-space:nowrap;font-weight:600}
   .offer-v3 .matledger .mrow .mtot{flex:0 0 auto;width:82px;text-align:right;font-family:'Source Serif 4',serif;font-weight:600;color:var(--v3-ink)}
   .offer-v3 .matnote{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--v3-clay-soft);font-size:11px;color:var(--v3-muted)}
   .offer-v3 .pill{background:var(--v3-gold-soft);color:var(--v3-gold);font-weight:800;font-size:11px;padding:4px 11px;border-radius:999px}
@@ -1009,7 +1010,7 @@
       <div class="ledger-note">Importi netti, IVA esclusa ove applicata. Voci già comprese nei totali a pagina 1.</div>
       <div class="desc" data-field="materialsDesc">—</div>
       <div class="matledger-h"><span class="mlt">Distinta materiali</span><span class="mlc" data-field="materialsCtx">—</span></div>
-      <div class="matledger"><div class="mrow ledger-labels"><span class="mname">Materiale</span><span class="mqty">Quantità</span><span class="munit">Prezzo unit.</span><span class="mtot">Importo</span></div></div>
+      <div class="matledger"><div class="mrow ledger-labels"><span class="mname">Materiale</span><span class="mqty">Quantità</span><span class="munit">Prezzo unit.</span><span class="mdisc">Sconto</span><span class="mtot">Importo</span></div></div>
       <div class="matledger" data-field="materialsList"></div>
       <div class="matnote" data-field="materialsDiscountRow" style="display:none">
         <span>Sconto materiali già applicato ai totali</span>
@@ -1400,24 +1401,38 @@
     if (grid) {
       // Distinta: un totale di riga vero (it.total) quando c'è, altrimenti
       // un'etichetta libera (it.totalLabel, es. "Gratuita" per il trasporto) —
-      // mai un trattino silenzioso al posto di un prezzo reale.
+      // mai un trattino silenzioso al posto di un prezzo reale. "Prezzo unit."
+      // è SEMPRE il prezzo di listino (prima di qualunque sconto); "Sconto" e
+      // "Importo" rendono esplicito riga per riga lo sconto applicato — prima
+      // lo sconto materiali era solo una percentuale unica a fondo tabella,
+      // non confrontabile con quello (diverso) di un singolo accessorio.
       const accessoryRows = (mat.accessories || []).map(a => {
         const qty = Number(a.qty ?? 1);
-        const discount = Number(a.discount || 0);
-        const unit = Number(a.price || 0) * (1 - discount / 100);
-        return {label: a.name, qty: `${qty} pz`, unitLabel: fmtEur(unit), total: unit * qty,
-          detail: `Accessorio${discount > 0 ? ` · sconto ${discount}% incluso` : ''} · ${a.applyIva === false ? 'IVA non applicata' : `+ IVA ${data.vat || 22}%`}`};
+        const discountPct = Number(a.discount || 0);
+        const unitPrice = Number(a.price || 0);
+        return {label: a.name, qty: `${qty} pz`, unitLabel: fmtEur(unitPrice), discountPct,
+          total: unitPrice * (1 - discountPct / 100) * qty,
+          detail: `Accessorio · ${a.applyIva === false ? 'IVA non applicata' : `+ IVA ${data.vat || 22}%`}`};
       });
-      const rows = (mat.list || []).map(it => ({...it, detail: it.label === 'Trasporto'
-        ? (data.shipping?.applyIva === false ? 'IVA non applicata' : `+ IVA ${data.vat || 22}%`)
-        : `${Number(mat.discount || 0) > 0 ? 'Prima dello sconto materiali · ' : ''}${mat.applyIva === false ? 'IVA non applicata' : `+ IVA ${data.vat || 22}%`}`}));
+      const materialsDiscountPct = Number(mat.discount || 0);
+      const rows = (mat.list || []).map(it => {
+        const isShipping = it.label === 'Trasporto';
+        const discountPct = isShipping ? 0 : materialsDiscountPct;
+        return {...it, discountPct,
+          total: Number.isFinite(it.total) ? it.total * (1 - discountPct / 100) : it.total,
+          detail: isShipping
+            ? (data.shipping?.applyIva === false ? 'IVA non applicata' : `+ IVA ${data.vat || 22}%`)
+            : (mat.applyIva === false ? 'IVA non applicata' : `+ IVA ${data.vat || 22}%`)};
+      });
       grid.innerHTML = [...rows, ...accessoryRows].map((it) => {
         const totalText = Number.isFinite(it.total) ? fmtEur(it.total) : escHtml(it.totalLabel || "—");
+        const discText = it.discountPct > 0 ? `−${String(it.discountPct).replace(".", ",")}%` : "—";
         return `
         <div class="mrow">
           <span class="mname">${escHtml(it.label || it.name || "")}<small>${escHtml(it.detail || "")}</small></span>
           <span class="mqty">${escHtml(tidyUnits(it.qty) || "")}</span>
           <span class="munit">${escHtml(tidyUnits(it.unitLabel) || "")}</span>
+          <span class="mdisc">${discText}</span>
           <span class="mtot">${totalText}</span>
         </div>`;
       }).join("");
