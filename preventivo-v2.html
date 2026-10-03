@@ -1879,7 +1879,7 @@
     setField("paymentMain", data.payment?.main || "");
     setField("paymentHeyLight", data.payment?.heylight || "");
     const modeLabel = String(data.mode || "").includes("posa") ? "Fornitura + posa" : "Solo fornitura";
-    setField("summaryLine", `${data.customer?.name || "—"} · ${data.sqm || 0} mq · ${modeLabel}`);
+    setField("summaryLine", `${tidyProperName(data.customer?.name) || "—"} · ${data.sqm || 0} m² · ${modeLabel}`);
     renderOptionsTable(data);
     setField("acceptanceChoice", (data.options || []).length > 1
       ? "Prodotto scelto: ____________________  Firma per accettazione: ____________________"
