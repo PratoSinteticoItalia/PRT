@@ -1523,7 +1523,7 @@
   function renderBadges(data) {
     const row = document.querySelector('[data-field="badges"]');
     if (!row) return;
-    const badges = (data.badges || []).slice(0, 4);
+    const badges = (data.badges || []).slice(0, 5);
     if (!badges.length) { row.style.display = "none"; return; }
     row.style.display = "";
     row.style.gridTemplateColumns = `repeat(${badges.length}, 1fr)`;
@@ -1534,6 +1534,7 @@
       shield: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg>',
       tag: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6a2 2 0 0 0-1.42-.6H4a2 2 0 0 0-2 2v7.18c0 .53.21 1.04.59 1.41l8 8a2 2 0 0 0 2.82 0l7.18-7.18a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/></svg>',
       return: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
+      sun: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
     };
     // Una card cadeva sempre sulla stella del badge recensioni Google:
     // nessuna delle regole sotto la intercettava (icon:"star"/"tag" passati
@@ -1547,6 +1548,7 @@
     const pickIcon = (b) => {
       const s = `${b.icon || ""} ${b.value || ""} ${b.sub || ""}`.toLowerCase();
       if (/resi|reso|rimbors|cambio merce/.test(s)) return ICONS.return;
+      if (/☀|uv\b|raggi|sole/.test(s)) return ICONS.sun;
       if (/🏷|tag|prezzo|sorpresa/.test(s)) return ICONS.tag;
       if (/⭐|★|google|recension|stell|valutaz/.test(s)) return ICONS.star;
       if (/🏡|🏠|giardin|realizz|home/.test(s)) return ICONS.home;
