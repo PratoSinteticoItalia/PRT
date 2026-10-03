@@ -835,17 +835,19 @@
   /* La scheda consigliata deve distinguersi a colpo d'occhio, non con un
      filo dorato in più rispetto al bordo sinistro già presente su ogni
      card (quello si notava a malapena — segnalato dall'utente, "l'outline
-     sembra quasi un errore"): bordo pieno e rilievo con ombra su tutta la
-     card, ma lo sfondo caldo resta solo sul blocco testo — la foto (e il
-     suo margine) restano bianchi fino a dove iniziano le scritte, non
-     convinceva "incorniciata" di caldo come il resto (richiesto
-     dall'utente dopo aver visto la prima versione). align-self:stretch
-     perché .product-info, come .proposal, non si estenda per intero
-     sull'altezza della riga solo per via del default .card{align-items:
-     center} (che centra invece di riempire). */
-  .offer-v3 .cards .card.reco{border:2px solid var(--v3-gold);box-shadow:0 8px 20px rgba(176,137,74,.22)}
-  .offer-v3 .cards .card.reco .product-info{background:var(--v3-gold-soft);align-self:stretch}
-  .offer-v3 .cards .card.reco .proposal{background:#fff}
+     sembra quasi un errore"): bordo pieno, rilievo con ombra, sfondo caldo
+     fino in fondo alla card — ma non dietro la foto, che resta bianca fino
+     a dove iniziano le scritte (richiesto dall'utente). Uso un gradiente
+     invece di colorare .product-info: così lo sfondo caldo arriva anche
+     dietro al riquadro prezzo, che restando bianco (sotto) si stacca come
+     un vero riquadro invece di confondersi con lo sfondo della card
+     (richiesto dall'utente dopo aver visto la versione precedente). Il
+     punto di stacco del gradiente deve combaciare con la larghezza reale
+     della colonna foto — tre valori diversi, uno per "data-count". */
+  .offer-v3 .cards .card.reco{border:2px solid var(--v3-gold);box-shadow:0 8px 20px rgba(176,137,74,.22);background:linear-gradient(to right,#fff 120px,var(--v3-gold-soft) 120px)}
+  .offer-v3 .cards[data-count="2"] .card.reco{background:linear-gradient(to right,#fff 145px,var(--v3-gold-soft) 145px)}
+  .offer-v3 .cards[data-count="1"] .card.reco{background:linear-gradient(to right,#fff 220px,var(--v3-gold-soft) 220px)}
+  .offer-v3 .cards .card.reco .proposal{background:#fff;box-shadow:0 2px 8px rgba(22,36,28,.1)}
   .offer-v3 .cards .card.reco .price .big{color:var(--v3-gold)}
   .offer-v3 .cards .card .price .u{font-size:9px;text-transform:uppercase;letter-spacing:.04em}
   .offer-v3 .cards .card .tot{border:0;font-size:10px;color:var(--v3-muted);margin-top:9px;padding:0}
