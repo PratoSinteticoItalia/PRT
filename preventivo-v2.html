@@ -639,12 +639,10 @@
      la regola comune. */
   .offer-v3 .cards{display:flex;flex-direction:column;gap:8px;margin-top:10px}
   .offer-v3 .cards[data-count="3"]{gap:6px}
-  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;overflow:hidden;position:relative;display:grid;grid-template-columns:150px 1fr;grid-template-areas:"bar bar" "photo proposal";align-items:center}
-  .offer-v3 .card.reco{border:2px solid var(--v3-gold);box-shadow:0 10px 26px rgba(176,137,74,.16)}
-  .offer-v3 .card .cardbar{grid-area:bar;display:flex;flex-direction:column;align-items:center;gap:1px;background:var(--v3-green-d);color:#fff;padding:6px 12px;text-align:center;font-size:14px;font-weight:800;letter-spacing:.2px;line-height:1.2}
-  .offer-v3 .card.reco .cardbar{background:var(--v3-gold)}
-  .offer-v3 .card .cardbar .reco-eyebrow{font-size:8.5px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
-  .offer-v3 .card .cardbar .cbname{font-family:'Source Serif 4',serif;font-weight:600;letter-spacing:0}
+  /* grid-template-columns/areas qui sotto vengono ridefiniti più avanti da
+     ".cards .card" (selettore più specifico, 3 classi contro 2): quel che
+     resta vivo di questa regola è solo lo sfondo/bordo/overflow di base. */
+  .offer-v3 .card{border:1px solid var(--v3-line);border-radius:14px;background:#fff;overflow:hidden;position:relative;display:grid;align-items:center}
   /* Riquadro foto: object-fit contain mostra il prodotto per intero, mai
      stirato o ritagliato. Lo sfondo tenue fa da passe-partout quando la
      foto non riempie il riquadro per intero (es. scatto verticale).
@@ -719,12 +717,9 @@
   .offer-v3 .card .ph.is-missing img{display:none}
   .offer-v3 .card .ph.is-missing .ph-ph{display:flex}
   .offer-v3 .card .proposal{grid-area:proposal;display:flex;flex-direction:column;justify-content:center;padding:8px 20px}
-  .offer-v3 .card .cbody{padding:0;text-align:left}
-  .offer-v3 .card .pname{font-size:16px;font-weight:800;color:var(--v3-green-d)}
   .offer-v3 .card .pdesc{font-size:11px;color:var(--v3-muted);margin-top:2px}
   .offer-v3 .card .price{margin-top:6px}
   .offer-v3 .card .price .big{font-family:'Source Serif 4',serif;font-size:27px;white-space:nowrap;font-weight:600;color:var(--v3-green-d);letter-spacing:-.01em}
-  .offer-v3 .card.reco .price .big{color:var(--v3-gold);font-size:30px}
   .offer-v3 .card .price .u{font-size:12px;color:var(--v3-muted);font-weight:600}
   .offer-v3 .card .price .sub{font-size:10.5px;color:var(--v3-faint);margin-top:1px}
   .offer-v3 .card .tot{margin-top:6px;padding-top:6px;border-top:1px dashed var(--v3-line);font-size:12.5px}
@@ -829,9 +824,22 @@
   .offer-v3 .cards .card .ph{margin:12px;height:96px;background:#fff;border-radius:4px}
   .offer-v3 .product-info{grid-area:info;padding:12px 8px;min-width:0}
   .offer-v3 .product-name{font-family:'Source Serif 4',serif;font-size:19px;line-height:1.2;color:var(--v3-green-d);margin:5px 0 8px}
-  .offer-v3 .recommended-label{color:var(--v3-gold);font-size:9px;font-weight:700}
+  .offer-v3 .recommended-label{
+    display:inline-flex;align-items:center;gap:4px;align-self:flex-start;
+    background:var(--v3-gold);color:#fff;
+    font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 10px;border-radius:999px;margin-bottom:5px;
+  }
   .offer-v3 .cards .card .proposal{margin:10px;padding:12px;background:#f2f5f0;border-radius:5px;text-align:right;align-self:stretch}
   .offer-v3 .cards .card .price .big{font-size:28px;color:var(--v3-green-d)}
+  /* La scheda consigliata deve distinguersi a colpo d'occhio, non con un
+     filo dorato in più rispetto al bordo sinistro già presente su ogni
+     card (quello si notava a malapena — segnalato dall'utente, "l'outline
+     sembra quasi un errore"): bordo pieno, sfondo caldo, rilievo con
+     ombra, pannello prezzo bianco per distinguersi dal resto della card. */
+  .offer-v3 .cards .card.reco{border:2px solid var(--v3-gold);background:var(--v3-gold-soft);box-shadow:0 8px 20px rgba(176,137,74,.22)}
+  .offer-v3 .cards .card.reco .proposal{background:#fff}
+  .offer-v3 .cards .card.reco .price .big{color:var(--v3-gold)}
   .offer-v3 .cards .card .price .u{font-size:9px;text-transform:uppercase;letter-spacing:.04em}
   .offer-v3 .cards .card .tot{border:0;font-size:10px;color:var(--v3-muted);margin-top:9px;padding:0}
   .offer-v3 .cards .card .pillrow{display:flex;flex-direction:column;gap:3px;margin:4px 0 0}
@@ -844,7 +852,6 @@
   .offer-v3 .cards[data-count="1"] .product-info{padding:16px 12px 0}
   .offer-v3 .cards[data-count="1"] .proposal{text-align:left}
   .offer-v3 .cards[data-count="1"] .product-name{font-size:25px}
-  .offer-v3 .cards .card.reco{box-shadow:none;border:1px solid var(--v3-gold);border-left:3px solid var(--v3-gold)}
   .offer-v3 .matwrap{border-top-color:var(--v3-gold)}
   .offer-v3 [data-field="materialsBox"] .eyebrow{color:var(--v3-gold)}
   .installation-cost{padding:12px 15px;background:#f2f5f0;color:#193f32;font-size:11px;font-weight:700;line-height:1.5}
@@ -1369,8 +1376,8 @@
           ${photoFrameHtml(opt)}
           <div class="product-info">
             <div class="pdesc">COD. ${escHtml(opt.code || "—")}</div>
+            ${reco ? '<div class="recommended-label">★ Consigliato</div>' : ''}
             <div class="product-name">${escHtml(opt.name)}</div>
-            ${reco ? '<div class="recommended-label">Consigliato</div>' : ''}
             ${opt.tagline ? `<div class="pdesc">${escHtml(opt.tagline)}</div>` : ''}
             ${pillrow}
           </div>
