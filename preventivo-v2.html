@@ -1533,15 +1533,20 @@
       truck: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
       shield: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg>',
       tag: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6a2 2 0 0 0-1.42-.6H4a2 2 0 0 0-2 2v7.18c0 .53.21 1.04.59 1.41l8 8a2 2 0 0 0 2.82 0l7.18-7.18a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/></svg>',
+      return: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
     };
-    // Una card "Prezzo finale" usava sempre la stella del badge recensioni
-    // Google: nessuna delle regole sotto la intercettava (icon:"star" passato
-    // da app.js non contiene "stell", e "Prezzo finale"/"IVA inclusa" non
-    // intercettano nessun'altra regola), quindi cadeva sempre sul fallback
-    // finale — una stella su un badge che non è una recensione (segnalato
-    // dall'utente: "non mi piace la stellina sul prezzo finale").
+    // Una card cadeva sempre sulla stella del badge recensioni Google:
+    // nessuna delle regole sotto la intercettava (icon:"star"/"tag" passati
+    // da app.js non contengono "stell", e il testo del badge non intercetta
+    // nessun'altra regola), quindi cadeva sempre sul fallback finale — una
+    // stella su un badge che non è una recensione (segnalato dall'utente
+    // in due badge diversi: "Prezzo finale", poi sostituito con "Reso
+    // facile" perché la leva non gli risultava chiara). "return" va
+    // controllato PRIMA di "truck": il testo "14 giorni se non posato"
+    // contiene "giorni", che altrimenti farebbe scattare l'icona camioncino.
     const pickIcon = (b) => {
       const s = `${b.icon || ""} ${b.value || ""} ${b.sub || ""}`.toLowerCase();
+      if (/resi|reso|rimbors|cambio merce/.test(s)) return ICONS.return;
       if (/🏷|tag|prezzo|sorpresa/.test(s)) return ICONS.tag;
       if (/⭐|★|google|recension|stell|valutaz/.test(s)) return ICONS.star;
       if (/🏡|🏠|giardin|realizz|home/.test(s)) return ICONS.home;
