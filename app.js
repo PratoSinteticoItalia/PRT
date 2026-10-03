@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+} from "./lib/order-money.js?v=20261003-preventivo-badge-reso";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+import { regionForCity } from "./lib/geo.js?v=20261003-preventivo-badge-reso";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+} from "./lib/shipping-eligibility.js?v=20261003-preventivo-badge-reso";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+} from "./lib/profit-split.js?v=20261003-preventivo-badge-reso";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+} from "./lib/preventivo-pricing.js?v=20261003-preventivo-badge-reso";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+} from "./lib/sales-assignment.js?v=20261003-preventivo-badge-reso";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261003-preventivo-prezzo-finale-pagamenti";
+} from "./lib/surveys.js?v=20261003-preventivo-badge-reso";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261003-preventivo-prezzo-finale-pagamenti";
+const APP_SHELL_VERSION = "20261003-preventivo-badge-reso";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -36828,7 +36828,11 @@ function buildNativePreventivoPayload() {
       badges: [
         { icon: "shield", value: "10 anni", sub: "Garanzia di fabbrica" },
         { icon: "truck", value: "3–5 gg", sub: "Consegna in Italia" },
-        { icon: "tag", value: "Prezzo finale", sub: ivaStatus === "esclusa" ? "IVA esclusa" : ivaStatus === "mista" ? "IVA applicata secondo dettaglio" : "IVA inclusa, nessuna sorpresa" },
+        // "Prezzo finale/IVA inclusa" sostituito: la leva non convinceva
+        // l'utente ("non comprendo bene la leva del prezzo finale"). Stesso
+        // criterio di prima (fatto reale già nel documento, non inventato):
+        // la condizione "Resi" più sotto dice la stessa identica cosa.
+        { icon: "return", value: "Reso facile", sub: "14 giorni se non posato" },
         { icon: "home", value: "Assistenza", sub: "Dedicata post-vendita" },
       ],
       certifications: PREVENTIVO_STATIC_DEFAULTS.certifications,
