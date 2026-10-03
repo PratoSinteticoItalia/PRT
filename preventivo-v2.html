@@ -873,6 +873,20 @@
   .tax-breakdown{font-size:9px;color:var(--gx);margin-top:4px}
   .offer-v3 .matledger .mrow .mname{white-space:normal;overflow:visible}
   .mname small,.acc-table small{display:block;font-size:8px;color:var(--gx);margin-top:3px}
+  .offer-v3 .matledger .ledger-labels .mtot{font-family:inherit;font-weight:inherit;color:inherit}
+  .screen-only-notice{max-width:794px;margin:12px auto;border:1px solid var(--v3-gold);background:var(--v3-gold-soft);border-radius:12px;padding:12px 16px;font-size:12px;line-height:1.5;color:var(--v3-ink)}
+  .screen-only-notice b{color:var(--v3-green-d)}
+  @media print{.screen-only-notice{display:none!important}}
+  html.pdf-exporting .screen-only-notice{display:none!important}
+  /* Se i dettagli non entrano in un solo foglio si prova prima a stringere gli
+     spazi, così la firma non resta sola su una pagina quasi vuota. */
+  .export-pages.compact .matledger .mrow{padding:4px 0}
+  .export-pages.compact .sect{margin-top:8px}
+  .export-pages.compact .tech-grid{margin-bottom:6px}
+  .export-pages.compact .certs{margin-bottom:6px}
+  .export-pages.compact .conds{margin:6px 0}
+  .export-pages.compact .conds-grid{padding:7px 12px;gap:5px 20px}
+  .export-pages.compact .firma-double .firma-line{height:20px}
   .export-pages{position:absolute;left:-10000px;top:0;width:794px}
   .export-pages .page{height:1122px!important;min-height:1122px!important;margin:0!important;position:relative;overflow:hidden}
   .export-pages .p2-footer{position:absolute;bottom:18px;left:22px;right:22px;margin:0}
@@ -885,6 +899,8 @@
   <button type="button" class="primary" onclick="window.psiDownloadPdf && window.psiDownloadPdf()">⬇ Salva PDF</button>
   <button type="button" class="ghost" onclick="window.close()">Chiudi</button>
 </div>
+
+<div class="screen-only-notice" data-field="plannerBlockedNotice" style="display:none;"></div>
 
 <div class="page offer-v3">
   <!-- HEADER -->
@@ -1248,6 +1264,30 @@
 
   // ─── Utility ───
   const fmtEur = (n) => `${Number(n || 0).toFixed(2).replace(".", ",")} €`;
+  // Nome/città scritti tutti in minuscolo ("jessica antonacci", "roma") →
+  // iniziali maiuscole; se c'è già una maiuscola il testo non si tocca.
+  const SMALL_WORDS = new Set(["a", "al", "alla", "allo", "ai", "da", "dal", "dei", "del", "della", "dello", "delle", "di", "e", "in", "nel", "nella", "su", "sul", "sulla"]);
+  function tidyProperName(value) {
+    const text = String(value == null ? "" : value).trim();
+    if (!text || text !== text.toLowerCase() || text === text.toUpperCase()) return text;
+    return text.split(/(\s+)/).map((part, index) => {
+      if (/^\s+$/.test(part)) return part;
+      if (index > 0 && SMALL_WORDS.has(part)) return part;
+      return part.replace(/(^|['’-])(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
+    }).join("");
+  }
+  // "1 secchi" → "1 secchio" (la distinta usa l'unità al plurale anche per 1).
+  function tidyUnits(value) {
+    return String(value == null ? "" : value)
+      .replace(/\b1\s+secchi\b/gi, "1 secchio")
+      .replace(/€\/secchi\b/gi, "€/secchio");
+  }
+  // Drenaggio salvato come "40/L/min/m2" → "40 L/min/m²".
+  function tidyTechValue(value) {
+    return String(value == null ? "" : value)
+      .replace(/(\d)\s*\/\s*L\s*\/\s*min/i, "$1 L/min")
+      .replace(/(L\/min\/m)2\b/i, "$1²");
+  }
   const escHtml = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -1376,8 +1416,8 @@
         return `
         <div class="mrow">
           <span class="mname">${escHtml(it.label || it.name || "")}<small>${escHtml(it.detail || "")}</small></span>
-          <span class="mqty">${escHtml(it.qty || "")}</span>
-          <span class="munit">${escHtml(it.unitLabel || "")}</span>
+          <span class="mqty">${escHtml(tidyUnits(it.qty) || "")}</span>
+          <span class="munit">${escHtml(tidyUnits(it.unitLabel) || "")}</span>
           <span class="mtot">${totalText}</span>
         </div>`;
       }).join("");
@@ -1562,7 +1602,7 @@
             <div class="tech-row"><span class="l">Struttura</span><span class="v">${escHtml(t.struttura || "—")}</span></div>
             <div class="tech-row"><span class="l">Densità</span><span class="v">${escHtml(t.densita || "—")}</span></div>
             <div class="tech-row"><span class="l">Dtex</span><span class="v">${escHtml(t.dtex || "—")}</span></div>
-            <div class="tech-row"><span class="l">Drenaggio</span><span class="v">${escHtml(t.drenaggio || "—")}</span></div>
+            <div class="tech-row"><span class="l">Drenaggio</span><span class="v">${escHtml(tidyTechValue(t.drenaggio) || "—")}</span></div>
             <div class="tech-row"><span class="l">Peso</span><span class="v">${escHtml(t.peso || "—")}</span></div>
           </div>
           <div class="tech-card-foot">${escHtml(t.note || "")}</div>
@@ -1683,10 +1723,9 @@
       wrap.style.display = "none";
       inner.innerHTML = "";
       notice.style.display = "";
-      const who = [gp.client, gp.sqmLabel].filter(Boolean).join(" · ") || "senza cliente indicato";
       notice.innerHTML = `
         <div class="gp-state-t">Progetto Garden Planner non associato a questa richiesta</div>
-        <div class="gp-state-x">È stato trovato un disegno Garden Planner (${escHtml(who)}), ma non risulta aperto da questa richiesta: non viene allegato automaticamente, per evitare di inviare la pianta sbagliata al cliente. Apri il Garden Planner dalla scheda di questa richiesta per generarne uno associato, poi rigenera il preventivo.</div>`;
+        <div class="gp-state-x">Il disegno trovato non risulta aperto da questa richiesta e non viene allegato automaticamente.</div>`;
       return;
     }
     notice.style.display = "none";
@@ -1746,7 +1785,18 @@
     const hasP2 = getUrlFlag("p2", true);
     const plannerRequested = getUrlFlag("planner", false);
     const gp = data.gardenPlanner || {};
-    const hasPlanner = plannerRequested && !!gp.available;
+    // Il progetto va in PDF solo se è davvero associato a questa richiesta:
+    // un disegno trovato ma non associato è di un altro cliente e non deve mai
+    // finire nel documento (né il suo nome). Se ne dà avviso solo a schermo.
+    const hasPlanner = plannerRequested && !!gp.available && !!gp.associated;
+    const plannerBlocked = plannerRequested && !!gp.available && !gp.associated;
+    const blockedNote = document.querySelector('[data-field="plannerBlockedNotice"]');
+    if (blockedNote) {
+      blockedNote.style.display = plannerBlocked ? "" : "none";
+      blockedNote.innerHTML = plannerBlocked
+        ? "<b>Garden Planner non incluso nel PDF.</b> Esiste un disegno, ma non risulta aperto da questa richiesta e non viene allegato per non inviare al cliente la pianta sbagliata. Apri il Garden Planner dalla scheda di questa richiesta per generarne uno associato, poi rigenera il preventivo."
+        : "";
+    }
     const page2El = document.getElementById("page-2");
     const page3El = document.getElementById("page-3");
     if (page2El) page2El.style.display = hasP2 ? "" : "none";
@@ -1804,8 +1854,8 @@
       if (crewSection2) { crewSection2.setAttribute("hidden", ""); crewSection2.style.display = "none"; }
       if (crewLogo2) crewLogo2.removeAttribute("src");
     }
-    setField("customerName", data.customer?.name || "—");
-    setField("customerCity", data.customer?.city || "—");
+    setField("customerName", tidyProperName(data.customer?.name) || "—");
+    setField("customerCity", tidyProperName(data.customer?.city) || "—");
     setField("customerPhone", data.customer?.phone || "—");
     setField("customerEmail", data.customer?.email || "—");
     setField("validFrom", data.validFrom || "—");
@@ -1916,9 +1966,9 @@
   // a window.print().
   // Build measured A4 sheets from detail sections. A long ledger is split
   // only between rows, with its heading repeated on every continuation.
-  function paginateQuoteDetails(source) {
+  function buildQuoteSheets(source, compact) {
     const host = document.createElement('div');
-    host.className = 'export-pages';
+    host.className = compact ? 'export-pages compact' : 'export-pages';
     document.body.append(host);
     const sheets = [];
     const header = source.querySelector('.page2-head');
@@ -1941,6 +1991,21 @@
       body.append(block);
       if (fits()) return;
       block.remove();
+      if (block.matches('.firma-double') && body.children.length > 1) {
+        // La firma non resta mai sola su un foglio: si porta con sé il blocco
+        // precedente (le condizioni).
+        const previous = body.lastElementChild;
+        previous.remove();
+        next();
+        body.append(previous, block);
+        if (fits()) return;
+        block.remove();
+        previous.remove();
+        body.append(previous);
+        next();
+        body.append(block);
+        return;
+      }
       if (body.children.length) { next(); body.append(block); if (fits()) return; block.remove(); }
       const selector = block.matches('[data-field="materialsBox"]') ? '[data-field="materialsList"] > .mrow'
         : block.matches('.install-work') ? '.install-step'
@@ -1979,6 +2044,19 @@
       }
       return {sheets, cleanup: () => host.remove()};
     } catch (error) { host.remove(); throw error; }
+  }
+
+  // Prima si prova con gli spazi normali; se servono più fogli si riprova con
+  // spazi più stretti e si tiene quella versione solo se così tutto entra in
+  // un unico foglio (evita una seconda pagina con quasi niente).
+  function paginateQuoteDetails(source) {
+    const normal = buildQuoteSheets(source, false);
+    if (normal.sheets.length === 1) return normal;
+    let compact;
+    try { compact = buildQuoteSheets(source, true); } catch { return normal; }
+    if (compact.sheets.length < normal.sheets.length) { normal.cleanup(); return compact; }
+    compact.cleanup();
+    return normal;
   }
 
   window.psiDownloadPdf = async function psiDownloadPdf() {
