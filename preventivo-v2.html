@@ -907,6 +907,18 @@
   .export-pages{position:absolute;left:-10000px;top:0;width:794px}
   .export-pages .page{height:1122px!important;min-height:1122px!important;margin:0!important;position:relative;overflow:hidden}
   .export-pages .p2-footer{position:absolute;bottom:18px;left:22px;right:22px;margin:0}
+  .offer-v3{--v3-faint:#586b60;--v3-muted:#52645a}
+  .offer-v3 .pdesc,.offer-v3 .pc-u,.offer-v3 .tax-breakdown,.offer-v3 .firma-lbl,.offer-v3 .ivanote,.offer-v3 .p1wayfinding{color:#52645a}
+  .offer-v3 .matledger .mqty,.offer-v3 .matledger .munit,.offer-v3 .tech-row .l{color:#52645a}
+  .offer-v3 .conds-grid{font-size:10px}
+  .product-difference{font-size:10px;color:#355444;margin:4px 0;font-weight:600}
+  .price-composition{margin:12px 0;border:1px solid #d7ded8;border-radius:8px;padding:10px 12px;break-inside:avoid}
+  .price-composition h3{font-size:12px;margin:0 0 4px;color:#234833}
+  .price-composition p{font-size:10px;color:#52645a;margin:0 0 8px}
+  .price-composition table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+  .price-composition th,.price-composition td{padding:5px 6px;border-bottom:1px solid #e0e5df;text-align:right;overflow-wrap:anywhere}
+  .price-composition th:first-child{text-align:left}
+  .price-composition thead,.composition-total{background:#edf3ed;color:#204332;font-weight:700}
   </style>
   <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-fix2"></script>
 </head>
@@ -985,14 +997,7 @@
       <div class="firma-line"></div>
       <div class="firma-lbl" data-field="acceptanceChoice">Firma per accettazione</div>
     </div>
-    <div class="pay-logos">
-      <span class="pl">VISA</span>
-      <span class="pl">MC</span>
-      <span class="pl">PayPal</span>
-      <span class="pl">Bonifico</span>
-      <span class="pl">Scalapay</span>
-      <span class="pl hl">HeyLight</span>
-    </div>
+
   </div>
 </div>
 
@@ -1046,6 +1051,7 @@
   </div>
 
   <!-- Accessori e prodotti extra -->
+  <section class="price-composition" data-field="priceComposition"></section>
   <div class="acc-box" id="accessories-section" style="display:none;">
     <div class="acc-hdr">Accessori e Prodotti Extra</div>
     <div class="acc-note">Queste voci sono già incluse nei totali complessivi delle proposte a pagina 1.</div>
@@ -1386,6 +1392,7 @@
             <div class="pdesc">COD. ${escHtml(opt.code || "—")}</div>
             ${reco ? '<div class="recommended-label">★ Consigliato</div>' : ''}
             <div class="product-name">${escHtml(opt.name)}</div>
+            ${productDifference(opt) ? `<div class="product-difference">${escHtml(productDifference(opt))}</div>` : ""}
             ${opt.tagline ? `<div class="pdesc">${escHtml(opt.tagline)}</div>` : ''}
             ${pillrow}
           </div>
@@ -1633,6 +1640,43 @@
       </div>`;
   }
 
+  // Format bare catalogue numbers without changing values that already carry units.
+  function technicalValue(value, unit) {
+    const text = String(value ?? '').trim();
+    if (!text || text === '—') return '—';
+    if (!/^[\d.,\s]+$/.test(text)) return text;
+    const number = Number(text.replace(/\s/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'));
+    return Number.isFinite(number) ? `${number.toLocaleString('it-IT', {useGrouping: 'always'})}${unit ? ' ' + unit : ''}` : text;
+  }
+
+  function productDifference(opt) {
+    const height = String(opt.name || '').match(/(\d+)\s*mm/i)?.[1];
+    const parts = [height ? `Filo ${Number(height) <= 20 ? 'corto' : Number(height) >= 40 ? 'alto' : 'intermedio'} da ${height} mm` : '', opt.tech?.struttura && opt.tech.struttura !== '—' ? String(opt.tech.struttura).toLowerCase() : ''];
+    return parts.filter(Boolean).join(' · ');
+  }
+
+  function normalizeQuoteShipping(data) {
+    if (!Number.isFinite(data.shipping?.cost)) return data;
+    const cost = data.shipping.cost;
+    const statement = cost === 0 ? 'Spedizione gratuita per questa offerta.' : `Spedizione per questa offerta: ${fmtEur(cost)}${data.shipping.applyIva === false ? ' (IVA non applicata)' : ' + IVA'}. Importo già compreso nel totale.`;
+    // Shipping terms belong to the explicit quote amount, not generic catalogue thresholds.
+    const conditions = (data.conditions || []).map(c => /^spedizione$/i.test(c.label || '') ? {...c, text: statement} : c);
+    if (!conditions.some(c => /^spedizione$/i.test(c.label || ''))) conditions.push({label:'Spedizione',text:statement});
+    const desc = String(data.materials?.desc || '').split(/(?<=[.!?])\s+(?=[A-ZÀ-Ý])/).filter(sentence => !/spedizione/i.test(sentence)).join(' ').trim();
+    return {...data, shipping: {...data.shipping, label: cost === 0 ? 'Gratuita' : `${fmtEur(cost)}${data.shipping.applyIva === false ? '' : ' + IVA'}`}, conditions, materials: data.materials ? {...data.materials, desc} : data.materials};
+  }
+
+  function renderPriceComposition(data) {
+    const box = document.querySelector('[data-field="priceComposition"]');
+    if (!box) return;
+    const options = data.options || [];
+    const keys = [['prato','Prato'],['materiali','Materiali'],['posa','Posa'],['trasporto','Trasporto'],['accessori','Accessori'],['lavorazioni','Lavorazioni extra']];
+    if (!options.length || options.some(o => !o.breakdown || !Number.isFinite(o.grandNet) || !Number.isFinite(o.vatAmount) || keys.some(([k]) => !Number.isFinite(o.breakdown[k])))) { box.style.display='none'; return; }
+    box.style.display='';
+    const row = (name, values, cls='') => `<tr class="${cls}"><th>${escHtml(name)}</th>${values.map(v=>`<td>${fmtEur(v)}</td>`).join('')}</tr>`;
+    box.innerHTML = `<h3>Come si compone il totale</h3><p>Importi netti dopo gli sconti. Le colonne sono soluzioni alternative.</p><table><thead><tr><th>Voce</th>${options.map(o=>`<th>${escHtml(o.name)}</th>`).join('')}</tr></thead><tbody>${keys.filter(([key])=>options.some(o=>o.breakdown[key]!==0)).map(([key,label])=>row(label, options.map(o=>o.breakdown[key]))).join('')}${row('Netto',options.map(o=>o.grandNet))}${row('IVA',options.map(o=>o.vatAmount))}${row('Totale offerta',options.map(o=>o.total),'composition-total')}</tbody></table>`;
+  }
+
   function renderTechCards(data) {
     const grid = document.querySelector('[data-field="techCards"]');
     if (!grid) return;
@@ -1662,10 +1706,10 @@
           </div>
           <div class="tech-card-body">
             <div class="tech-row"><span class="l">Struttura</span><span class="v">${escHtml(t.struttura || "—")}</span></div>
-            <div class="tech-row"><span class="l">Densità</span><span class="v">${escHtml(t.densita || "—")}</span></div>
-            <div class="tech-row"><span class="l">Dtex</span><span class="v">${escHtml(t.dtex || "—")}</span></div>
+            <div class="tech-row"><span class="l">Densità</span><span class="v">${escHtml(technicalValue(t.densita, "punti/m²"))}</span></div>
+            <div class="tech-row"><span class="l">Dtex</span><span class="v">${escHtml(technicalValue(t.dtex, "dtex"))}</span></div>
             <div class="tech-row"><span class="l">Drenaggio</span><span class="v">${escHtml(tidyTechValue(t.drenaggio) || "—")}</span></div>
-            <div class="tech-row"><span class="l">Peso</span><span class="v">${escHtml(t.peso || "—")}</span></div>
+            <div class="tech-row"><span class="l">Peso</span><span class="v">${escHtml(technicalValue(t.peso, "g/m²"))}</span></div>
           </div>
           <div class="tech-card-foot">${escHtml(t.note || "")}</div>
         </div>
@@ -1886,6 +1930,7 @@
   }
 
   function renderPreventivo(data) {
+    data = normalizeQuoteShipping(data);
     setField("quoteNumber", data.quoteNumber || "—");
     setField("quoteNumber2", data.quoteNumber || "—");
     setField("brandTagline", data.branding?.tagline || "Dal 2016 · Fornitura e Posa Professionale");
@@ -1952,6 +1997,7 @@
     renderExtraServices(data);
     renderBadges(data);
     renderHeyLight(data);
+    renderPriceComposition(data);
     renderTechCards(data);
     renderCertifications(data);
     renderInstallationWork(data);
