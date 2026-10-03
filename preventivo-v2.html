@@ -780,6 +780,8 @@
   .offer-v3 .finance .fl .fe{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:700}
   .offer-v3 .finance .fl .ft{font-size:15px;font-weight:800;margin-top:3px;letter-spacing:-.01em}
   .offer-v3 .finance .fl .fx{font-size:11px;color:rgba(255,255,255,.82);margin-top:3px;line-height:1.35;max-width:96%}
+  .offer-v3 .finance .fl .fpay{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .offer-v3 .finance .fl .fpay span{font-size:10px;font-weight:700;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:3px 10px;white-space:nowrap}
   .offer-v3 .finance .fr{flex:0 0 auto;text-align:right;padding-left:24px;border-left:1px solid rgba(255,255,255,.22)}
   .offer-v3 .finance .fr .amt{font-family:'Source Serif 4',serif;font-size:28px;font-weight:600;line-height:1;letter-spacing:-.01em}
   .offer-v3 .finance .fr .amt small{font-size:15px;font-weight:700;opacity:.85}
@@ -884,8 +886,6 @@
   #page-2 .installation-cost{padding:8px 14px}
   .offer-v3 .matledger .ledger-labels{font-size:9px;text-transform:uppercase;background:#f3f1eb;padding:5px 0}
 
-  .payment-alternatives{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:9px 0;font-size:10px;color:var(--gx)}
-  .payment-alternatives b{border:1px solid var(--br);border-radius:4px;padding:5px 10px;color:var(--gd);background:white}
   .option-choice,.ledger-note{font-size:10px;line-height:1.4;color:var(--gx);margin:7px 0}
   .tax-breakdown{font-size:9px;color:var(--gx);margin-top:4px}
   .offer-v3 .matledger .mrow .mname{white-space:normal;overflow:visible}
@@ -973,9 +973,8 @@
   <!-- TRUST -->
   <div class="trust" data-field="badges"></div>
 
-  <!-- FINANCE (rate HeyLight, alto impatto) -->
+  <!-- FINANCE: tutte le modalità di pagamento alla pari, rate comprese -->
   <div class="finance" data-field="hlBlock"></div>
-  <div class="payment-alternatives"><span>Preferisci un’altra modalità?</span><b>Carta</b><b>Bonifico</b><b>PayPal</b><b>Scalapay</b></div>
 
   <div class="ivanote" data-field="ivaNote">Tutti i prezzi sono IVA inclusa · Offerta valida nel periodo indicato</div>
   <div class="p1wayfinding" data-field="p1Wayfinding"></div>
@@ -1533,9 +1532,17 @@
       home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>',
       truck: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
       shield: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg>',
+      tag: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6a2 2 0 0 0-1.42-.6H4a2 2 0 0 0-2 2v7.18c0 .53.21 1.04.59 1.41l8 8a2 2 0 0 0 2.82 0l7.18-7.18a2 2 0 0 0 0-2.82z"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/></svg>',
     };
+    // Una card "Prezzo finale" usava sempre la stella del badge recensioni
+    // Google: nessuna delle regole sotto la intercettava (icon:"star" passato
+    // da app.js non contiene "stell", e "Prezzo finale"/"IVA inclusa" non
+    // intercettano nessun'altra regola), quindi cadeva sempre sul fallback
+    // finale — una stella su un badge che non è una recensione (segnalato
+    // dall'utente: "non mi piace la stellina sul prezzo finale").
     const pickIcon = (b) => {
       const s = `${b.icon || ""} ${b.value || ""} ${b.sub || ""}`.toLowerCase();
+      if (/🏷|tag|prezzo|sorpresa/.test(s)) return ICONS.tag;
       if (/⭐|★|google|recension|stell|valutaz/.test(s)) return ICONS.star;
       if (/🏡|🏠|giardin|realizz|home/.test(s)) return ICONS.home;
       if (/📦|🚚|spedizion|giorni|consegn|truck/.test(s)) return ICONS.truck;
@@ -1578,22 +1585,39 @@
     }).join("");
   }
 
-  // Redesign v3: fascia rate unica ad alto impatto, basata sull'opzione
-  // consigliata (o la prima). Riusa data-field="hlBlock".
+  // Un'unica fascia con TUTTE le modalità di pagamento alla pari — prima
+  // la fascia era interamente intestata a HeyLight ("Rateizza con HeyLight,
+  // interessi zero") e le altre modalità finivano in una riga a parte,
+  // sotto, più piccola ("Preferisci un'altra modalità?"): dava l'impressione
+  // che HeyLight fosse IL modo di pagare anziché una delle opzioni
+  // (segnalato dall'utente: "l'elemento di heylight risulta disturbante").
+  // Il dettaglio rate resta a destra, come esempio concreto — è un vero
+  // vantaggio (interessi zero), solo non più il titolo della fascia.
   function renderHeyLight(data) {
     const block = document.querySelector('[data-field="hlBlock"]');
     if (!block) return;
     const opts = (data.options || []);
     const reco = opts.find((o) => o.slug && o.slug === (data.suggestedSlug || "")) || opts[0];
     const rate = reco ? Number(reco.heylightInstallment || 0) : 0;
-    if (!rate) { block.style.display = "none"; return; }
+    const methods = ["Carta", "Bonifico", "PayPal", "Scalapay"];
+    if (rate) methods.push(`${Number(data.heylight?.installments || 5)} rate HeyLight`);
+    const payRow = `<div class="fpay">${methods.map((m) => `<span>${escHtml(m)}</span>`).join("")}</div>`;
     block.style.display = "";
+    if (!rate) {
+      block.innerHTML = `
+        <div class="fl">
+          <div class="fe">Come pagare</div>
+          <div class="ft">Scegli il metodo che preferisci</div>
+          ${payRow}
+        </div>`;
+      return;
+    }
     const n = Number(data.heylight?.installments || 5);
     block.innerHTML = `
       <div class="fl">
-        <div class="fe">Scegli come pagare</div>
-        <div class="ft">Rateizza con HeyLight, interessi zero</div>
-        <div class="fx">Suddividi il pagamento con HeyLight.</div>
+        <div class="fe">Come pagare</div>
+        <div class="ft">Un'unica soluzione o in comode rate, senza interessi</div>
+        ${payRow}
       </div>
       <div class="fr">
         <div class="amt">${n}<small> ×</small> ${fmtEur(rate)}</div>
