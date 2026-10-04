@@ -955,6 +955,26 @@
 #page-2 .tech-card-foot{padding:4px 9px}
 #page-2 .conds-grid{font-size:9px;line-height:1.4}
 
+
+/* Measured A4 density: use available space before falling back to compact. */
+#page-2.detail-airy .single-ledger table{font-size:11px}
+#page-2.detail-airy .single-ledger th,#page-2.detail-airy .single-ledger td{padding:8px 7px}
+#page-2.detail-airy .install-work{margin:14px 0}
+#page-2.detail-airy .install-work-steps{padding:13px 12px;gap:11px 16px}
+#page-2.detail-airy .install-step-t{font-size:10px}
+#page-2.detail-airy .install-step-x{font-size:9px;line-height:1.45}
+#page-2.detail-airy .tech-card-head{padding:10px}
+#page-2.detail-airy .tech-card-thumb{width:40px;height:40px}
+#page-2.detail-airy .tech-card-body{padding:8px 10px}
+#page-2.detail-airy .tech-row{padding:6px 0}
+#page-2.detail-airy .conds{margin-top:12px}
+#page-2.detail-airy .conds-grid{font-size:9.5px;padding:11px;gap:7px 16px}
+#page-2.detail-balanced .single-ledger table{font-size:10.5px}
+#page-2.detail-balanced .single-ledger th,#page-2.detail-balanced .single-ledger td{padding:6px 7px}
+#page-2.detail-balanced .tech-row{padding:5px 0}
+#page-2.detail-balanced .tech-card-head{padding:8px 9px}
+#page-2.detail-balanced .conds-grid{font-size:9.5px;gap:6px 16px}
+
 </style>
   <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-fix2"></script>
 </head>
@@ -2069,6 +2089,7 @@
     renderUnifiedLedger(data);
     renderPage2Footer(data);
     applyPageLayout(data);
+    refreshDetailSpacing().catch(console.error);
   }
 
   // ─── Caricamento dati ───
@@ -2139,7 +2160,7 @@
   // a window.print().
   // Build measured A4 sheets from detail sections. A long ledger is split
   // only between rows, with its heading repeated on every continuation.
-  function buildQuoteSheets(source, compact) {
+  function buildQuoteSheets(source, compact, density = "") {
     const host = document.createElement('div');
     host.className = compact ? 'export-pages compact' : 'export-pages';
     document.body.append(host);
@@ -2149,6 +2170,8 @@
     let sheet, body;
     function next() {
       sheet = source.cloneNode(false);
+      sheet.classList.remove("detail-airy", "detail-balanced");
+      if (density) sheet.classList.add(density);
       sheet.style.cssText = 'display:block;height:1122px!important;min-height:1122px!important;margin:0!important;position:relative;overflow:hidden';
       sheet.append(header.cloneNode(true));
       body = document.createElement('div');
@@ -2219,17 +2242,35 @@
     } catch (error) { host.remove(); throw error; }
   }
 
-  // Prima si prova con gli spazi normali; se servono più fogli si riprova con
-  // spazi più stretti e si tiene quella versione solo se così tutto entra in
-  // un unico foglio (evita una seconda pagina con quasi niente).
+  // Keep the most spacious measured layout that does not add a sheet.
   function paginateQuoteDetails(source) {
-    const normal = buildQuoteSheets(source, false);
-    if (normal.sheets.length === 1) return normal;
-    let compact;
-    try { compact = buildQuoteSheets(source, true); } catch { return normal; }
-    if (compact.sheets.length < normal.sheets.length) { normal.cleanup(); return compact; }
-    compact.cleanup();
-    return normal;
+    let best = null;
+    for (const [density, compact] of [
+      ["detail-airy", false], ["detail-balanced", false], ["", false], ["", true]
+    ]) {
+      let candidate;
+      try { candidate = buildQuoteSheets(source, compact, density); }
+      catch { continue; }
+      if (!best || candidate.sheets.length < best.sheets.length) {
+        best?.cleanup();
+        best = candidate;
+      } else candidate.cleanup();
+      if (best.sheets.length === 1) break;
+    }
+    if (!best) throw new Error("Impossibile impaginare i dettagli in A4. Riduci le descrizioni troppo lunghe.");
+    return best;
+  }
+
+  async function refreshDetailSpacing() {
+    await document.fonts.ready;
+    const source = document.getElementById("page-2");
+    if (!source || getComputedStyle(source).display === "none") return;
+    const result = paginateQuoteDetails(source);
+    source.classList.remove("detail-airy", "detail-balanced");
+    for (const name of ["detail-airy", "detail-balanced"]) {
+      if (result.sheets[0].classList.contains(name)) source.classList.add(name);
+    }
+    result.cleanup();
   }
 
   window.psiDownloadPdf = async function psiDownloadPdf() {
