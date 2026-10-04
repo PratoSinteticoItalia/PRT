@@ -975,6 +975,11 @@
 #page-2.detail-balanced .tech-card-head{padding:8px 9px}
 #page-2.detail-balanced .conds-grid{font-size:9.5px;gap:6px 16px}
 
+
+.discount-pill{display:inline-block;margin-left:8px;padding:2px 6px;border-radius:4px;background:#f4ecdc;color:#866129;font-size:9px;font-weight:700;white-space:nowrap}
+#page-2 .single-ledger .shared-amount{text-align:right}
+.shared-amount del{color:#748077;font-size:10px;margin-right:10px}
+.shared-amount strong{font-weight:700;color:#244b35}
 </style>
   <script src="./vendor/html2pdf.bundle.min.js?v=20260615-preventivo-fix2"></script>
 </head>
@@ -1534,18 +1539,29 @@
     const opts=data.options || []; if(!box || !opts.length) return;
     const mat=data.materials || {};
     const rows=[];
-    const add=(label,qty,values,note='')=>rows.push({label,qty,values,note});
+    const add=(label,qty,values,note='',original=null,discount=0)=>rows.push({label,qty,values,note,original,discount});
     add('Prato sintetico',`${data.sqm} m²`,opts.map(o=>o.breakdown?.prato ?? (Number(o.pricePerSqm)||0)*data.sqm*(1-(Number(o.discount)||0)/100)));
     for(const it of mat.list || []) {
       if(it.label==='Trasporto') continue;
-      add(it.label || it.name,tidyUnits(it.qty),opts.map(()=>Number.isFinite(it.total)?it.total*(1-(Number(mat.discount)||0)/100):null),Number.isFinite(it.total)?'':it.totalLabel || '');
+      add(it.label || it.name,tidyUnits(it.qty),opts.map(()=>Number.isFinite(it.total)?it.total*(1-(Number(mat.discount)||0)/100):null),Number.isFinite(it.total)?'':it.totalLabel || '',it.total,Number(mat.discount)||0);
     }
-    for(const a of mat.accessories || []) add(a.name,`${a.qty ?? 1} pz`,opts.map(()=>Number(a.price||0)*Number(a.qty??1)*(1-Number(a.discount||0)/100)),a.discount?`Sconto ${a.discount}% applicato`:'');
+    for(const a of mat.accessories || []) add(a.name,`${a.qty ?? 1} pz`,opts.map(()=>Number(a.price||0)*Number(a.qty??1)*(1-Number(a.discount||0)/100)),'',Number(a.price||0)*Number(a.qty??1),Number(a.discount)||0);
     if(String(data.mode||'').includes('posa')) add('Posa in opera',`${data.sqm} m²`,opts.map(o=>o.breakdown?.posa ?? data.installationCost?.net ?? Number(o.installation||0)*data.sqm));
     for(const w of mat.extraServices || []) add(w.description,'—',opts.map(()=>Number(w.cost||0)));
     add('Trasporto','—',opts.map(o=>data.shipping?.cost ?? o.breakdown?.trasporto ?? null),data.shipping?.label || '');
     box.className='single-ledger';box.style.display='';
-    box.innerHTML=`<h3>Materiali e servizi inclusi</h3><p>Importi netti già compresi nei totali a pagina 1.${mat.discount?` Sconto materiali ${escHtml(mat.discount)}% già applicato.`:''} Le colonne sono alternative.</p><table><thead><tr><th>Materiale o servizio</th><th>Quantità</th>${opts.map(o=>`<th>${escHtml(o.name)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr class="${r.label==='Posa in opera'?'labor':''}"><td>${escHtml(r.label||'')} ${r.note?`<small>${escHtml(r.note)}</small>`:''}</td><td>${escHtml(r.qty||'—')}</td>${r.values.map(v=>`<td>${v===0&&r.label==='Trasporto'?'Gratuito':Number.isFinite(v)?fmtEur(v):'—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    const amount=(v,r)=>v===0&&r.label==='Trasporto'?'Gratuito':Number.isFinite(v)?fmtEur(v):'—';
+    const body=rows.map((r,index)=>{
+      const shared=index>0 && r.values.every(v=>v===r.values[0]);
+      const discounted=r.discount>0 && Number.isFinite(r.original) && r.original>0;
+      const badge=discounted?`<span class="discount-pill">−${escHtml(r.discount)}%</span>`:'';
+      const note=r.label==='Trasporto' && r.values[0]===0?'':r.note;
+      const price=shared
+        ? `<td colspan="${opts.length}" class="shared-amount">${discounted?`<del>${fmtEur(r.original)}</del> `:''}<strong>${amount(r.values[0],r)}</strong></td>`
+        : r.values.map(v=>`<td>${amount(v,r)}</td>`).join('');
+      return `<tr class="${r.label==='Posa in opera'?'labor':''}"><td>${escHtml(r.label||'')} ${badge}${note?`<small>${escHtml(note)}</small>`:''}</td><td>${escHtml(r.qty||'—')}</td>${price}</tr>`;
+    }).join('');
+    box.innerHTML=`<h3>Materiali e servizi inclusi</h3><p>Importi IVA esclusa, già compresi nei totali a pagina 1. ${opts.length>1?'Il prato varia per soluzione; gli importi comuni sono indicati una sola volta.':'Gli sconti indicati sono già applicati.'}</p><table><thead><tr><th>Materiale o servizio</th><th>Quantità</th>${opts.map(o=>`<th>${escHtml(o.name)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
     for(const selector of ['[data-field="priceComposition"]','#extra-services-section','[data-field="installationCost"]','[data-field="installWorkIntro"]']){const el=document.querySelector(selector);if(el)el.style.display='none';}
     setField('installWorkTitle','Cosa comprende la posa professionale');
     // Preserve the actual surface-specific steps; shorten only standard terra copy.
