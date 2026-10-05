@@ -13,9 +13,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261004-preventivo-tabella-unica";
+} from "./lib/order-money.js?v=20261005-crm-audit-priorities";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261004-preventivo-tabella-unica";
+import { regionForCity } from "./lib/geo.js?v=20261005-crm-audit-priorities";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +34,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261004-preventivo-tabella-unica";
+} from "./lib/shipping-eligibility.js?v=20261005-crm-audit-priorities";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +45,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261004-preventivo-tabella-unica";
+} from "./lib/profit-split.js?v=20261005-crm-audit-priorities";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +60,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261004-preventivo-tabella-unica";
+} from "./lib/preventivo-pricing.js?v=20261005-crm-audit-priorities";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +68,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261004-preventivo-tabella-unica";
+} from "./lib/sales-assignment.js?v=20261005-crm-audit-priorities";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261004-preventivo-tabella-unica";
+} from "./lib/surveys.js?v=20261005-crm-audit-priorities";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +88,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261004-preventivo-tabella-unica";
+const APP_SHELL_VERSION = "20261005-crm-audit-priorities";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3466,6 +3466,7 @@ async function saveProfitSplitToLinkedOrder() {
   const order = getProfitSplitContextOrder();
   if (!order) return;
   const nextDraft = readProfitSplitDraftFromForm();
+  if (!isProfitSplitRevenueEntered(nextDraft)) return;
   const storedDraft = getStoredProfitSplitForOrder(order);
   const baselineDraft = storedDraft || buildProfitSplitDraftForOrder(order, { preferStored: false });
   const onlyPrefillValues = !storedDraft
@@ -3569,6 +3570,11 @@ function renderProfitSplitDistributionBar(result, hasValues) {
   `;
 }
 
+function isProfitSplitRevenueEntered(draft = {}) {
+  const raw = String(draft.revenue ?? "").trim();
+  return raw !== "" && Number.isFinite(Number(raw.replace(",", "."))) && Number(raw.replace(",", ".")) >= 0;
+}
+
 function renderProfitSplitCalculator({ syncForm = true } = {}) {
   if (!ui.profitSplitSummary || !ui.profitSplitBreakdown) return;
   if (ui.profitSplitCrewOptions) {
@@ -3593,6 +3599,22 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
   const draft = normalizeProfitSplitDraft(state.profitSplitDraft);
   const result = computeProfitSplitScenario(draft);
   const partnerLabel = result.partnerName || (state.lang === "it" ? "Collaboratore" : "Partner");
+  const revenueEntered = isProfitSplitRevenueEntered(draft);
+  if (ui.profitSplitPdfButton) ui.profitSplitPdfButton.disabled = !revenueEntered;
+  if (!revenueEntered) {
+    if (ui.profitSplitSaveOrderButton) ui.profitSplitSaveOrderButton.disabled = true;
+    if (ui.profitSplitLiveRevenue) ui.profitSplitLiveRevenue.textContent = "—";
+    if (ui.profitSplitLiveJobLabel) ui.profitSplitLiveJobLabel.textContent = state.lang === "it" ? "Inserisci il ricavo della posa" : "Enter installation revenue";
+    renderProfitSplitDistributionBar(result, false);
+    ui.profitSplitSummary.innerHTML = [{
+      label: state.lang === "it" ? "Conto da completare" : "Incomplete calculation",
+      value: state.lang === "it" ? "Ricavo mancante" : "Revenue missing",
+      meta: state.lang === "it" ? "Inserisci il ricavo per calcolare i saldi. Le spese e il fisso restano nella bozza; se il ricavo è nullo, inserisci 0." : "Enter revenue to calculate balances. Expenses and fixed fees remain in the draft; enter 0 for zero revenue.",
+    }].map(renderDetailBox).join("");
+    ui.profitSplitBreakdown.innerHTML = "";
+    return;
+  }
+
   const hasValues = [
     result.revenue,
     result.ownerPaidExpenses,
@@ -3903,6 +3925,7 @@ function downloadProfitSplitContoForOrder(orderId) {
 
 function downloadProfitSplitContoCurrent() {
   const draft = readProfitSplitDraftFromForm();
+  if (!isProfitSplitRevenueEntered(draft)) return;
   const order = getProfitSplitContextOrder();
   const payload = buildProfitSplitContoPayload(draft, order);
   const num = String(payload.orderNumber || "conto").replace(/[^\w#-]+/g, "-");
@@ -4526,6 +4549,13 @@ function getSalesRequestContactOperatorName(item = {}) {
 
 function getSalesRequestStatusLabel(status = "") {
   const raw = String(status || "").trim();
+  const knownLabels = {
+    new: ["Nuova", "New"], new_contact: ["Nuovo contatto", "New contact"],
+    first_contact: ["Primo contatto", "First contact"], quoted: ["Preventivo inviato", "Quoted"],
+    followup: ["Da ricontattare", "Follow-up"], closed: ["Chiusa", "Closed"],
+  };
+  const knownLabel = knownLabels[raw.toLowerCase()];
+  if (knownLabel) return knownLabel[state.lang === "it" ? 0 : 1];
   if (raw && !["new", "quoted", "followup", "closed"].includes(raw)) {
     return raw;
   }
@@ -4945,9 +4975,10 @@ function getSalesRequestQuickFilterOptions(items = state.salesRequests) {
     .filter((option) => option.value !== "mine" || currentOperator)
     .map((option) => ({
       ...option,
-      count: option.count != null ? option.count : items.filter((item) => matchesSalesRequestQuickFilter(item, option.value)).length,
-    }))
-    .filter((option) => option.count > 0 || option.value === "mine");
+      // A page of 50 records is not a global count. Keep the filter available
+      // without a badge until an authoritative count exists.
+      count: option.count != null ? option.count : null,
+    }));
 }
 
 function isSalesRequestsDbUnavailable() {
@@ -5141,7 +5172,7 @@ function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
         aria-pressed="${option.value === current ? "true" : "false"}"
       >
         <span>${escapeHtml(option.label)}</span>
-        <strong>${option.count}</strong>
+        ${option.count == null ? "" : `<strong>${option.count}</strong>`}
       </button>
     `).join("");
     }
@@ -5482,9 +5513,9 @@ function syncSalesRequestStatusField(value = "") {
     if (dynamic) option.dataset.dynamicStatus = "true";
     fragment.append(option);
   };
-  options.forEach((status) => appendOption(status, status, true));
+  options.forEach((status) => appendOption(status, getSalesRequestStatusLabel(status), true));
   if (!lcToActualValue.has(nextValueLc)) {
-    appendOption(nextValue, nextValue, true);
+    appendOption(nextValue, getSalesRequestStatusLabel(nextValue), true);
   }
   field.replaceChildren(fragment);
   // Usa il VALUE attribute esatto (case dell'option), non quello passato in input,
@@ -9784,6 +9815,7 @@ function getShippingTargetDate(order) {
 }
 
 function getShippingTargetLabel(order) {
+  if (isOrderClosed(order) || isLogisticsOrderCompleted(order)) return state.lang === "it" ? "Preparazione conclusa" : "Preparation completed";
   const target = getShippingTargetDate(order);
   if (!target) return state.lang === "it" ? "Data preparazione da definire" : "Preparation date to define";
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -9796,6 +9828,7 @@ function getShippingTargetLabel(order) {
 // "nessuna data impostata" da "va preparato OGGI". Questa classifica
 // l'urgenza così il render può dare alla data il risalto che merita.
 function getShippingTargetUrgency(order) {
+  if (isOrderClosed(order) || isLogisticsOrderCompleted(order)) return "completed";
   const target = getShippingTargetDate(order);
   if (!target) return "unset";
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -10128,11 +10161,11 @@ function getWarehousePreparedLines(order) {
 }
 
 function getNextOrderAction(order) {
-  if (!order.address || !order.city) {
-    return t("needsAddress");
-  }
   if (isOrderClosed(order)) {
     return state.lang === "it" ? "Ordine chiuso: nessuna azione operativa aperta" : "Order closed: no open operational actions";
+  }
+  if (!order.address || !order.city) {
+    return t("needsAddress");
   }
   if (!isRoutedToWarehouse(order) && !isRoutedToInstallation(order)) {
     return state.lang === "it" ? "Instrada l'ordine verso magazzino o posa" : "Route the order to warehouse or installation";
@@ -14029,8 +14062,7 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (_quickResellerOnly) params.set("resellerAssigned", "1");
     if (_quickStale)        params.set("stale", "1");
     if (sort === "urgent")  params.set("sort", "urgent");
-    const shouldIncludeStats = !state.salesRequestsStats || !state.crmServerPage?.loadedAt;
-    if (!shouldIncludeStats) params.set("includeStats", "0");
+    // Refresh authoritative DB counters with each list response (server caches them).
     const data = await apiFetch(`/api/sales/requests?${params}`, { timeoutMs: CRM_REQUEST_TIMEOUT_MS });
     if (requestSeq !== _crmPageRequestSeq) return;
     if (data.dbUnavailable) {
@@ -15853,8 +15885,8 @@ function computeSupplierPriceComparison() {
   const entries = getFilteredSupplierPriceEntries();
   const byMaterial = new Map();
   entries.forEach((e) => {
-    const matKey = normalizeSupplierPriceKey(e.material) || "—";
-    if (!byMaterial.has(matKey)) byMaterial.set(matKey, { label: e.material || "—", bySupplier: new Map() });
+    const matKey = JSON.stringify([normalizeSupplierPriceKey(e.material) || "—", String(e.unit || "").trim().toLowerCase()]);
+    if (!byMaterial.has(matKey)) byMaterial.set(matKey, { label: e.material || "—", unit: String(e.unit || "").trim().toLowerCase(), bySupplier: new Map() });
     const matGroup = byMaterial.get(matKey);
     const supKey = normalizeSupplierPriceKey(e.supplierName) || "—";
     if (!matGroup.bySupplier.has(supKey)) matGroup.bySupplier.set(supKey, { label: e.supplierName || "—", entries: [] });
@@ -15885,8 +15917,11 @@ function computeSupplierPriceComparison() {
         avg,
         yearAverages,
       };
-    }).sort((a, b) => a.avg - b.avg);
-    return { label: matGroup.label, suppliers };
+    }).sort((a, b) => (a.avg > 0 ? a.avg : Infinity) - (b.avg > 0 ? b.avg : Infinity));
+    const valid = suppliers.filter(s => s.avg > 0);
+    const best = matGroup.unit && valid.length > 1 ? valid[0].avg : null;
+    suppliers.forEach(s => { s.isBest = best !== null && s.avg > 0 && Math.abs(s.avg - best) < 0.000001; });
+    return { label: matGroup.label, unit: matGroup.unit, suppliers };
   }).sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -15920,13 +15955,15 @@ const SUPPLIER_PRICE_UNITS = [
 
 function renderSupplierPriceFiltersHtml() {
   const f = state.supplierPricesFilter || {};
-  return `
-    <div class="sp-filters">
-      <input type="search" class="sp-filter-input" data-field="supplier" placeholder="${state.lang === "it" ? "Cerca fornitore" : "Search supplier"}" value="${escapeAttr(f.supplier || "")}" />
-      <input type="search" class="sp-filter-input" data-field="material" placeholder="${state.lang === "it" ? "Cerca materiale" : "Search material"}" value="${escapeAttr(f.material || "")}" />
-      <input type="date" class="sp-filter-input" data-field="from" value="${escapeAttr(f.from || "")}" />
-      <input type="date" class="sp-filter-input" data-field="to" value="${escapeAttr(f.to || "")}" />
-    </div>`;
+  const fields = [
+    ["supplier", "search", "Fornitore", "Supplier"],
+    ["material", "search", "Materiale", "Material"],
+    ["from", "date", "Dal", "From"],
+    ["to", "date", "Al", "To"],
+  ];
+  return '<div class="sp-filters">' + fields.map(([key, type, it, en]) =>
+    `<label class="sp-filter-label">${state.lang === "it" ? it : en}<input type="${type}" class="sp-filter-input" data-field="${key}" value="${escapeAttr(f[key] || "")}" /></label>`
+  ).join("") + "</div>";
 }
 
 function renderSupplierPriceCompareHtml() {
@@ -15936,12 +15973,12 @@ function renderSupplierPriceCompareHtml() {
   }
   return `<div class="sp-compare">${materials.map((mat) => `
     <div class="sp-compare-card">
-      <h4>${escapeHtml(mat.label)}</h4>
+      <h4>${escapeHtml(mat.label)} · ${escapeHtml(supplierPriceUnitLabel(mat.unit) || (state.lang === "it" ? "unità non specificata" : "unit unspecified"))}</h4>
       <div class="sp-compare-suppliers">
-        ${mat.suppliers.map((sup, idx) => `
-          <div class="sp-compare-row ${idx === 0 ? "is-best" : ""}">
+        ${mat.suppliers.map((sup) => `
+          <div class="sp-compare-row ${sup.isBest ? "is-best" : ""}">
             <div class="sp-compare-supplier">
-              ${idx === 0 ? `<span class="sp-best-badge">${state.lang === "it" ? "più conveniente" : "cheapest"}</span>` : ""}
+              ${sup.isBest ? `<span class="sp-best-badge">${state.lang === "it" ? "Migliore media storica" : "Lowest historical average"}</span>` : ""}
               <strong>${escapeHtml(sup.label)}</strong>
               <small>${sup.count} ${state.lang === "it" ? "voci" : "entries"}</small>
             </div>
@@ -18125,15 +18162,15 @@ function renderInventoryCard(group) {
         : "badge-success";
 
   const dimensionsSummary = isMeasured ? getInventoryPieceDimensionSummary(group.pieces) : "";
-  const stockLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
-  const stockMeasureLabel = isMeasured ? `${Math.round(group.totalSqm)} mq` : `${group.totalUnits} u`;
-  const demandLabel = isMeasured ? `${Math.round(planningDemandValue)} mq` : `${planningDemandValue} u`;
-  const availableMeasureLabel = isMeasured ? `${Math.round(Math.max(0, stockValue))} mq` : `${Math.max(0, stockValue)} u`;
+  const stockLabel = isMeasured ? `${formatInventoryNumber(group.totalSqm)} mq` : `${group.totalUnits} u`;
+  const stockMeasureLabel = isMeasured ? `${formatInventoryNumber(group.totalSqm)} mq` : `${group.totalUnits} u`;
+  const demandLabel = isMeasured ? `${formatInventoryNumber(planningDemandValue)} mq` : `${planningDemandValue} u`;
+  const availableMeasureLabel = isMeasured ? `${formatInventoryNumber(Math.max(0, stockValue))} mq` : `${Math.max(0, stockValue)} u`;
   const deficitMeasureLabel = isMeasured
-    ? `${Math.round(Math.max(0, pendingDemandValue - stockValue))} mq`
+    ? `${formatInventoryNumber(Math.max(0, pendingDemandValue - stockValue))} mq`
     : `${Math.max(0, pendingDemandValue - stockValue)} u`;
   const netValue = isMeasured ? group.availableSqm : stockValue;
-  const netLabel = isMeasured ? `${Math.round(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
+  const netLabel = isMeasured ? `${formatInventoryNumber(Math.max(0, group.availableSqm))} mq` : `${Math.max(0, stockValue)} u`;
   const immobilizedValueLabel = group.isModel && group.grossPriceConfigured
     ? formatCurrency(group.availableGrossValue)
     : "—";
@@ -18147,7 +18184,7 @@ function renderInventoryCard(group) {
     .filter(Boolean)
     .slice(0, 3);
   const remainingDemandCount = Math.max(0, group.demandOrders.length - linkedDemandOrders.length);
-  const committedLabel = isMeasured ? `${Math.round(committedPhysicalValue)} mq` : `${committedPhysicalValue} u`;
+  const committedLabel = isMeasured ? `${formatInventoryNumber(committedPhysicalValue)} mq` : `${committedPhysicalValue} u`;
   const materialSlots = isMeasured ? [] : buildMaterialInventorySlots(group);
 
   const deficitAlert = hasDeficit || (!hasStock && hasDemand)
@@ -18179,8 +18216,8 @@ function renderInventoryCard(group) {
       : !hasStock ? "low" : "ok";
   const stateBadgeClass = dotClass; // ok | low | def
   const unitSuffix = isMeasured ? "mq" : "u";
-  const bigNumber = isMeasured ? Math.round(Math.max(0, group.availableSqm)) : Math.max(0, group.availableUnits);
-  const committedDisplay = isMeasured ? Math.round(committedPhysicalValue) : committedPhysicalValue;
+  const bigNumber = isMeasured ? formatInventoryNumber(Math.max(0, group.availableSqm)) : Math.max(0, group.availableUnits);
+  const committedDisplay = isMeasured ? formatInventoryNumber(committedPhysicalValue) : committedPhysicalValue;
 
   const grouped = isMeasured ? groupInventoryPiecesForDisplay(group.pieces) : { rolls: [], residues: [] };
   const fmtDim = (g) => `${formatInventoryNumber(g.width)} × ${formatInventoryNumber(g.length)} m`;
@@ -26903,7 +26940,7 @@ function applySessionPayload(session = {}) {
   }
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
-  if (session.salesRequestsStats && typeof session.salesRequestsStats === "object") {
+  if (!state.crmServerPage?.loadedAt && session.salesRequestsStats && typeof session.salesRequestsStats === "object") {
     state.salesRequestsStats = session.salesRequestsStats;
   }
   try {
