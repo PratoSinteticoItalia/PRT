@@ -1,3 +1,4 @@
+import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
@@ -19923,6 +19924,26 @@ async function handleApi(req, res, url) {
     const existing = order.convertedJobId ? store.jobs.find((job) => job.id === order.convertedJobId) : null;
     await writeJson(STORE_PATH, store);
     return sendJson(res, 200, { job: existing, order });
+  }
+
+  if (url.pathname === "/api/accounting/register") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (req.method === "GET") return sendJson(res, 200, registerState(store.accountingRegister));
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      let next;
+      try {
+        if (body.action === "payout" && (!Array.isArray(body.payout?.orderIds) || body.payout.orderIds.some(id => !store.orders.some(o => o.id === id)))) throw new Error("Ordine collegato non trovato");
+        if (body.action === "entry" && body.entry?.orderId && !store.orders.some(o => o.id === body.entry.orderId)) throw new Error("Ordine collegato non trovato");
+        next = mutateRegister(store.accountingRegister, body, currentUser.id, new Date().toISOString(), randomUUID());
+      }
+      catch (error) { return sendJson(res, 409, { error: error.message }); }
+      store.accountingRegister = next;
+      await writeJson(STORE_PATH, store);
+      return sendJson(res, 200, next);
+    }
+    return sendJson(res, 405, { error: "method_not_allowed" });
   }
 
   if (url.pathname === "/api/settings/shopify" && req.method === "GET") {
