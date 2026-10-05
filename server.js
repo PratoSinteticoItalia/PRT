@@ -1907,9 +1907,9 @@ function getSalesRequestPipelineBucketSql(alias = "sr") {
   END`;
 }
 
-async function getSalesRequestsStatsFromDb(pool, shadowCte) {
+async function getSalesRequestsStatsFromDb(pool, shadowCte, { force = false } = {}) {
   const now = Date.now();
-  if (_salesRequestsStatsDbCache && now - _salesRequestsStatsDbCacheAt < SALES_REQUESTS_DB_CACHE_TTL_MS) {
+  if (!force && _salesRequestsStatsDbCache && now - _salesRequestsStatsDbCacheAt < SALES_REQUESTS_DB_CACHE_TTL_MS) {
     return _salesRequestsStatsDbCache;
   }
   const pipelineBucketSql = getSalesRequestPipelineBucketSql("sr");
@@ -2202,12 +2202,18 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
       ),
       includeStats ? getSalesRequestsStatsFromDb(pool, SHADOW_CTE) : Promise.resolve(null),
     ]), DB_OPERATION_TIMEOUT_MS, "crm_search");
+    const total = parseInt(countRes.rows[0]?.total || "0", 10);
+    // A cached global count can precede an import. Refresh it when the
+    // unfiltered list proves that the cached snapshot is out of date.
+    const freshStats = stats && !where.length && Number(stats.total) !== total
+      ? await withOperationTimeout(getSalesRequestsStatsFromDb(pool, SHADOW_CTE, { force: true }), DB_OPERATION_TIMEOUT_MS, "crm_stats_refresh")
+      : stats;
     return {
-      total: parseInt(countRes.rows[0]?.total || "0", 10),
+      total,
       page: Number(page) || 1,
       limit: limitN,
       items: dataRes.rows.map(dbRowToSalesRequest),
-      stats,
+      stats: freshStats,
     };
   } catch (err) {
     console.warn("[db] searchSalesRequestsFromDb:", err?.message);
