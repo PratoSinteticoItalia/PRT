@@ -1,3 +1,4 @@
+import { mountAccountingWorkspace } from "./lib/accounting-workspace.js";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -13,9 +14,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261005-crm-audit-priorities";
+} from "./lib/order-money.js?v=20261005-accounting-register";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261005-crm-audit-priorities";
+import { regionForCity } from "./lib/geo.js?v=20261005-accounting-register";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -34,7 +35,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261005-crm-audit-priorities";
+} from "./lib/shipping-eligibility.js?v=20261005-accounting-register";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -45,7 +46,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261005-crm-audit-priorities";
+} from "./lib/profit-split.js?v=20261005-accounting-register";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -60,7 +61,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261005-crm-audit-priorities";
+} from "./lib/preventivo-pricing.js?v=20261005-accounting-register";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -68,13 +69,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261005-crm-audit-priorities";
+} from "./lib/sales-assignment.js?v=20261005-accounting-register";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261005-crm-audit-priorities";
+} from "./lib/surveys.js?v=20261005-accounting-register";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -88,7 +89,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261005-crm-audit-priorities";
+const APP_SHELL_VERSION = "20261005-accounting-register";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2179,7 +2180,16 @@ function apiFetch(path, options = {}) {
     ...fetchOptions,
     ...(controller ? { signal: controller.signal } : {}),
   }).then(async (response) => {
-    const data = await response.json().catch(() => ({}));
+    let data = {};
+    try {
+      if (response.status !== 204) data = await response.json();
+    } catch {
+      if (response.ok) {
+        const error = new Error("invalid_server_response");
+        error.status = response.status;
+        throw error;
+      }
+    }
     if (!response.ok) {
       const error = new Error(data.error || data.message || "request_failed");
       error.status = Number(response.status || 0);
@@ -24009,6 +24019,7 @@ document.addEventListener("click", (ev) => {
 });
 
 function renderAccounting() {
+  if (state.currentUser?.role === "office") mountAccountingWorkspace(document.getElementById("accounting-workspace"), state.orders, state.currentUser.id);
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
   });
@@ -31392,15 +31403,17 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   };
 }
 
-let _inboxFlowSaveTimer = 0;
+const _inboxFlowSaveTimers = new Map();
 const _inboxFlowSaveInFlight = new Set();
 const _inboxFlowLatestPendingSave = new Map();
 
 function debouncedSaveInboxOrderFlow(orderId) {
-  clearTimeout(_inboxFlowSaveTimer);
-  _inboxFlowSaveTimer = setTimeout(() => {
-    saveInboxOrderFlow(orderId);
-  }, 400);
+  clearTimeout(_inboxFlowSaveTimers.get(orderId));
+  const payload = buildInboxOrderFlowPayload(orderId);
+  _inboxFlowSaveTimers.set(orderId, setTimeout(() => {
+    _inboxFlowSaveTimers.delete(orderId);
+    if (payload) void saveInboxOrderFlow(orderId, payload);
+  }, 400));
 }
 
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
@@ -31421,7 +31434,12 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
   if (_inboxFlowSaveInFlight.has(orderId)) {
     // Latest-wins: mentre un POST è in corso, ricordiamo solo l'ultima
     // intenzione dell'utente per questo ordine. Non accumuliamo una coda.
-    _inboxFlowLatestPendingSave.set(orderId, { payload, triggerButton });
+    const queued = _inboxFlowLatestPendingSave.get(orderId)?.payload || {};
+    const mergedPayload = { ...queued, ...payload };
+    for (const key of ["warehouse", "installation"]) {
+      if (queued[key] || payload[key]) mergedPayload[key] = { ...(queued[key] || {}), ...(payload[key] || {}) };
+    }
+    _inboxFlowLatestPendingSave.set(orderId, { payload: mergedPayload, triggerButton });
     if (previousOrder) {
       const optimistic = {
         ...previousOrder,
@@ -31606,7 +31624,7 @@ async function saveShipping(event) {
     );
     return;
   }
-  if (order.id) orderPendingPatchIds.delete(order.id);
+  state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   let shopifyMessage = "";
   const shouldSyncTrackingToShopify = Boolean(
     nextShipped
@@ -31632,6 +31650,7 @@ async function saveShipping(event) {
           : " Tracking was also sent to Shopify.");
     } catch (error) {
       state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+      if (order.id) orderPendingPatchIds.delete(order.id);
       renderCurrentViewOnly(state.currentView);
       setStatus(
         ui.shippingStatus,
@@ -31652,6 +31671,7 @@ async function saveShipping(event) {
       : " Inventory was not auto-updated: use Fulfill now in inventory.";
   }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+  if (order.id) orderPendingPatchIds.delete(order.id);
   // Re-render PRIMA di ogni redirect: così l'ordine spedito passa subito in
   // "Usciti / Ritirati" nella board Logistica.
   renderCurrentViewOnly(state.currentView);

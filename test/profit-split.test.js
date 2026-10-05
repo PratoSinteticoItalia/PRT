@@ -94,3 +94,12 @@ test("addProfitSplitExpenseLine: riempie la riga vuota invece di accodarne una n
   assert.equal(next.length, 1);
   assert.equal(next[0].label, "Benzina");
 });
+
+test("quota zero numerica e testuale producono lo stesso saldo", () => {
+  for (const partnerSharePct of [0, "0"]) {
+    const result = computeProfitSplitScenario({ revenue: 1000, partnerSharePct });
+    assert.equal(result.partnerSharePct, 0);
+    assert.equal(result.partnerDue, 0);
+    assert.equal(result.ownerDue, 1000);
+  }
+});

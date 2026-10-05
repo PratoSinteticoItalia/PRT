@@ -88,3 +88,12 @@ test('supplier filters have persistent associated labels',()=>{
  assert.match(html,/>Dal<input type="date"/);
  assert.match(html,/>Al<input type="date"/);
 });
+test('API rejects malformed successful responses instead of reporting a saved empty object',async()=>{
+ const fetchApi=(response)=>fn('apiFetch','isTransientApiError',{
+ fetch:async()=>response,window:{setTimeout,clearTimeout},AbortController
+ });
+ await assert.rejects(fetchApi({ok:true,status:200,json:async()=>{throw new Error('html');}})('/test'), /invalid_server_response/);
+ const empty=await fetchApi({ok:true,status:204})('/test');
+ assert.equal(Object.keys(empty).length,0);
+ await assert.rejects(fetchApi({ok:false,status:503,json:async()=>{throw new Error('html');}})('/test'), e=>e.status===503);
+});
