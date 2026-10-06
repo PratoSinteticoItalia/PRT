@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20261006-pagamenti-ordini-c";
+const APP_SHELL_VERSION = "20261006-planner-generatore";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -4372,6 +4372,17 @@ function GardenPlanner() {
         reportHtml: sanitizeQuoteBridgeReportHtml(String(plannerBridge.reportHtml?.client || plannerBridge.reportHtml?.technical || "").trim()),
       }));
     } catch {}
+    // Planner incorporato nell'app (vista "Garden Planner"): l'app passa al
+    // generatore nella stessa finestra e questo disegno resta aperto. Una
+    // finestra _blank, dall'app installata, si apriva nel browser.
+    let embeddedInApp = false;
+    try {
+      embeddedInApp = window.parent !== window && window.parent.location.origin === window.location.origin;
+    } catch {}
+    if (embeddedInApp) {
+      window.parent.postMessage({ type: "psi:garden-planner:open-generator" }, window.location.origin);
+      return;
+    }
     const targetUrl = new URL("./index.html", window.location.href);
     targetUrl.searchParams.set("shell", APP_SHELL_VERSION);
     targetUrl.searchParams.set("view", "sales-generator");
