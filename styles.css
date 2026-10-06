@@ -28630,13 +28630,119 @@ body.mobile-safe-mode .main-content {
 .acw-dialog .acw-checklist{max-height:200px;overflow:auto;border:1px solid var(--acw-line);border-radius:8px;padding:6px 10px;margin-top:8px}
 .acw-dialog .acw-checklist label{display:flex;gap:8px;align-items:center;font-weight:500;margin:0;padding:7px 0;border-bottom:1px solid #f0f2ee}
 .acw-dialog .acw-checklist label[hidden]{display:none}
-body:not([data-drill-module="accounting"]) #accounting.acw-active:not(.acw-on-payments) .accounting-legacy,
-#accounting.acw-active:not(.acw-on-payments) > .page-header .detail-actions{display:none}
+body:not([data-drill-module="accounting"]) #accounting.acw-active:not(.acw-on-payments) .accounting-legacy{display:none}
 #accounting.acw-on-payments #accounting-workspace{margin-bottom:0}
-#accounting.acw-on-payments .acc-section-head{margin-top:0}
-.acc-section-head{margin:8px 0 18px}
-.acc-section-head h2{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
-.acc-section-head p{margin:0;color:var(--muted);font-size:13.5px}
+/* Pagamenti ordini (sezione storica per ordine, ultima scheda della Contabilità):
+   stesso linguaggio del pannello contabile. Niente container query qui: il
+   containment renderebbe questo blocco il riferimento del drawer position:fixed. */
+#accounting{--acw-green:#214d3d;--acw-ink:#223c34;--acw-muted:#75847d;--acw-line:#dce4dd;--acw-soft:#edf3ed;--acw-gold:#b48945}
+#accounting .acl-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin:0 0 22px}
+#accounting .acl-heading>div:first-child{flex:1 1 340px;min-width:0}
+#accounting .acl-eyebrow{color:var(--acw-gold);font-size:11px;font-weight:750;letter-spacing:.16em;text-transform:uppercase;margin-bottom:8px}
+#accounting .acl-heading h2{font-size:28px;letter-spacing:-.02em;margin:0 0 6px;color:var(--acw-ink);font-weight:750}
+#accounting .acl-heading p{margin:0;color:var(--acw-muted);line-height:1.55;font-size:14px;max-width:640px}
+#accounting .acl-actions{display:flex;gap:9px;flex-wrap:wrap}
+#accounting .acl-btn,#accounting .list-pagination .btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--acw-line);background:#fff;color:var(--acw-ink);border-radius:9px;padding:10px 15px;font-size:13.5px;font-weight:600;line-height:1.2;cursor:pointer;min-height:40px;transform:none;box-shadow:none}
+#accounting .acl-btn:hover,#accounting .list-pagination .btn:hover{border-color:#b9c9bd;background:#f7faf6}
+#accounting .acl-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;margin-bottom:22px}
+#accounting .acl-card{-webkit-appearance:none;appearance:none;display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--acw-line);border-radius:13px;padding:20px 22px;cursor:pointer;font:inherit;color:var(--acw-ink);transform:none;box-shadow:none}
+#accounting .acl-card:hover{border-color:#b9c9bd}
+#accounting .acl-card small{display:block;color:var(--acw-muted);font-size:13px}
+#accounting .acl-card strong{display:block;font-size:27px;font-weight:680;letter-spacing:-.02em;margin:10px 0 6px;font-variant-numeric:tabular-nums;color:var(--acw-ink)}
+#accounting .acl-card p{margin:0;font-size:12px;color:var(--acw-muted);line-height:1.5}
+#accounting .acl-card.is-warn{border-color:#ecd9b0}
+#accounting .acl-card.is-warn strong{color:#8a4a30}
+#accounting .acl-card.is-active{border-color:var(--acw-green);box-shadow:0 0 0 2px rgba(33,77,61,.14)}
+#accounting .acl-panel{background:#fff;border:1px solid var(--acw-line);border-radius:13px;padding:18px 22px 8px}
+#accounting .acl-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0;padding:0;background:none;border:0;box-shadow:none;position:static}
+#accounting .acl-toolbar .view-search-field{flex:1 1 240px;min-width:200px;margin:0}
+#accounting .acl-toolbar .view-search-input,#accounting .acl-select{font:inherit;font-size:14px;background:#fff;border:1px solid var(--acw-line);border-radius:9px;padding:9px 12px;color:var(--acw-ink);min-height:40px;box-shadow:none;width:100%}
+#accounting .acl-select{width:auto;flex:0 0 auto}
+#accounting .acl-segmented{display:inline-flex;flex-wrap:nowrap;gap:2px;background:#f3f5f0;border:1px solid var(--acw-line);border-radius:10px;padding:3px;margin:0;box-shadow:none}
+#accounting .acl-segmented .filter-btn{background:none;border:0;border-radius:8px;padding:8px 13px;font-size:13.5px;font-weight:500;color:var(--acw-ink);box-shadow:none;transform:none;min-height:0;white-space:nowrap}
+#accounting .acl-segmented .filter-btn.is-active{background:#fff;color:var(--acw-green);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+#accounting .acl-summary{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:18px 0 14px;margin:0;background:none;border:0}
+#accounting .acl-summary h3{font-size:17px;margin:0 0 3px;color:var(--acw-ink)}
+#accounting .acl-summary p{margin:0;color:var(--acw-muted);font-size:12.5px}
+#accounting .acl-summary-figures{display:flex;gap:24px;flex-wrap:wrap}
+#accounting .acl-summary-figures span{display:flex;flex-direction:column;align-items:flex-end;font-weight:650;font-variant-numeric:tabular-nums;color:var(--acw-ink)}
+#accounting .acl-summary-figures small{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--acw-muted);font-weight:650;margin-bottom:3px}
+#accounting .acl-summary-figures .is-open{color:#8a4a30}
+#accounting .accounting-list{display:block;gap:0;padding:0;margin:0;background:none;border:0}
+#accounting .acl-row{display:grid;grid-template-columns:minmax(200px,2.2fr) repeat(3,minmax(92px,1fr)) minmax(118px,1.1fr) minmax(128px,1.2fr);gap:14px;align-items:center;padding:14px 10px;border-bottom:1px solid #edf0eb;cursor:pointer;background:none;border-radius:0;margin:0;box-shadow:none}
+#accounting .acl-row:hover{background:#f8faf7}
+#accounting .acl-row.is-selected{background:#eef4ef}
+#accounting .acl-row-head{cursor:default;padding:4px 10px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--acw-muted);font-weight:650;border-bottom-color:var(--acw-line)}
+#accounting .acl-row-head:hover{background:none}
+#accounting .acl-row-head>span{font-size:10px;font-weight:650;color:var(--acw-muted)}
+#accounting .acl-row>div{min-width:0}
+#accounting .acl-num{text-align:right;font-variant-numeric:tabular-nums;font-size:13.5px;color:var(--acw-ink)}
+#accounting .acl-num.is-open{color:#8a4a30;font-weight:700}
+#accounting .acl-num>small,#accounting .acl-status>small:first-child{display:none}
+#accounting .acl-order strong{display:block;font-size:14px;color:var(--acw-ink);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#accounting .acl-order small{display:block;color:var(--acw-muted);font-size:12px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#accounting .acl-pill{display:inline-block;font-size:11px;font-weight:650;padding:4px 9px;border-radius:6px;white-space:nowrap}
+#accounting .acl-pill.ok{background:var(--acw-soft);color:var(--acw-green)}
+#accounting .acl-pill.warn{background:#fff2d9;color:#956414}
+#accounting .acl-pill.danger{background:#fbeaea;color:#8f2f2f}
+#accounting .acl-pill.info{background:#edf3ff;color:#2f5aa8}
+#accounting .acl-pill.subtle{background:#f0f2f1;color:#67776f}
+#accounting .acl-warn{display:block;color:#956414;font-size:11px;margin-top:4px}
+#accounting .acl-muted{color:var(--acw-muted);font-size:12.5px}
+#accounting .acl-empty{padding:40px 20px;text-align:center;color:var(--acw-muted)}
+#accounting .list-pagination:empty{display:none}
+#accounting .list-pagination{border:0;background:none;box-shadow:none;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 4px 10px;margin:0;color:var(--acw-muted);font-size:13px}
+#accounting .list-pagination-actions{display:flex;gap:8px}
+@media (max-width:1180px){
+  #accounting .acl-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #accounting .acl-row-head{display:none}
+  #accounting .acl-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;padding:14px 8px}
+  #accounting .acl-order{grid-column:1/-1}
+  #accounting .acl-num{text-align:left}
+  #accounting .acl-num>small,#accounting .acl-status>small:first-child{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--acw-muted);margin-bottom:3px;font-weight:650}
+}
+@media (max-width:760px){
+  #accounting .acl-heading h2{font-size:24px}
+  #accounting .acl-panel{padding:14px 14px 6px}
+  #accounting .acl-card{padding:16px}
+  #accounting .acl-card strong{font-size:22px}
+  #accounting .acl-segmented{width:100%;overflow-x:auto}
+  #accounting .acl-select{flex:1 1 140px}
+  #accounting .acl-summary-figures{gap:16px}
+  #accounting .acl-status{grid-column:span 1}
+}
+/* Dettaglio ordine (drawer) nello stesso linguaggio. */
+#accounting .accounting-detail-panel .detail-title{font-size:20px;font-weight:750;color:var(--acw-ink);letter-spacing:-.01em}
+#accounting .accounting-detail-panel .detail-id{color:var(--acw-muted);font-size:13px;margin-top:3px}
+#accounting .accounting-detail-panel .detail-section-title{color:var(--acw-gold);font-size:11px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;margin:0 0 10px}
+#accounting .accounting-detail-panel .detail-section{background:none;border:0;border-bottom:1px solid var(--acw-line);border-radius:0;box-shadow:none;padding:16px 0;margin:0}
+#accounting .accounting-detail-panel .detail-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:6px 0;border:0;background:none}
+#accounting .accounting-detail-panel .detail-row-label{color:var(--acw-muted);font-size:13px}
+#accounting .accounting-detail-panel .detail-row-value{color:var(--acw-ink);font-size:13.5px;font-weight:600;text-align:right}
+#accounting .accounting-detail-panel .detail-row-value-mono,#accounting .accounting-detail-panel .tranche-amount{font-family:inherit !important;font-variant-numeric:tabular-nums}
+#accounting .accounting-detail-panel .field>span{font-size:12px;font-weight:600;color:var(--acw-ink)}
+#accounting .accounting-detail-panel .text-input{background:#fff;border:1px solid var(--acw-line);border-radius:9px;min-height:40px;padding:9px 12px;color:var(--acw-ink);box-shadow:none}
+#accounting .accounting-detail-panel .ghost-button,#accounting .accounting-detail-panel .btn{background:#fff;border:1px solid var(--acw-line);color:var(--acw-ink);border-radius:9px;font-weight:600;box-shadow:none}
+#accounting .accounting-detail-panel .primary-button{background:var(--acw-green);border:1px solid var(--acw-green);color:#fff;border-radius:9px;font-weight:650;box-shadow:none}
+#accounting .accounting-detail-panel .info-card{background:#f8faf7;border:1px solid var(--acw-line);border-radius:10px;color:var(--acw-muted);font-size:13px;box-shadow:none}
+#accounting .accounting-detail-panel .acl-form-title{margin-top:4px}
+/* Su computer: prima il riepilogo degli importi, poi pagamenti, fattura e
+   dettagli fiscali (nel DOM il form viene prima del riepilogo). Il secondo
+   "+ Aggiungi pagamento" del riepilogo è un doppione di quello del form. */
+@media (min-width:981px){
+  #accounting .accounting-detail-panel.is-drawer{display:flex;flex-direction:column}
+  #accounting .accounting-detail-panel.is-drawer #accounting-form,
+  #accounting .accounting-detail-panel.is-drawer #accounting-meta{display:contents}
+  #accounting .accounting-detail-panel.is-drawer #accounting-meta > :nth-child(1){order:1}
+  #accounting .accounting-detail-panel.is-drawer #accounting-meta > :nth-child(2){order:2}
+  #accounting .accounting-detail-panel.is-drawer #accounting-form > [data-accounting-pane="payments"]{order:3;padding:16px 0;border-bottom:1px solid var(--acw-line);display:grid;gap:12px}
+  #accounting .accounting-detail-panel.is-drawer #accounting-form > [data-accounting-pane="billing"]{order:4;padding:16px 0;border-bottom:1px solid var(--acw-line);display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  #accounting .accounting-detail-panel.is-drawer #accounting-form > [data-accounting-pane="billing"] > :is(.acl-form-title,.field-full){grid-column:1/-1}
+  #accounting .accounting-detail-panel.is-drawer #accounting-meta > :nth-child(n+3){order:5}
+  #accounting .accounting-detail-panel.is-drawer #accounting-meta .add-payment-btn{display:none}
+}
+body[data-drill-module="accounting"] #accounting .acl-panel{border:0;padding:0;background:none}
+body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accounting-detail-panel)){display:none !important}
 /* Breakpoint sullo spazio reale del pannello (sidebar aperta/chiusa, tablet), non sulla finestra. */
 @container acw (max-width:1060px){#accounting-workspace .acw-cards{grid-template-columns:repeat(2,minmax(0,1fr))}#accounting-workspace .acw-grid{grid-template-columns:minmax(0,1fr)}}
 @container acw (max-width:820px){
