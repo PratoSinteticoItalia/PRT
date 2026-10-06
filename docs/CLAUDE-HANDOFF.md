@@ -257,3 +257,17 @@ Richiesta dell'utente dopo la pubblicazione delle schede: la scheda storica per 
 - **Bug corretti**: `getPaymentLabel` controllava "paid" prima di "partial", quindi `PARTIALLY_PAID` (es. HeyLight a rate) risultava "Pagato" con residuo aperto; ora anche rimborsi etichettati. Il campo "Metodo utilizzato" veniva precompilato col testo di ripiego ("Metodo non disponibile"/"Checkout Shopify") e salvando finiva registrato come metodo; ora contiene solo il metodo vero.
 
 **Verificato** in locale (dati di test): card-filtro, filtri combinati, riepilogo, righe, drawer riordinato con un solo "Aggiungi pagamento", collegamento della dashboard, telefono (righe a scheda, FAB filtri, nessuno sforamento). `npm run check` verde, 271 test. **Non verificato** con il volume reale di produzione.
+
+## Garden Planner → generatore: niente finestra nel browser, richiesta e allegato corretti — 6 ottobre
+
+Segnalazione dell'utente: dal Garden Planner, "Apri nel generatore" apriva Chrome e il preventivo diceva che il disegno non era associato perché c'era una richiesta collegata.
+
+**Cause**: (1) il planner incorporato nell'app (iframe della vista "garden-planner") usava `window.open(_blank)`, che dall'app installata apre il browser; idem "Apri nel Garden Planner" dal CRM. (2) Il generatore in modalità planner chiamava comunque `restoreSalesGeneratorLinkedRequest() || ensureSelectedSalesRequest()`, cioè l'ultima richiesta salvata nel browser o **la prima della lista CRM**; `buildGardenPlannerAttachment` la confrontava con `sourceRequestId` del disegno e bloccava l'allegato. (3) Più grave: nello stesso caso il pannello contatti mostrava WhatsApp/email di quel cliente sbagliato e `markSelectedSalesRequestQuoteSent` lo avrebbe segnato "Preventivo inviato".
+
+**Correzioni**:
+- `resolvePlannerLinkedRequest(bridge)`: in modalità planner la richiesta collegata è `bridge.sourceRequestId` (contatti da `findSalesRequestById` o, se non in memoria, dal prefill salvato dal CRM all'apertura del planner, solo se l'id coincide) oppure nessuna (disegno libero). Usata in `renderSalesGenerator` e `pushPlannerPrefillToGenerator`.
+- `buildGardenPlannerAttachment`: `associated` è vero in modalità planner (il preventivo nasce da quel disegno e la form è precompilata da lui) oppure con id richiesta coincidente. Fuori modalità planner un disegno rimasto nel browser resta bloccato come prima.
+- Planner incorporato: `handleOpenQuoteGenerator` invia `postMessage({type:"psi:garden-planner:open-generator"})` al genitore (stessa origine), che chiama `activatePlannerPrefill({force:true, openView:true})`; il disegno resta vivo nell'iframe. Fuori dall'app resta il comportamento precedente (finestra nuova).
+- CRM "Apri nel Garden Planner": apre la vista interna ricaricando l'iframe con `request=1&source=sales-request`, con conferma se un progetto era già aperto (il planner non salva i disegni).
+
+**Verificato** in locale: disegno libero e disegno da richiesta simulata, con una richiesta "sbagliata" salvata apposta nel browser. Nessuna finestra aperta, contatti giusti (o nessuno), pagina 3 inclusa senza avviso, disegno ancora aperto tornando al planner. 4 test nuovi (`test/garden-planner-generator-link.test.js`), `npm run check` verde (275). **Non verificato** con richieste CRM reali (Postgres non disponibile in locale) né dentro l'app installata.

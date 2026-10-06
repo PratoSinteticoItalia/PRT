@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261006-pagamenti-ordini-c";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261006-pagamenti-ordini-c";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261006-planner-generatore";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261006-planner-generatore";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261006-pagamenti-ordini-c";
+} from "./lib/order-money.js?v=20261006-planner-generatore";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261006-pagamenti-ordini-c";
+import { regionForCity } from "./lib/geo.js?v=20261006-planner-generatore";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261006-pagamenti-ordini-c";
+} from "./lib/shipping-eligibility.js?v=20261006-planner-generatore";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261006-pagamenti-ordini-c";
+} from "./lib/profit-split.js?v=20261006-planner-generatore";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261006-pagamenti-ordini-c";
+} from "./lib/preventivo-pricing.js?v=20261006-planner-generatore";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261006-pagamenti-ordini-c";
+} from "./lib/sales-assignment.js?v=20261006-planner-generatore";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261006-pagamenti-ordini-c";
+} from "./lib/surveys.js?v=20261006-planner-generatore";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261006-pagamenti-ordini-c";
+const APP_SHELL_VERSION = "20261006-planner-generatore";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2412,6 +2412,17 @@ async function enablePushNotificationsWithFeedback() {
   showToast(msg, tone);
   return status;
 }
+
+// Garden Planner incorporato (iframe della vista "garden-planner"): "Apri nel
+// generatore" chiede all'app di passare al generatore nella stessa finestra,
+// invece di aprirne una nuova (dall'app installata finiva nel browser) e
+// lasciando aperto il disegno nella sua vista.
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin) return;
+  if (event.data?.type !== "psi:garden-planner:open-generator") return;
+  if (!state.currentUser) return;
+  activatePlannerPrefill({ force: true, openView: true });
+});
 
 navigator.serviceWorker?.addEventListener("message", (event) => {
   if (event.data?.type === "NAVIGATE_TO_VIEW") {
@@ -5733,6 +5744,27 @@ function openSelectedSalesRequestInGardenPlanner() {
   try {
     window.localStorage.setItem(GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY, JSON.stringify(buildGardenPlannerRequestPrefill(request)));
   } catch {}
+  // Dentro l'app (vista "garden-planner"), non in una finestra nuova: dall'app
+  // installata una finestra _blank si apriva nel browser, e da lì anche il
+  // generatore. Il planner non salva il disegno: se ce n'è già uno aperto, lo
+  // si dice prima di sostituirlo.
+  const iframe = document.getElementById("garden-planner-iframe");
+  if (iframe && getAllowedViewsForRole().includes("garden-planner")) {
+    if (iframe.getAttribute("src") && !window.confirm(state.lang === "it"
+      ? "Il Garden Planner ha già un progetto aperto: verrà sostituito da uno nuovo per questa richiesta. Continuare?"
+      : "Garden Planner already has an open project: it will be replaced by a new one for this request. Continue?")) {
+      return false;
+    }
+    const embeddedUrl = new URL("./garden-planner.html", window.location.href);
+    embeddedUrl.searchParams.set("v", APP_SHELL_VERSION);
+    embeddedUrl.searchParams.set("shell", APP_SHELL_VERSION);
+    embeddedUrl.searchParams.set("request", "1");
+    embeddedUrl.searchParams.set("source", "sales-request");
+    embeddedUrl.searchParams.set("run", String(Date.now()));
+    iframe.src = embeddedUrl.toString();
+    setView("garden-planner");
+    return true;
+  }
   const targetUrl = new URL("./garden-planner.html", window.location.href);
   targetUrl.searchParams.set("v", APP_SHELL_VERSION);
   targetUrl.searchParams.set("shell", APP_SHELL_VERSION);
@@ -5742,10 +5774,44 @@ function openSelectedSalesRequestInGardenPlanner() {
   return true;
 }
 
+// Richiesta collegata quando il preventivo nasce da un disegno del Garden
+// Planner: quella da cui il disegno è stato aperto, oppure nessuna (disegno
+// libero). Mai l'ultima richiesta usata né la prima della lista CRM: oltre a
+// far fallire l'associazione dell'allegato, contatti WhatsApp/email e lo stato
+// "Preventivo inviato" sarebbero finiti su un altro cliente.
+function resolvePlannerLinkedRequest(bridge = getGardenPlannerQuoteBridge()) {
+  const requestId = String(bridge?.sourceRequestId || "").trim();
+  if (!requestId) {
+    state.selectedSalesRequestId = "";
+    state.selectedSalesRequestSnapshot = null;
+    return null;
+  }
+  state.selectedSalesRequestId = requestId;
+  const known = findSalesRequestById(requestId);
+  if (known) return rememberSelectedSalesRequest(known);
+  // Richiesta non ancora in memoria (CRM paginato): bastano i contatti con cui
+  // era stato aperto il planner, salvati dal CRM al momento dell'apertura.
+  try {
+    const prefill = JSON.parse(window.localStorage.getItem(GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY) || "null");
+    if (String(prefill?.requestId || "").trim() === requestId) {
+      return rememberSelectedSalesRequest({
+        id: requestId,
+        name: String(prefill.client || "").trim(),
+        surname: "",
+        city: String(prefill.city || "").trim(),
+        phone: String(prefill.phone || "").trim(),
+        email: String(prefill.email || "").trim(),
+      });
+    }
+  } catch {}
+  return null;
+}
+
 function pushPlannerPrefillToGenerator(force = false) {
   const bridge = getGardenPlannerQuoteBridge();
   const payload = bridge?.payload;
   if (!payload) return false;
+  resolvePlannerLinkedRequest(bridge);
   const plannerReport = buildSalesGeneratorPlannerReport(bridge);
   const signature = JSON.stringify({ source: "garden-planner", runId: Number(bridge?.runId || 0), payload });
   if (!force && state.lastSalesGeneratorSignature === signature) return true;
@@ -14978,9 +15044,11 @@ function renderSalesGenerator() {
     if (!ui.nativeForm.contains(document.activeElement)) renderNativePreventivoForm();
   }
   const generatorOnlyMode = state.currentUser?.role === "crew";
-  const selected = restoreSalesGeneratorLinkedRequest() || ensureSelectedSalesRequest({ keepMissingSelection: true });
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
   const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
+  const selected = plannerMode
+    ? resolvePlannerLinkedRequest(plannerBridge)
+    : (restoreSalesGeneratorLinkedRequest() || ensureSelectedSalesRequest({ keepMissingSelection: true }));
   updateGardenPlannerToggleAvailability();
   const freeMode = !generatorOnlyMode && state.salesGeneratorFreeMode && !plannerMode;
   const plannerMaterialsHtml = plannerMode ? renderSalesGeneratorPlannerMaterials(plannerBridge?.materialsReference) : "";
@@ -37017,7 +37085,13 @@ function buildGardenPlannerAttachment() {
   if (!bridge || !reportHtml) return { available: false, associated: false };
   const requestId = String(state.selectedSalesRequestId || "").trim();
   const sourceRequestId = String(bridge.sourceRequestId || "").trim();
-  const associated = !!(requestId && sourceRequestId && requestId === sourceRequestId);
+  // Modalità planner = il preventivo nasce da questo disegno (arrivo da "Apri
+  // nel generatore" o "Aggiorna dati planner"): la form è precompilata da lui e
+  // la richiesta collegata è forzata a quella del disegno (o nessuna, se il
+  // disegno è libero). Fuori da questa modalità resta il controllo stretto:
+  // un disegno rimasto nel browser non viene mai allegato a un altro cliente.
+  const associated = state.salesGeneratorPlannerMode
+    || !!(requestId && sourceRequestId && requestId === sourceRequestId);
   return {
     available: true,
     associated,
