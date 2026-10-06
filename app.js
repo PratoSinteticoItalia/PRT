@@ -1,4 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261006-contabilita-schede-c";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261006-pagamenti-ordini-c";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261006-pagamenti-ordini-c";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -14,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261006-contabilita-schede-c";
+} from "./lib/order-money.js?v=20261006-pagamenti-ordini-c";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261006-contabilita-schede-c";
+import { regionForCity } from "./lib/geo.js?v=20261006-pagamenti-ordini-c";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -35,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261006-contabilita-schede-c";
+} from "./lib/shipping-eligibility.js?v=20261006-pagamenti-ordini-c";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -46,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261006-contabilita-schede-c";
+} from "./lib/profit-split.js?v=20261006-pagamenti-ordini-c";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -61,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261006-contabilita-schede-c";
+} from "./lib/preventivo-pricing.js?v=20261006-pagamenti-ordini-c";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -69,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261006-contabilita-schede-c";
+} from "./lib/sales-assignment.js?v=20261006-pagamenti-ordini-c";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261006-contabilita-schede-c";
+} from "./lib/surveys.js?v=20261006-pagamenti-ordini-c";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -89,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261006-contabilita-schede-c";
+const APP_SHELL_VERSION = "20261006-pagamenti-ordini-c";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1361,7 +1362,11 @@ const state = {
     order: "all",
     warehouse: "all",
     installation: "all",
-    accounting: "all",
+    // Pagamenti ordini: stato (open|invoice|settled|all) + periodo + origine,
+    // tre filtri indipendenti (prima erano 7 pulsanti misti in un'unica fila).
+    accounting: "open",
+    accountingPeriod: "all",
+    accountingSource: "all",
     shipping: "all",
     ddt: "all",
     salesRequestAssignment: "all",
@@ -6570,12 +6575,10 @@ function getShippingRateMode() {
 }
 
 function getAccountingFilterLabel(filter = state.filters.accounting) {
-  if (filter === "open") return t("accountingOpen");
-  if (filter === "invoice") return state.lang === "it" ? "Da fatturare" : "To invoice";
-  if (filter === "shopify") return state.lang === "it" ? "Incassi Shopify" : "Shopify collections";
-  if (filter === "internalPending") return state.lang === "it" ? "Registrazione interna" : "Internal follow-up";
-  if (filter === "thisMonth") return state.lang === "it" ? "Questo mese" : "This month";
-  if (filter === "lastMonth") return state.lang === "it" ? "Mese scorso" : "Last month";
+  const it = state.lang === "it";
+  if (filter === "open") return it ? "Da incassare" : "To collect";
+  if (filter === "invoice") return it ? "Da fatturare" : "To invoice";
+  if (filter === "settled") return it ? "Saldati" : "Settled";
   return t("all");
 }
 
@@ -8247,8 +8250,13 @@ function getOrderNumber(order) {
 
 function getPaymentLabel(status) {
   const normalized = String(status || "").toLowerCase();
-  if (normalized.includes("paid")) return t("paid");
+  // "partially_paid" contiene "paid": il parziale va riconosciuto prima.
+  if (normalized.includes("refund")) {
+    if (normalized.includes("part")) return state.lang === "it" ? "Rimborso parziale" : "Partially refunded";
+    return state.lang === "it" ? "Rimborsato" : "Refunded";
+  }
   if (normalized.includes("part")) return t("partial");
+  if (normalized.includes("paid")) return t("paid");
   return t("pending");
 }
 
@@ -10432,7 +10440,38 @@ function getInventorySummary() {
 // Serve a renderShipping per pescare, SOLO per la corsia "Usciti/Ritirati" del
 // kanban "Tutti", lo stesso insieme ampio (svincolato dalla chiusura contabile)
 // che il filtro "completed" già usa — senza mutare state.filters.shipping.
+// Valori storici (prima un'unica fila di 7 pulsanti) riportati nelle tre
+// dimensioni attuali: collegamenti salvati/dashboard continuano a funzionare.
+function normalizeAccountingFilters() {
+  const f = state.filters;
+  if (f.accounting === "thisMonth" || f.accounting === "lastMonth") { f.accountingPeriod = f.accounting; f.accounting = "all"; }
+  if (f.accounting === "shopify") { f.accountingSource = "shopify"; f.accounting = "all"; }
+  if (f.accounting === "internalPending") { f.accountingSource = "manual"; f.accounting = "open"; }
+  if (!["open", "invoice", "settled", "all"].includes(f.accounting)) f.accounting = "all";
+  if (!["all", "thisMonth", "lastMonth"].includes(f.accountingPeriod)) f.accountingPeriod = "all";
+  if (!["all", "shopify", "manual"].includes(f.accountingSource)) f.accountingSource = "all";
+}
+
+function accountingOrderMatches(order, status) {
+  const open = getOpenBalance(order);
+  if (status === "open" && !(open > 0)) return false;
+  if (status === "invoice" && !(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)) return false;
+  if (status === "settled" && open > 0) return false;
+  const source = state.filters.accountingSource;
+  if (source === "shopify" && !isShopifyPaid(order)) return false;
+  if (source === "manual" && isShopifyPaid(order)) return false;
+  const period = state.filters.accountingPeriod;
+  if (period === "thisMonth" || period === "lastMonth") {
+    const now = new Date();
+    const target = period === "thisMonth" ? now : new Date(now.getFullYear(), now.getMonth() - 1, 15);
+    const created = new Date(order.createdAt || order.processedAt || 0);
+    if (created.getMonth() !== target.getMonth() || created.getFullYear() !== target.getFullYear()) return false;
+  }
+  return true;
+}
+
 function filterOrdersForView(kind, { filterOverride } = {}) {
+  if (kind === "accounting") normalizeAccountingFilters();
   const searchKey = kind === "order" ? "orders" : kind;
   const search = state.search[searchKey] || "";
   const filter = filterOverride !== undefined ? filterOverride : state.filters[kind === "order" ? "order" : kind];
@@ -10480,28 +10519,7 @@ function filterOrdersForView(kind, { filterOverride } = {}) {
       return true;
     }
     if (kind === "accounting") {
-      if (filter === "open") return getOpenBalance(order) > 0;
-      if (filter === "invoice") return Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
-      if (filter === "shopify") return getShopifyPaidAmount(order) > 0;
-      if (filter === "internalPending") {
-        return !isShopifyPaid(order) && (
-          getOpenBalance(order) > 0
-          || Boolean(order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued)
-        );
-      }
-      if (filter === "thisMonth") {
-        const now = new Date();
-        const orderDate = new Date(order.createdAt || 0);
-        return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
-      }
-      if (filter === "lastMonth") {
-        const now = new Date();
-        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-        const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-        const orderDate = new Date(order.createdAt || 0);
-        return orderDate.getMonth() === lastMonth && orderDate.getFullYear() === lastMonthYear;
-      }
-      return true;
+      return accountingOrderMatches(order, filter);
     }
     if (kind === "shipping") {
       const sample = isSampleOrder(order);
@@ -13629,6 +13647,8 @@ function openDashboardViewTarget(target) {
   if (nextView === "accounting") {
     showAccountingPane("payments");
     state.filters.accounting = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
+    state.filters.accountingPeriod = "all";
+    state.filters.accountingSource = "all";
     state.search.accounting = "";
     state.selectedOrderId = targetId;
     if (targetId && window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.accountingDrawerOpen = true;
@@ -18895,63 +18915,47 @@ function focusInventoryEntryForm() {
 
 function renderAccountingModels() {
   if (!ui.accountingModelsOverview) return;
-  const openOrders = state.orders.filter((order) => getOpenBalance(order) > 0);
-  const toInvoice = state.orders.filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
-  const paidOrders = state.orders.filter((order) => getOpenBalance(order) <= 0);
-  const totalToCollect = openOrders.reduce((sum, order) => sum + getOpenBalance(order), 0);
-  ui.accountingModelsOverview.innerHTML = `
-    <article class="accounting-summary-card acc-card-red">
-      <span class="panel-eyebrow">${t("toBeCollected")}</span>
-      <strong>${formatCurrency(totalToCollect)}</strong>
-      <p>${openOrders.length} ${t("openBalanceOrders")}</p>
-    </article>
-    <article class="accounting-summary-card acc-card-blue">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Da fatturare" : "To invoice"}</span>
-      <strong>${toInvoice.length}</strong>
-      <p>${t("invoiceOrders")}</p>
-    </article>
-    <article class="accounting-summary-card acc-card-green">
-      <span class="panel-eyebrow">${t("fullySettled")}</span>
-      <strong>${paidOrders.length}</strong>
-      <p>${t("settledOrders")}</p>
-    </article>
-  `;
+  const it = state.lang === "it";
+  const orders = state.orders || [];
+  const open = orders.filter((order) => getOpenBalance(order) > 0);
+  const toInvoice = orders.filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued);
+  const settled = orders.filter((order) => getOpenBalance(order) <= 0);
+  const openTotal = open.reduce((sum, order) => sum + getOpenBalance(order), 0);
+  const collected = orders.reduce((sum, order) => sum + getCollectedAmount(order), 0);
+  const gross = orders.reduce((sum, order) => sum + getOrderGrossTotal(order), 0);
+  const current = state.filters.accounting;
+  // Le card sono anche i filtri di stato: un numero si clicca e mostra chi c'è dietro.
+  const card = (filter, label, value, note, tone = "") => `
+    <button type="button" class="acl-card ${tone} ${current === filter ? "is-active" : ""}" data-accounting-kpi-filter="${filter}" aria-pressed="${current === filter}">
+      <small>${label}</small><strong>${value}</strong><p>${note}</p>
+    </button>`;
+  ui.accountingModelsOverview.innerHTML = [
+    card("open", it ? "Da incassare" : "To collect", formatCurrency(openTotal), it ? `${open.length} ordini con residuo aperto` : `${open.length} orders with an open balance`, openTotal > 0 ? "is-warn" : ""),
+    card("invoice", it ? "Da fatturare" : "To invoice", String(toInvoice.length), it ? "Fattura richiesta, non ancora emessa" : "Invoice requested, not issued yet", toInvoice.length ? "is-info" : ""),
+    card("settled", it ? "Saldati" : "Settled", String(settled.length), it ? "Ordini chiusi contabilmente" : "Orders fully settled"),
+    card("all", it ? "Incassato" : "Collected", formatCurrency(collected), it ? `su ${formatCurrency(gross)} di ordini · mostra tutti` : `of ${formatCurrency(gross)} ordered · show all`),
+  ].join("");
 }
 
 function renderAccountingAnalysis(orders) {
   if (!ui.accountingAnalysis) return;
-  const visibleCount = orders.length;
-  const totalValue = orders.reduce((sum, order) => sum + toNumber(order.total), 0);
-  const collectedTotal = orders.reduce((sum, order) => sum + getCollectedAmount(order), 0);
-  const openOrders = orders.filter((order) => getOpenBalance(order) > 0);
-  const openTotal = openOrders.reduce((sum, order) => sum + getOpenBalance(order), 0);
-  const averageOpen = openOrders.length ? openTotal / openOrders.length : 0;
-  const invoicePending = orders.filter((order) => order.accounting?.invoiceRequired && !order.accounting?.invoiceIssued).length;
-  const settledCount = orders.filter((order) => getOpenBalance(order) <= 0).length;
-  const searchActive = Boolean(String(state.search.accounting || "").trim());
-  const filterLabel = getAccountingFilterLabel();
+  const it = state.lang === "it";
+  const value = orders.reduce((sum, order) => sum + getOrderGrossTotal(order), 0);
+  const collected = orders.reduce((sum, order) => sum + getCollectedAmount(order), 0);
+  const open = orders.reduce((sum, order) => sum + getOpenBalance(order), 0);
+  const parts = [getAccountingFilterLabel()];
+  if (state.filters.accountingPeriod === "thisMonth") parts.push(it ? "questo mese" : "this month");
+  if (state.filters.accountingPeriod === "lastMonth") parts.push(it ? "mese scorso" : "last month");
+  if (state.filters.accountingSource === "shopify") parts.push(it ? "pagati su Shopify" : "paid on Shopify");
+  if (state.filters.accountingSource === "manual") parts.push(it ? "pagamenti gestiti a mano" : "manually tracked");
+  if (String(state.search.accounting || "").trim()) parts.push(it ? "ricerca attiva" : "search active");
   ui.accountingAnalysis.innerHTML = `
-    <article class="accounting-analysis-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Ordini visibili" : "Visible orders"}</span>
-      <strong>${visibleCount}</strong>
-      <p>${state.lang === "it" ? `Filtro: ${filterLabel}` : `Filter: ${filterLabel}`}${searchActive ? ` · ${state.lang === "it" ? "ricerca attiva" : "search active"}` : ""}</p>
-    </article>
-    <article class="accounting-analysis-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Valore ordini" : "Order value"}</span>
-      <strong>${formatCurrency(totalValue)}</strong>
-      <p>${state.lang === "it" ? "Totale lordo della vista corrente." : "Gross total in the current view."}</p>
-    </article>
-    <article class="accounting-analysis-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Incassato reale" : "Collected"}</span>
-      <strong>${formatCurrency(collectedTotal)}</strong>
-      <p>${state.lang === "it"
-        ? `${settledCount} ordini chiusi · Media ${formatCurrency(averageOpen)} · ${invoicePending} da fatturare`
-        : `${settledCount} orders settled · Average ${formatCurrency(averageOpen)} · ${invoicePending} to invoice`}</p>
-    </article>
-    <!-- Card "Residuo aperto" rimossa: stesso valore di "Da incassare" big KPI top.
-         Le sotto-info utili (media residuo, conteggio da fatturare) spostate sopra
-         su "Incassato reale". Fix #2 UX Ondata 2 (28 mag 2026). -->
-  `;
+    <div><h3>${orders.length} ${it ? (orders.length === 1 ? "ordine" : "ordini") : "orders"}</h3><p>${escapeHtml(parts.join(" · "))}</p></div>
+    <div class="acl-summary-figures">
+      <span><small>${it ? "Valore" : "Value"}</small>${formatCurrency(value)}</span>
+      <span><small>${it ? "Incassato" : "Collected"}</small>${formatCurrency(collected)}</span>
+      <span class="${open > 0 ? "is-open" : ""}"><small>${it ? "Residuo" : "Open"}</small>${formatCurrency(open)}</span>
+    </div>`;
 }
 
 function renderDdtPreview(order) {
@@ -24025,41 +24029,49 @@ document.addEventListener("click", (ev) => {
 
 function renderAccounting() {
   if (state.currentUser?.role === "office") mountAccountingWorkspace(document.getElementById("accounting-workspace"), state.orders, state.currentUser.id, { toast: showToast, onPaneChange: updateMobileFilterFabVisibility });
+  const allOrders = filterOrdersForView("accounting");
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
   });
-  const allOrders = filterOrdersForView("accounting");
+  const periodSelect = document.getElementById("accounting-period-filter");
+  if (periodSelect) periodSelect.value = state.filters.accountingPeriod;
+  const sourceSelect = document.getElementById("accounting-source-filter");
+  if (sourceSelect) sourceSelect.value = state.filters.accountingSource;
   renderAccountingModels();
   renderAccountingAnalysis(allOrders);
   const { pageItems, totalPages, totalItems } = paginateAccounting(allOrders);
+  const it = state.lang === "it";
+  const pill = (label, tone) => `<span class="acl-pill ${tone}">${escapeHtml(label)}</span>`;
+  const payTone = { paid: "ok", partial: "warn", pending: "danger", refunded: "subtle" };
   withScrollPreservation(ui.accountingList, () => {
   ui.accountingList.innerHTML = pageItems.length
-    ? pageItems.map((order) => {
-        const selected = order.id === state.selectedOrderId ? "selected" : "";
+    ? `<div class="acl-row acl-row-head" aria-hidden="true"><span>${it ? "Ordine" : "Order"}</span><span class="acl-num">${it ? "Totale" : "Total"}</span><span class="acl-num">${it ? "Incassato" : "Collected"}</span><span class="acl-num">${it ? "Residuo" : "Open"}</span><span>${it ? "Pagamento" : "Payment"}</span><span>${it ? "Fattura" : "Invoice"}</span></div>`
+      + pageItems.map((order) => {
+        const selected = order.id === state.selectedOrderId ? "is-selected" : "";
         const openBalance = getOpenBalance(order);
-        const billingHealth = getBillingCompleteness(order);
-        const collected = Math.max(getShopifyPaidAmount(order), getInternalPaidAmount(order));
-        const settled = openBalance <= 0 && collected > 0;
+        const payment = orderPaymentState(order);
+        const invoiceRequired = Boolean(order.accounting?.invoiceRequired);
+        // Avviso dati fiscali solo quando servono davvero (fattura richiesta e
+        // non ancora emessa): prima compariva su ogni ordine, anche senza fattura.
+        const fiscalGap = invoiceRequired && !order.accounting?.invoiceIssued && !getBillingCompleteness(order).complete;
+        const invoiceCell = invoiceRequired
+          ? (order.accounting?.invoiceIssued ? pill(it ? "Emessa" : "Issued", "ok") : pill(it ? "Da emettere" : "To issue", "info"))
+            + (fiscalGap ? `<small class="acl-warn">${it ? "Dati fiscali incompleti" : "Fiscal data incomplete"}</small>` : "")
+          : `<span class="acl-muted">${it ? "Non richiesta" : "Not requested"}</span>`;
+        const created = order.createdAt || order.processedAt;
+        const method = getEffectivePaymentMethod(order);
+        const meta = [getOrderNumber(order), created ? formatDate(created) : "", method === t("methodUnavailable") ? "" : method].filter(Boolean).join(" · ");
         return `
-          <article class="order-row accounting-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="accounting">
-            <div>
-              <div class="order-name">${composeClientName(order)} <small>${getOrderNumber(order)}</small></div>
-              <div class="order-meta">
-                ${getPaymentLabel(order.financialStatus)} &middot; ${getEffectivePaymentMethod(order)} &middot; ${isShopifyPaid(order) ? t("importedFromShopify") : t("internalAccountingPending")}
-                &middot; ${state.lang === "it" ? "Imponibile" : "Net"} ${getOrderNetDisplay(order)}
-                &middot; ${state.lang === "it" ? "IVA" : "VAT"} ${getOrderTaxDisplay(order)}
-                &middot; ${billingHealth.rowLabel}
-              </div>
-            </div>
-            <div class="order-amount-stack">
-              <div class="order-amount" style="color:${openBalance > 0 ? "#dc2626" : "#16a34a"}">${formatCurrency(openBalance)}</div>
-              <div class="action-badge accounting-status-chip ${settled ? "badge-success" : "badge-urgent"}">${settled ? (state.lang === "it" ? "Pagato" : "Paid") : (state.lang === "it" ? "Da incassare" : "To collect")}</div>
-            </div>
-            <div class="action-badge ${billingHealth.tone}">${billingHealth.label}</div>
-          </article>
-        `;
+          <article class="acl-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="accounting">
+            <div class="acl-order"><strong>${escapeHtml(composeClientName(order))}</strong><small>${escapeHtml(meta)}</small></div>
+            <div class="acl-num"><small>${it ? "Totale" : "Total"}</small>${formatCurrency(getOrderGrossTotal(order))}</div>
+            <div class="acl-num"><small>${it ? "Incassato" : "Collected"}</small>${formatCurrency(getCollectedAmount(order))}</div>
+            <div class="acl-num ${openBalance > 0 ? "is-open" : ""}"><small>${it ? "Residuo" : "Open"}</small>${formatCurrency(openBalance)}</div>
+            <div class="acl-status"><small>${it ? "Pagamento" : "Payment"}</small>${pill(payment.label, payTone[payment.key] || "subtle")}</div>
+            <div class="acl-status"><small>${it ? "Fattura" : "Invoice"}</small>${invoiceCell}</div>
+          </article>`;
       }).join("")
-    : `<div class="info-card">${state.lang === "it" ? "Nessun ordine in contabilità con questo filtro." : "No accounting orders for this filter."}</div>`;
+    : `<div class="acl-empty">${it ? "Nessun ordine con questi filtri." : "No orders match these filters."}</div>`;
   });
 
   if (ui.accountingPagination) {
@@ -24088,7 +24100,9 @@ function renderAccounting() {
     refreshOrderFromShopify(order.id);
   }
   ui.accountingDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
-  ui.accountingForm.paymentMethod.value = getEffectivePaymentMethod(order);
+  // Solo il metodo vero: il testo di ripiego ("Metodo non disponibile") finiva
+  // nel campo e veniva salvato come se fosse un metodo.
+  ui.accountingForm.paymentMethod.value = order.accounting?.paymentMethod || order.paymentMethod || "";
   ui.accountingForm.invoiceRequired.value = order.accounting?.invoiceRequired ? "yes" : "no";
   ui.accountingForm.invoiceIssued.value = order.accounting?.invoiceIssued ? "yes" : "no";
   ui.accountingForm.accountingNote.value = order.accounting?.accountingNote || "";
@@ -24145,7 +24159,7 @@ function renderAccounting() {
     `,
     `
       <div class="detail-section">
-        <div class="detail-section-title">${state.lang === "it" ? "Pagamenti registrati" : "Recorded payments"}</div>
+        <div class="detail-section-title">${state.lang === "it" ? "Situazione incassi" : "Payment status"}</div>
         <div class="tranche-list">
           ${trancheRows.map(row => `
             <div class="tranche-row">
@@ -37215,13 +37229,19 @@ ui.installationFilterTags.forEach((button) => button.addEventListener("click", (
   ui.installationFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
   renderInstallations();
 }));
-ui.accountingFilterTags.forEach((button) => button.addEventListener("click", () => {
-  state.filters.accounting = button.dataset.accountingFilter;
+function setAccountingFilter(key, value) {
+  state.filters[key] = value;
   state.accountingPage = 1;
   state.accountingDrawerOpen = false; // cambio filtro → chiudi il drawer
-  ui.accountingFilterTags.forEach((item) => item.classList.toggle("is-active", item === button));
   renderAccounting();
-}));
+}
+ui.accountingFilterTags.forEach((button) => button.addEventListener("click", () => setAccountingFilter("accounting", button.dataset.accountingFilter)));
+ui.accountingModelsOverview?.addEventListener("click", (event) => {
+  const card = event.target.closest("[data-accounting-kpi-filter]");
+  if (card) setAccountingFilter("accounting", card.dataset.accountingKpiFilter);
+});
+document.getElementById("accounting-period-filter")?.addEventListener("change", (event) => setAccountingFilter("accountingPeriod", event.target.value));
+document.getElementById("accounting-source-filter")?.addEventListener("change", (event) => setAccountingFilter("accountingSource", event.target.value));
 if (ui.shippingFilterTags?.length) {
   ui.shippingFilterTags.forEach((button) => button.addEventListener("click", () => {
     state.filters.shipping = button.dataset.shippingFilter;

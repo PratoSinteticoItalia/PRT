@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261006-contabilita-schede-c" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261006-contabilita-schede-c" />
+    <link rel="preload" href="./styles.css?v=20261006-pagamenti-ordini-c" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261006-pagamenti-ordini-c" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1713,36 +1713,47 @@
               <h1>Contabilità</h1>
               <div class="page-header-sub">Prima nota, corrispettivi, chiusure e pagamenti degli ordini</div>
             </div>
-            <div class="detail-actions">
-              <button id="export-csv-button" class="btn" type="button">Export CSV</button>
-              <button id="export-pdf-button" class="btn" type="button">Export PDF</button>
-            </div>
           </div>
 
           <div id="accounting-workspace"></div>
           <div id="accounting-legacy" class="accounting-legacy">
-          <div class="acc-section-head">
-            <h2>Pagamenti ordini</h2>
-            <p>Tranche, saldi e fatturazione del singolo ordine.</p>
-          </div>
-          <div id="accounting-models-overview" class="acc-kpi"></div>
-          <div id="accounting-analysis" class="accounting-analysis"></div>
-
-          <div class="view-toolbar">
-            <label class="field toolbar-input view-search-field">
-              <span class="hidden">Cerca contabilità</span>
-              <input id="accounting-search" class="text-input view-search-input" placeholder="Cerca cliente, ordine o pagamento" />
-            </label>
-            <div class="filter-bar">
-              <button class="filter-btn accounting-filter-tag is-active" data-accounting-filter="all">Tutti</button>
-              <button class="filter-btn accounting-filter-tag" data-accounting-filter="open">Saldo aperto</button>
-              <button class="filter-btn accounting-filter-tag" data-accounting-filter="invoice">Da fatturare</button>
-              <button class="filter-btn accounting-filter-tag" data-accounting-filter="shopify">Incassi Shopify</button>
-              <button class="filter-btn accounting-filter-tag" data-accounting-filter="internalPending">Interno</button>
-              <button class="filter-btn accounting-filter-tag" data-accounting-filter="thisMonth">Questo mese</button>
-              <button class="filter-btn accounting-filter-tag" data-accounting-filter="lastMonth">Mese scorso</button>
+          <div class="acc-section-head acl-heading">
+            <div>
+              <div class="acl-eyebrow">Crediti e fatturazione</div>
+              <h2>Pagamenti ordini</h2>
+              <p>Registra acconti, saldi e fattura del singolo ordine: chi deve ancora pagare, cosa va fatturato, cosa è chiuso.</p>
+            </div>
+            <div class="acl-actions">
+              <button id="export-csv-button" class="acl-btn" type="button">Export CSV</button>
+              <button id="export-pdf-button" class="acl-btn" type="button">Export PDF</button>
             </div>
           </div>
+          <div id="accounting-models-overview" class="acl-cards"></div>
+
+          <section class="acl-panel">
+          <div class="view-toolbar acl-toolbar">
+            <label class="field toolbar-input view-search-field">
+              <span class="hidden">Cerca contabilità</span>
+              <input id="accounting-search" class="text-input view-search-input" placeholder="Cerca cliente, numero ordine o telefono" />
+            </label>
+            <div class="filter-bar acl-segmented" role="group" aria-label="Stato del pagamento">
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="open">Da incassare</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="invoice">Da fatturare</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="settled">Saldati</button>
+              <button class="filter-btn accounting-filter-tag" data-accounting-filter="all">Tutti</button>
+            </div>
+            <select id="accounting-period-filter" class="acl-select" aria-label="Periodo">
+              <option value="all">Tutti i periodi</option>
+              <option value="thisMonth">Questo mese</option>
+              <option value="lastMonth">Mese scorso</option>
+            </select>
+            <select id="accounting-source-filter" class="acl-select" aria-label="Origine del pagamento">
+              <option value="all">Tutte le origini</option>
+              <option value="shopify">Pagati su Shopify</option>
+              <option value="manual">Pagamenti gestiti a mano</option>
+            </select>
+          </div>
+          <div id="accounting-analysis" class="acl-summary"></div>
 
           <div class="order-grid">
             <div>
@@ -1767,6 +1778,7 @@
 
               <form id="accounting-form" class="inline-form-grid">
                 <div class="accounting-pane-group field-full" data-accounting-pane="payments">
+                  <div class="detail-section-title acl-form-title">Registra pagamenti</div>
                   <label class="field">
                     <span>Metodo utilizzato</span>
                     <input class="text-input" name="paymentMethod" placeholder="Carta, bonifico, PayPal..." />
@@ -1778,6 +1790,7 @@
                   </div>
                 </div>
                 <div class="accounting-pane-group field-full" data-accounting-pane="billing">
+                  <div class="detail-section-title acl-form-title">Fattura e note</div>
                   <label class="field">
                     <span>Fattura richiesta</span>
                     <select class="text-input" name="invoiceRequired">
@@ -1805,6 +1818,7 @@
               <div id="accounting-meta" class="detail-stack accounting-pane-group" data-accounting-pane="summary"></div>
             </section>
           </div>
+          </section>
           </div>
         </section>
 
@@ -2749,7 +2763,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261006-contabilita-schede-c" defer></script>
-    <script src="./app.js?v=20261006-contabilita-schede-c" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261006-pagamenti-ordini-c" defer></script>
+    <script src="./app.js?v=20261006-pagamenti-ordini-c" type="module"></script>
   </body>
 </html>
