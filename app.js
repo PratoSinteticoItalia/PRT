@@ -1,4 +1,4 @@
-import { mountAccountingWorkspace } from "./lib/accounting-workspace.js";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261006-contabilita-schede-c";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -14,9 +14,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261005-accounting-register";
+} from "./lib/order-money.js?v=20261006-contabilita-schede-c";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261005-accounting-register";
+import { regionForCity } from "./lib/geo.js?v=20261006-contabilita-schede-c";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -35,7 +35,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261005-accounting-register";
+} from "./lib/shipping-eligibility.js?v=20261006-contabilita-schede-c";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -46,7 +46,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261005-accounting-register";
+} from "./lib/profit-split.js?v=20261006-contabilita-schede-c";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -61,7 +61,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261005-accounting-register";
+} from "./lib/preventivo-pricing.js?v=20261006-contabilita-schede-c";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -69,13 +69,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261005-accounting-register";
+} from "./lib/sales-assignment.js?v=20261006-contabilita-schede-c";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261005-accounting-register";
+} from "./lib/surveys.js?v=20261006-contabilita-schede-c";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -89,7 +89,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261005-accounting-register";
+const APP_SHELL_VERSION = "20261006-contabilita-schede-c";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2588,10 +2588,14 @@ function closeMobileFilterSheet() {
 function updateMobileFilterFabVisibility() {
   const fab = ui.mobileFilterFab;
   if (!fab) return;
-  const hasConfig = Boolean(getCurrentMobileFilterConfig());
+  const config = getCurrentMobileFilterConfig();
   const isMobile = window.innerWidth <= MOBILE_DRILL_BREAKPOINT;
   const inDrillDown = Boolean(state.mobileDrillDetail);
-  const visible = hasConfig && isMobile && !inDrillDown;
+  // Niente FAB se la toolbar del modulo non è a schermo (es. Contabilità su
+  // una scheda diversa da "Pagamenti ordini"), salvo sheet già aperto.
+  const toolbarShown = Boolean(_mobileFilterSheetState)
+    || Boolean(config && document.querySelector(config.toolbarSelector)?.offsetParent);
+  const visible = Boolean(config) && isMobile && !inDrillDown && toolbarShown;
   fab.hidden = !visible;
 }
 
@@ -13623,6 +13627,7 @@ function openDashboardViewTarget(target) {
     }
   }
   if (nextView === "accounting") {
+    showAccountingPane("payments");
     state.filters.accounting = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
     state.search.accounting = "";
     state.selectedOrderId = targetId;
@@ -24019,7 +24024,7 @@ document.addEventListener("click", (ev) => {
 });
 
 function renderAccounting() {
-  if (state.currentUser?.role === "office") mountAccountingWorkspace(document.getElementById("accounting-workspace"), state.orders, state.currentUser.id);
+  if (state.currentUser?.role === "office") mountAccountingWorkspace(document.getElementById("accounting-workspace"), state.orders, state.currentUser.id, { toast: showToast, onPaneChange: updateMobileFilterFabVisibility });
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
   });
@@ -34279,6 +34284,8 @@ function handleGlobalClick(event) {
     // Logistica kanban: cliccando una card si apre il drawer dettaglio a destra.
     if (nextView === "shipping") state.shippingDrawerOpen = true;
     if (nextView === "accounting") {
+      // Il dettaglio ordine vive nella scheda "Pagamenti ordini" della Contabilità.
+      showAccountingPane("payments");
       state.accountingMobilePane = "summary";
       // Desktop/tablet: cliccando una riga si apre il drawer dettaglio a destra
       // (su mobile <=768px resta il layout impilato).
