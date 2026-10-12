@@ -261,6 +261,10 @@ function parsePsiLeadEmail({ subject, fromEmail, fromName, receivedAt, bodyText,
   return { payload, status, errors };
 }
 
+// Ora di caricamento del modulo (≈ avvio del processo): serve a distinguere
+// "sta partendo" da "non è mai partito" (vedi health "stopped").
+const MODULE_LOADED_AT = Date.now();
+
 let workerState = {
   running: false,
   lastPollAt: null,
@@ -576,9 +580,14 @@ function getImapWorkerStatus() {
     health = "ok";
   } else if (lastSuccessMs && now - lastSuccessMs < staleWindowMs) {
     health = "stale";
-  } else if (workerState.running || cfg.enabled) {
-    // Worker partito ma nessun polling ancora completato (fase di warmup)
-    health = "warmup";
+  } else if (!workerState.running) {
+    // Abilitato ma mai avviato: l'8 ott 2026 è rimasto così per 4 giorni
+    // mostrando "warmup" (avvio in corso), mentre le email si accumulavano.
+    health = now - MODULE_LOADED_AT > 3 * 60_000 ? "stopped" : "warmup";
+  } else if (lastPollMs || lastSuccessMs) {
+    health = "stale";
+  } else {
+    health = now - MODULE_LOADED_AT > 3 * 60_000 ? "stale" : "warmup";
   }
   // Debug log non rumoroso: solo se health è "unknown" (situazione anomala)
   if (health === "unknown") {
@@ -603,6 +612,7 @@ function getImapWorkerStatus() {
     mailbox: cfg.mailbox,
     pollIntervalMs: cfg.pollIntervalMs,
     autoPromote: cfg.autoPromote,
+    processStartedAt: new Date(MODULE_LOADED_AT).toISOString(),
     lastPollAt: workerState.lastPollAt,
     lastSuccessAt: workerState.lastSuccessAt,
     lastError: workerState.lastError,

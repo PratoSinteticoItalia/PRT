@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261006-planner-generatore";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261006-planner-generatore";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261012-lettura-contatti";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261012-lettura-contatti";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261006-planner-generatore";
+} from "./lib/order-money.js?v=20261012-lettura-contatti";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261006-planner-generatore";
+import { regionForCity } from "./lib/geo.js?v=20261012-lettura-contatti";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261006-planner-generatore";
+} from "./lib/shipping-eligibility.js?v=20261012-lettura-contatti";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261006-planner-generatore";
+} from "./lib/profit-split.js?v=20261012-lettura-contatti";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261006-planner-generatore";
+} from "./lib/preventivo-pricing.js?v=20261012-lettura-contatti";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261006-planner-generatore";
+} from "./lib/sales-assignment.js?v=20261012-lettura-contatti";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261006-planner-generatore";
+} from "./lib/surveys.js?v=20261012-lettura-contatti";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261006-planner-generatore";
+const APP_SHELL_VERSION = "20261012-lettura-contatti";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1354,6 +1354,7 @@ const state = {
   lastSalesGeneratorBrandingSignature: "",
   salesGeneratorFreeMode: false,
   salesGeneratorPlannerMode: false,
+  leadIntakeStatus: null, // stato lettore contatti@ (avviso in Richieste), solo ufficio
   lastAccountsManagerSignature: "",
   catalogCrews: [],
   catalogSalesAssignments: [],
@@ -14707,7 +14708,42 @@ function handleCrmV2RecordDeleted(payload = {}) {
   }
 }
 
+// Avviso in Richieste quando il lettore della casella contatti@ è fermo o in
+// errore: l'8 ott 2026 è rimasto spento 4 giorni senza che nulla lo segnalasse
+// (le richieste dal sito semplicemente smettevano di arrivare).
+let leadIntakeStatusFetchedAt = 0;
+let leadIntakeStatusInFlight = false;
+function refreshLeadIntakeStatus({ force = false } = {}) {
+  if (state.currentUser?.role !== "office") return;
+  if (leadIntakeStatusInFlight || (!force && Date.now() - leadIntakeStatusFetchedAt < 5 * 60_000)) return;
+  leadIntakeStatusInFlight = true;
+  apiFetch("/api/sales/lead-intake-status", { timeoutMs: 15_000 })
+    .then((status) => { state.leadIntakeStatus = status; leadIntakeStatusFetchedAt = Date.now(); })
+    .catch(() => { state.leadIntakeStatus = null; leadIntakeStatusFetchedAt = Date.now(); })
+    .finally(() => { leadIntakeStatusInFlight = false; renderLeadIntakeAlert(); });
+}
+
+function renderLeadIntakeAlert() {
+  const box = document.getElementById("lead-intake-alert");
+  if (!box) return;
+  const status = state.currentUser?.role === "office" ? state.leadIntakeStatus : null;
+  const problem = status && status.enabled && ["stopped", "error", "stale"].includes(status.health);
+  box.hidden = !problem;
+  if (!problem) { box.innerHTML = ""; return; }
+  const it = state.lang === "it";
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleString(it ? "it-IT" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : (it ? "mai" : "never"));
+  const title = status.health === "error"
+    ? (it ? "Errore nella lettura delle nuove richieste da contatti@" : "Error reading new requests from contatti@")
+    : (it ? "La lettura delle nuove richieste da contatti@ è ferma" : "New requests from contatti@ are not being read");
+  const detail = it
+    ? `Ultima email importata: ${fmt(status.lastEmailSeenAt)}. Le email restano nella casella e vengono recuperate appena la lettura riparte (riavvio del servizio su Render).`
+    : `Last imported email: ${fmt(status.lastEmailSeenAt)}. Emails stay in the mailbox and are recovered as soon as reading resumes (restart the service on Render).`;
+  box.innerHTML = `<strong>⚠ ${escapeHtml(title)}</strong><span>${escapeHtml(detail)}${status.lastError ? ` ${escapeHtml(it ? "Errore:" : "Error:")} ${escapeHtml(status.lastError)}` : ""}</span>`;
+}
+
 function renderSalesRequests() {
+  refreshLeadIntakeStatus();
+  renderLeadIntakeAlert();
   // Il rivenditore non usa il CRM interno (kanban, dedup, automazioni,
   // assegnazione Ivan/Gabriele) — vista dedicata, molto più semplice,
   // sullo stesso endpoint /api/sales/requests ma già scoped lato server.
@@ -26956,6 +26992,8 @@ function applySessionPayload(session = {}) {
     ? normalizeSalesContentCategoryFilter(state.salesContentCategory || "all")
     : "all";
   if (userChanged) {
+    state.leadIntakeStatus = null;
+    leadIntakeStatusFetchedAt = 0;
     state.lastSalesGeneratorSignature = "";
     state.lastSalesGeneratorBrandingSignature = "";
     state.selectedSalesRequestSnapshot = null;
