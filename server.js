@@ -9701,6 +9701,8 @@ async function getImapDiagnosticSnapshot() {
     enabled: status.enabled,
     configured: status.configured,
     running: status.running,
+    health: status.health,
+    processStartedAt: status.processStartedAt,
     host: status.host,
     user: status.user,
     mailbox: status.mailbox,
@@ -14692,6 +14694,31 @@ async function handleApi(req, res, url) {
   // Endpoint debug per ispezionare i valori interni del worker IMAP.
   // Risolve il caso "Stato sconosciuto" mostrato nel diagnostic frontend:
   // dump diretto di cfg, workerState e valori calcolati dalla health logic.
+  // Stato del lettore email contatti@ per l'avviso in Richieste: leggero
+  // (stato in memoria + una sola MAX), interrogato dal client ogni pochi minuti.
+  if (url.pathname === "/api/sales/lead-intake-status" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const status = getImapWorkerStatus();
+    let lastEmailSeenAt = null;
+    try {
+      const pool = await getPgPool();
+      if (pool) {
+        const last = await pool.query("SELECT MAX(received_at) AS last FROM incoming_leads_shadow");
+        lastEmailSeenAt = last.rows?.[0]?.last || null;
+      }
+    } catch { /* tabella assente o DB irraggiungibile: resta null */ }
+    return sendJson(res, 200, {
+      health: status.health,
+      enabled: status.enabled,
+      running: status.running,
+      processStartedAt: status.processStartedAt,
+      lastSuccessAt: status.lastSuccessAt,
+      lastError: status.lastError ? String(status.lastError).slice(0, 200) : null,
+      lastEmailSeenAt,
+    });
+  }
+
   if (url.pathname === "/api/sales/imap-debug" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -20559,6 +20586,90 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// Servizi in background che dipendono dallo schema relazionale (lettore email
+// contatti@, outbox, monitor presenze, riconciliazioni...). Prima partivano
+// solo se il PRIMO tentativo di ensureRelationalSchema all'avvio riusciva: un
+// riavvio con il database momentaneamente irraggiungibile (8 ott 2026) li ha
+// lasciati spenti per giorni, senza avvisi — nessuna nuova richiesta dal sito.
+let relationalBackgroundServicesStarted = false;
+async function startRelationalBackgroundServices(reason = "schema-ok") {
+  if (relationalBackgroundServicesStarted) return;
+  relationalBackgroundServicesStarted = true;
+  console.log(`[startup] avvio servizi in background (${reason})`);
+  // Backfill coverage planner: se SQL è vuoto, salva il valore dal blob
+  const existing = await getCoveragePlannerFromDb().catch(() => null);
+  if (!existing) {
+    const rawStore = await readJson(STORE_PATH, {}).catch(() => ({}));
+    if (rawStore.coveragePlanner) {
+      await saveCoveragePlannerToDb(normalizeCoveragePlanner(rawStore.coveragePlanner)).catch(() => {});
+      console.log("[db] backfill coverage_planner: salvato da blob a SQL");
+    }
+  }
+  // IMAP shadow worker (Fase 1 migrazione lead). Resta dormant se
+  // IMAP_SHADOW_ENABLED!=true o se credenziali mancanti.
+  try {
+    const pool = await getPgPool();
+    if (pool) startImapWorker(pool);
+  } catch (err) {
+    console.warn("[imap-worker] start failed:", err?.message || err);
+  }
+  // Persistent outbox processor (Step 1). Lavora i job pendenti
+  // ogni 30s. Handler registrati in Step 2 vicino agli use case.
+  try { startOutboxProcessor(30_000); }
+  catch (err) { console.warn("[outbox] start failed:", err?.message || err); }
+  // Avviso "mancata timbratura": solo Postgres (come tutto il modulo timesheet).
+  try { startAttendanceMonitor(60 * 60_000); }
+  catch (err) { console.warn("[attendance-monitor] start failed:", err?.message || err); }
+  // Scalda la cache dei commerciali assegnabili (catalogo "sales_assignment"):
+  // senza questo, all'avvio l'assegnazione CRM a un commerciale aggiunto
+  // dall'ufficio (oltre a Ivan/Gabriele) fallirebbe finché non arriva la
+  // prima scrittura sul catalogo.
+  refreshSalesAssignmentCatalogCache()
+    .catch((err) => console.warn("[sales-assignment-catalog] warm-up failed:", err?.message || err));
+  // Backfill campi inventario mancanti in SQL (sqm, note, residuo da
+  // taglio...): una sola volta nella vita del database (marcatore
+  // persistito, vedi commento sulla funzione), lanciata all'avvio
+  // invece che dentro /api/session.
+  backfillInventoryRelationalFields()
+    .catch((err) => console.warn("[db] backfillInventoryRelationalFields startup run failed:", err?.message || err));
+  // Backfill una-tantum: allinea le pose i cui segnali di campo (eventi
+  // cantiere / verbali) sono anteriori all'avanzamento automatico e sono
+  // quindi rimaste bloccate su "Programmato".
+  reconcileInstallationStatusesFromField()
+    .catch((err) => console.warn("[reconcile-install] startup run failed:", err?.message || err));
+  // Automazioni richieste: collega richieste↔ordini via telefono.
+  try { startSalesRequestOrderLinkReconciler(10 * 60_000); }
+  catch (err) { console.warn("[sales-requests] link reconciler start failed:", err?.message || err); }
+  // Pulizia una-tantum: rimuove le notifiche "richiesta fredda" già
+  // generate dal checker rimosso (aveva intasato il centro notifiche
+  // contro il backlog storico).
+  purgeSalesRequestStaleNotifications()
+    .catch((err) => console.warn("[sales-requests] purge stale notifications startup run failed:", err?.message || err));
+}
+
+async function bootstrapRelationalSchemaWithRetry(attempt = 1) {
+  if (attempt === 1) {
+    // Rete di sicurezza: se lo schema resta bloccato (query appesa), dopo 5
+    // minuti i servizi partono comunque — su un database già in uso le tabelle
+    // esistono, e ogni servizio gestisce da sé i propri errori.
+    setTimeout(() => {
+      if (!relationalBackgroundServicesStarted) {
+        console.warn("[startup] schema relazionale non pronto dopo 5 minuti: avvio i servizi in background comunque");
+        startRelationalBackgroundServices("timeout-schema").catch((err) => console.error("[startup] servizi in background:", err?.message || err));
+      }
+    }, 5 * 60_000).unref?.();
+  }
+  try {
+    await ensureRelationalSchema();
+  } catch (err) {
+    const delayMs = Math.min(10 * 60_000, 15_000 * 2 ** Math.min(attempt - 1, 6));
+    console.error(`[db] relational schema init failed (tentativo ${attempt}), nuovo tentativo tra ${Math.round(delayMs / 1000)}s:`, err?.message || err);
+    setTimeout(() => { void bootstrapRelationalSchemaWithRetry(attempt + 1); }, delayMs);
+    return;
+  }
+  await startRelationalBackgroundServices().catch((err) => console.error("[startup] servizi in background:", err?.message || err));
+}
+
 server.listen(PORT, HOST, () => {
   console.log(`Vertex Ops backend running on http://${HOST}:${PORT}`);
   // Avvia listener PG per invalidazione cache cross-istanza
@@ -20592,60 +20703,9 @@ server.listen(PORT, HOST, () => {
   // Pre-carica file statici e store in RAM all'avvio — la prima richiesta è già veloce
   preloadStaticFiles().catch((err) => console.error("[static-cache] preload failed", err));
   if (USE_POSTGRES) {
-    // Crea le tabelle relazionali se non esistono (idempotente)
-    ensureRelationalSchema()
-      .then(async () => {
-        // Backfill coverage planner: se SQL è vuoto, salva il valore dal blob
-        const existing = await getCoveragePlannerFromDb().catch(() => null);
-        if (!existing) {
-          const rawStore = await readJson(STORE_PATH, {}).catch(() => ({}));
-          if (rawStore.coveragePlanner) {
-            await saveCoveragePlannerToDb(normalizeCoveragePlanner(rawStore.coveragePlanner)).catch(() => {});
-            console.log("[db] backfill coverage_planner: salvato da blob a SQL");
-          }
-        }
-        // IMAP shadow worker (Fase 1 migrazione lead). Resta dormant se
-        // IMAP_SHADOW_ENABLED!=true o se credenziali mancanti.
-        try {
-          const pool = await getPgPool();
-          if (pool) startImapWorker(pool);
-        } catch (err) {
-          console.warn("[imap-worker] start failed:", err?.message || err);
-        }
-        // Persistent outbox processor (Step 1). Lavora i job pendenti
-        // ogni 30s. Handler registrati in Step 2 vicino agli use case.
-        try { startOutboxProcessor(30_000); }
-        catch (err) { console.warn("[outbox] start failed:", err?.message || err); }
-        // Avviso "mancata timbratura": solo Postgres (come tutto il modulo timesheet).
-        try { startAttendanceMonitor(60 * 60_000); }
-        catch (err) { console.warn("[attendance-monitor] start failed:", err?.message || err); }
-        // Scalda la cache dei commerciali assegnabili (catalogo "sales_assignment"):
-        // senza questo, all'avvio l'assegnazione CRM a un commerciale aggiunto
-        // dall'ufficio (oltre a Ivan/Gabriele) fallirebbe finché non arriva la
-        // prima scrittura sul catalogo.
-        refreshSalesAssignmentCatalogCache()
-          .catch((err) => console.warn("[sales-assignment-catalog] warm-up failed:", err?.message || err));
-        // Backfill campi inventario mancanti in SQL (sqm, note, residuo da
-        // taglio...): una sola volta nella vita del database (marcatore
-        // persistito, vedi commento sulla funzione), lanciata all'avvio
-        // invece che dentro /api/session.
-        backfillInventoryRelationalFields()
-          .catch((err) => console.warn("[db] backfillInventoryRelationalFields startup run failed:", err?.message || err));
-        // Backfill una-tantum: allinea le pose i cui segnali di campo (eventi
-        // cantiere / verbali) sono anteriori all'avanzamento automatico e sono
-        // quindi rimaste bloccate su "Programmato".
-        reconcileInstallationStatusesFromField()
-          .catch((err) => console.warn("[reconcile-install] startup run failed:", err?.message || err));
-        // Automazioni richieste: collega richieste↔ordini via telefono.
-        try { startSalesRequestOrderLinkReconciler(10 * 60_000); }
-        catch (err) { console.warn("[sales-requests] link reconciler start failed:", err?.message || err); }
-        // Pulizia una-tantum: rimuove le notifiche "richiesta fredda" già
-        // generate dal checker rimosso (aveva intasato il centro notifiche
-        // contro il backlog storico).
-        purgeSalesRequestStaleNotifications()
-          .catch((err) => console.warn("[sales-requests] purge stale notifications startup run failed:", err?.message || err));
-      })
-      .catch((err) => console.error("[db] relational schema init failed", err));
+    // Crea le tabelle relazionali (idempotente) e poi avvia i servizi in
+    // background che ne dipendono, riprovando finché riesce.
+    void bootstrapRelationalSchemaWithRetry();
     readJson(STORE_PATH, {}).catch((err) => console.error("[store-cache] warm-up failed", err));
   }
   // Cron programmazione marketing (IG/FB): pubblica i post all'ora scelta.

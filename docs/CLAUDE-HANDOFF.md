@@ -271,3 +271,17 @@ Segnalazione dell'utente: dal Garden Planner, "Apri nel generatore" apriva Chrom
 - CRM "Apri nel Garden Planner": apre la vista interna ricaricando l'iframe con `request=1&source=sales-request`, con conferma se un progetto era già aperto (il planner non salva i disegni).
 
 **Verificato** in locale: disegno libero e disegno da richiesta simulata, con una richiesta "sbagliata" salvata apposta nel browser. Nessuna finestra aperta, contatti giusti (o nessuno), pagina 3 inclusa senza avviso, disegno ancora aperto tornando al planner. 4 test nuovi (`test/garden-planner-generator-link.test.js`), `npm run check` verde (275). **Non verificato** con richieste CRM reali (Postgres non disponibile in locale) né dentro l'app installata.
+
+## Richieste dal sito ferme dall'8 ottobre: lettore contatti@ mai ripartito — 12 ottobre
+
+Segnalazione dell'utente: nessuna nuova richiesta in CRM dall'8 ottobre, mentre in `contatti@` ne erano arrivate ~40 (insieme a un'email di Render sul database gratuito `psi-ops-db-staging`, **non collegata**: produzione usa un database a pagamento).
+
+**Diagnosi in produzione** (`/api/sales/imap-debug`, `/api/sales/requests/diagnostic`): lettore IMAP `enabled`/`configured` ma `running:false`, `lastPollAt:null`, `totalSeen:0`, health "warmup"; ultima email letta 2026-10-08 11:54 UTC. Nessun deploy dal 6 ottobre (`server.js` invariato dal 5): il processo si è riavviato da solo l'8 e a quell'avvio `ensureRelationalSchema()` ha fallito. La catena di avvio era `ensureRelationalSchema().then(avvia servizi).catch(log)`: **un solo tentativo**, quindi lettore IMAP, outbox, monitor presenze, riconciliatore richieste↔ordini ecc. sono rimasti spenti per tutta la vita del processo, mentre le chiamate API successive (che ritentano lo schema da sole) funzionavano e nascondevano il problema.
+
+**Correzioni**:
+- `bootstrapRelationalSchemaWithRetry()` riprova lo schema con backoff (15 s → max 10 min) e poi chiama `startRelationalBackgroundServices()` (idempotente, contiene il blocco che prima stava nel `.then`). Rete di sicurezza: se dopo 5 minuti i servizi non sono partiti (schema appeso), partono comunque.
+- `imap-worker.js`: health `stopped` se abilitato ma non avviato da più di 3 minuti (prima restava "warmup" all'infinito), `processStartedAt` nello stato; `health` incluso anche nel diagnostic di Richieste (prima mancava, la UI mostrava "Stato sconosciuto").
+- Endpoint leggero `/api/sales/lead-intake-status` (solo ufficio) + banner `#lead-intake-alert` in Richieste quando lo stato è `stopped|error|stale`, con l'ora dell'ultima email importata.
+- Il lettore riprende per UID (`MAX(imap_uid)` in `incoming_leads_shadow`): al riavvio le email arretrate vengono lette e promosse in automatico.
+
+**Verificato** in locale: con `DATABASE_URL` irraggiungibile i tentativi si ripetono (1 all'avvio, 2 dopo 15 s, poi 30 s…); con lettore abilitato ma non avviabile lo stato passa a `stopped` dopo 3 minuti e il banner compare in Richieste. Test nuovo `test/imap-worker-health.test.js`. **Non verificabile in locale**: la ripresa reale del lettore con il database (va controllata in produzione dopo il deploy).

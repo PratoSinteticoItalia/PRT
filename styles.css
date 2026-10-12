@@ -28762,3 +28762,7 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
   .acw-dialog{padding:20px}
   .acw-dialog .acw-form-row{grid-template-columns:1fr;gap:0}
 }
+/* Avviso "lettura contatti@ ferma" in Richieste */
+.lead-intake-alert{display:flex;flex-direction:column;gap:4px;margin:0 0 16px;padding:12px 16px;border-radius:12px;background:#fbeaea;border:1px solid #efc7c7;color:#7f2a2a;font-size:13.5px;line-height:1.5}
+.lead-intake-alert[hidden]{display:none}
+.lead-intake-alert strong{font-size:14px}
