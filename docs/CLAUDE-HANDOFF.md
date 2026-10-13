@@ -285,3 +285,11 @@ Segnalazione dell'utente: nessuna nuova richiesta in CRM dall'8 ottobre, mentre 
 - Il lettore riprende per UID (`MAX(imap_uid)` in `incoming_leads_shadow`): al riavvio le email arretrate vengono lette e promosse in automatico.
 
 **Verificato** in locale: con `DATABASE_URL` irraggiungibile i tentativi si ripetono (1 all'avvio, 2 dopo 15 s, poi 30 s…); con lettore abilitato ma non avviabile lo stato passa a `stopped` dopo 3 minuti e il banner compare in Richieste. Test nuovo `test/imap-worker-health.test.js`. **Non verificabile in locale**: la ripresa reale del lettore con il database (va controllata in produzione dopo il deploy).
+
+## Azzeramento giacenze per ID + diagnostica database — 12-13 ottobre
+
+**Giacenze**: "Azzera" su un gruppo d'inventario non cancellava nulla (o solo una parte). In produzione molti pezzi hanno il nome generico ("Palma" 19, "Abete" 20, "Betulla" 21…) e altri quello completo ("Faggio 25 mm" 12, "Mogano 40 mm" 14). L'app raggruppa per etichetta di catalogo (`getCatalogLabel` → `normalizeProductName`), mentre `DELETE /api/inventory/items/by-product/:product` confrontava `normalizeInventoryProductKey` del nome grezzo con quello dell'etichetta del gruppo: nessun catalogo lato server, quindi mismatch. Nuovo `POST /api/inventory/items/clear` (solo office/warehouse) con gli **ID** dei pezzi mostrati nella conferma: cancella solo i "disponibile", aspetta anche le DELETE SQL (da cui `/api/session` rilegge l'inventario), risponde `{inventory, deleted, skipped}`. L'errore ora è un toast nell'Inventario (prima andava in `ui.ordersStatus`, invisibile da lì). Verificato blob e SQL allineati in produzione (343/343, 174 disponibili), quindi non era una divergenza tra le due copie. La DELETE by-product resta per compatibilità, non più usata dal client.
+
+**Diagnostica database**: `GET /api/diagnostic/database` (solo office) restituisce host/porta/nome/utente da `DATABASE_URL` (mai la password) e da Postgres `current_database()`, `version()`, dimensione. Serve a verificare con certezza quale database Render usa la produzione (avviso di scadenza del DB gratuito `psi-ops-db-staging` del 16 ottobre).
+
+**Da fare a parte** (chip proposto all'utente): gli endpoint che modificano l'inventario non controllano il ruolo (solo l'autenticazione).
