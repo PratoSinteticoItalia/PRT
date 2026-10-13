@@ -28766,3 +28766,8 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
 .lead-intake-alert{display:flex;flex-direction:column;gap:4px;margin:0 0 16px;padding:12px 16px;border-radius:12px;background:#fbeaea;border:1px solid #efc7c7;color:#7f2a2a;font-size:13.5px;line-height:1.5}
 .lead-intake-alert[hidden]{display:none}
 .lead-intake-alert strong{font-size:14px}
+/* Inventario: ordini aperti senza modello di prato ("Da definire") */
+.inv-missing-model{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#fff6e6;border:1px solid #f0dcb4;color:#7a5410;font-size:13px;line-height:1.45}
+.inv-missing-model-links{display:flex;flex-wrap:wrap;gap:6px}
+.inv-missing-model-link{border:1px solid #e6c98d;background:#fff;color:#7a5410;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer}
+.inv-missing-model-link:hover{background:#fdf0d6}

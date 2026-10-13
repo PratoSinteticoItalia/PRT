@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261012-giacenze-database";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261012-giacenze-database";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261013-inventario-da-definire";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261013-inventario-da-definire";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261012-giacenze-database";
+} from "./lib/order-money.js?v=20261013-inventario-da-definire";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261012-giacenze-database";
+import { regionForCity } from "./lib/geo.js?v=20261013-inventario-da-definire";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261012-giacenze-database";
+} from "./lib/shipping-eligibility.js?v=20261013-inventario-da-definire";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261012-giacenze-database";
+} from "./lib/profit-split.js?v=20261013-inventario-da-definire";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261012-giacenze-database";
+} from "./lib/preventivo-pricing.js?v=20261013-inventario-da-definire";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261012-giacenze-database";
+} from "./lib/sales-assignment.js?v=20261013-inventario-da-definire";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261012-giacenze-database";
+} from "./lib/surveys.js?v=20261013-inventario-da-definire";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261012-giacenze-database";
+const APP_SHELL_VERSION = "20261013-inventario-da-definire";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -10127,6 +10127,23 @@ function getPreparedProductLines(order) {
   return getWarehousePreparedLines(order).filter((line) => inferCatalogEntry(line.title)?.type === "turf");
 }
 
+// "Da definire" è il valore che il server mette sugli ordini di cui non
+// ricava il modello di prato: non è un prodotto. Senza questo controllo
+// diventava una scheda d'inventario "Da definire" con fabbisogno non coperto.
+function isPlaceholderProductLabel(value = "") {
+  const key = normalizeProductName(value);
+  return !key || key === "da definire" || key === "to define" || key === "undefined";
+}
+
+// Ordini aperti con metri quadri ma senza modello di prato indicato: il
+// fabbisogno non si può attribuire a nessun prodotto, va completato l'ordine.
+function getOrdersMissingTurfModel() {
+  return state.orders.filter(orderNeedsWarehouseWork).filter((order) => {
+    if (getPreparedProductLines(order).some((line) => line.dimensions?.sqm)) return false;
+    return getSafeOrderSqm(order) > 0 && isPlaceholderProductLabel(getPrimaryTurfLabel(order));
+  });
+}
+
 function buildWarehouseDemandMap() {
   const demandMap = new Map();
   state.orders
@@ -10172,7 +10189,7 @@ function buildWarehouseDemandMap() {
       if (!hasMeasuredProducts) {
         const fallbackLabel = getPrimaryTurfLabel(order);
         const fallbackSqm = getSafeOrderSqm(order);
-        if (fallbackLabel && fallbackSqm > 0 && !shouldIgnoreDisabledNativeInventoryProduct(fallbackLabel)) {
+        if (fallbackLabel && !isPlaceholderProductLabel(fallbackLabel) && fallbackSqm > 0 && !shouldIgnoreDisabledNativeInventoryProduct(fallbackLabel)) {
           const key = normalizeProductName(fallbackLabel);
           const current = demandMap.get(key) || {
             key,
@@ -18927,9 +18944,19 @@ function renderWarehouse() {
     const emptyMessage = searchOrFilterActive
       ? (state.lang === "it" ? "Nessun risultato per questa ricerca o filtro." : "No results for this search or filter.")
       : (state.lang === "it" ? "Nessuna giacenza caricata. Inserisci i primi rotoli o residui dal pannello a destra." : "No stock loaded yet. Add the first rolls or offcuts from the right panel.");
-    ui.inventorySummary.innerHTML = groups.length
+    const missingModelOrders = searchOrFilterActive ? [] : getOrdersMissingTurfModel();
+    const missingModelSqm = missingModelOrders.reduce((sum, order) => sum + getSafeOrderSqm(order), 0);
+    const missingModelNotice = missingModelOrders.length
+      ? `<div class="inv-missing-model">
+          <span>⚠ ${state.lang === "it"
+            ? `${missingModelOrders.length === 1 ? "1 ordine aperto" : `${missingModelOrders.length} ordini aperti`} senza modello di prato (${Math.round(missingModelSqm)} mq): indicalo nell'ordine per calcolare il fabbisogno.`
+            : `${missingModelOrders.length} open order(s) without a turf model (${Math.round(missingModelSqm)} sqm): set it on the order to compute demand.`}</span>
+          <span class="inv-missing-model-links">${missingModelOrders.slice(0, 6).map((order) => `<button type="button" class="inv-missing-model-link" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="orders">${escapeHtml(getOrderNumber(order))} ${escapeHtml(composeClientName(order))}</button>`).join("")}</span>
+        </div>`
+      : "";
+    ui.inventorySummary.innerHTML = missingModelNotice + (groups.length
       ? groups.map(renderInventoryCard).join("")
-      : `<div class="info-card">${emptyMessage}</div>`;
+      : `<div class="info-card">${emptyMessage}</div>`);
   }
 
   if (ui.inventoryForm && document.activeElement !== ui.inventoryForm.product) {
