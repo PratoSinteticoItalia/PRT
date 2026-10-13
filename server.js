@@ -14694,6 +14694,30 @@ async function handleApi(req, res, url) {
   // Endpoint debug per ispezionare i valori interni del worker IMAP.
   // Risolve il caso "Stato sconosciuto" mostrato nel diagnostic frontend:
   // dump diretto di cfg, workerState e valori calcolati dalla health logic.
+  // Identità del database a cui è collegata questa istanza (nome, host, porta,
+  // versione) — MAI le credenziali. Serve a verificare con certezza quale
+  // database Render usa la produzione (es. avvisi di scadenza di un DB di prova).
+  if (url.pathname === "/api/diagnostic/database" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    let configured = {};
+    try {
+      const u = new URL(DATABASE_URL);
+      configured = { host: u.hostname, port: u.port || "5432", database: decodeURIComponent(u.pathname.replace(/^\//, "")), user: decodeURIComponent(u.username || "") };
+    } catch { configured = { invalidUrl: Boolean(DATABASE_URL) }; }
+    let live = null;
+    try {
+      const pool = await getPgPool();
+      if (pool) {
+        const { rows } = await pool.query("SELECT current_database() AS database, current_user AS user, version() AS version, pg_size_pretty(pg_database_size(current_database())) AS size");
+        live = rows?.[0] || null;
+      }
+    } catch (err) {
+      live = { error: String(err?.message || err).slice(0, 200) };
+    }
+    return sendJson(res, 200, { usePostgres: USE_POSTGRES, configured, live });
+  }
+
   // Stato del lettore email contatti@ per l'avviso in Richieste: leggero
   // (stato in memoria + una sola MAX), interrogato dal client ogni pochi minuti.
   if (url.pathname === "/api/sales/lead-intake-status" && req.method === "GET") {
@@ -18844,6 +18868,27 @@ async function handleApi(req, res, url) {
     await writeJson(STORE_PATH, store);
     for (const piece of payload.created) upsertInventoryItemToDb(piece).catch(() => {});
     return sendJson(res, 200, store.inventory);
+  }
+
+  // Azzera la giacenza di un prodotto per ID dei pezzi, non per nome: l'app
+  // raggruppa per etichetta di catalogo ("Palma 40 mm") mentre molti pezzi
+  // hanno salvato il nome generico ("Palma"), e la DELETE by-product che
+  // confronta i nomi grezzi non ne cancellava nessuno (segnalato il 12 ott
+  // 2026). Cancella solo i pezzi ancora "disponibile" e aspetta anche SQL,
+  // da cui /api/session rilegge l'inventario.
+  if (url.pathname === "/api/inventory/items/clear" && req.method === "POST") {
+    if (!["office", "warehouse"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const ids = new Set((Array.isArray(body.ids) ? body.ids : []).map((id) => String(id || "").trim()).filter(Boolean));
+    if (!ids.size || ids.size > 5000) return sendJson(res, 400, { error: "invalid_inventory_ids" });
+    const toDeleteIds = (store.inventory || [])
+      .filter((item) => ids.has(String(item.id)) && normalizeInventoryPieceState(item.pieceState) === "disponibile")
+      .map((item) => String(item.id));
+    const deleting = new Set(toDeleteIds);
+    store.inventory = (store.inventory || []).filter((item) => !deleting.has(String(item.id)));
+    await writeJson(STORE_PATH, store);
+    await Promise.all(toDeleteIds.map((id) => deleteInventoryItemFromDb(id)));
+    return sendJson(res, 200, { inventory: store.inventory, deleted: toDeleteIds.length, skipped: ids.size - toDeleteIds.length });
   }
 
   if (url.pathname.match(/^\/api\/inventory\/items\/by-product\/[^/]+$/) && req.method === "DELETE") {
