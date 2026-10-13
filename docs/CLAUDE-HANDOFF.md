@@ -293,3 +293,7 @@ Segnalazione dell'utente: nessuna nuova richiesta in CRM dall'8 ottobre, mentre 
 **Diagnostica database**: `GET /api/diagnostic/database` (solo office) restituisce host/porta/nome/utente da `DATABASE_URL` (mai la password) e da Postgres `current_database()`, `version()`, dimensione. Serve a verificare con certezza quale database Render usa la produzione (avviso di scadenza del DB gratuito `psi-ops-db-staging` del 16 ottobre).
 
 **Da fare a parte** (chip proposto all'utente): gli endpoint che modificano l'inventario non controllano il ruolo (solo l'autenticazione).
+
+## Inventario: niente scheda "Da definire" — 13 ottobre
+
+"Da definire" è il valore che `buildDefaultOperations` (server.js) mette in `operations.product` quando non ricava il modello dalle righe dell'ordine (633 ordini in produzione, quasi tutti evasi). In `buildWarehouseDemandMap` il ramo di ripiego (`getPrimaryTurfLabel`) lo trattava come nome di prodotto: l'ordine #3029 (108 mq, aperto) generava una scheda d'inventario "Da definire" con fabbisogno non coperto. Ora `isPlaceholderProductLabel()` lo esclude dal fabbisogno e `getOrdersMissingTurfModel()` alimenta una riga di avviso in cima all'Inventario (`.inv-missing-model`) con il link all'ordine (`select-order`, vista Ordini). 3 test (`test/inventory-placeholder-product.test.js`). Nota: in locale la POST `/api/orders/:id/operations` con `product` stringa salva "[object Object]" su un ordine creato a mano — non indagato, da non confondere con un bug di produzione senza verificarlo.
