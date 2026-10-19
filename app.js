@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261013-inventario-da-definire";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261013-inventario-da-definire";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261019-inbox-flusso-infallibile";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261019-inbox-flusso-infallibile";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261013-inventario-da-definire";
+} from "./lib/order-money.js?v=20261019-inbox-flusso-infallibile";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261013-inventario-da-definire";
+import { regionForCity } from "./lib/geo.js?v=20261019-inbox-flusso-infallibile";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261013-inventario-da-definire";
+} from "./lib/shipping-eligibility.js?v=20261019-inbox-flusso-infallibile";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261013-inventario-da-definire";
+} from "./lib/profit-split.js?v=20261019-inbox-flusso-infallibile";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261013-inventario-da-definire";
+} from "./lib/preventivo-pricing.js?v=20261019-inbox-flusso-infallibile";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261013-inventario-da-definire";
+} from "./lib/sales-assignment.js?v=20261019-inbox-flusso-infallibile";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261013-inventario-da-definire";
+} from "./lib/surveys.js?v=20261019-inbox-flusso-infallibile";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261013-inventario-da-definire";
+const APP_SHELL_VERSION = "20261019-inbox-flusso-infallibile";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2172,6 +2172,14 @@ function waitMs(ms = 0) {
   return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
 
+function describeApiSaveError(error) {
+  const it = state.lang === "it";
+  const status = Number(error?.status ?? -1);
+  if (status === 0) return it ? "connessione assente o interrotta" : "no connection";
+  if ([502, 503, 504].includes(status)) return it ? `il server non risponde (errore ${status}, probabilmente in riavvio)` : `server not responding (error ${status})`;
+  return String(error?.message || "").trim();
+}
+
 function apiFetch(path, options = {}) {
   const { timeoutMs = 0, ...fetchOptions } = options || {};
   const controller = timeoutMs > 0 && !fetchOptions.signal ? new AbortController() : null;
@@ -2223,6 +2231,7 @@ async function apiFetchWithRetry(path, options = {}, {
   retries = 1,
   baseDelayMs = 200,
   shouldRetry = isTransientApiError,
+  onRetry = null,
 } = {}) {
   let lastError = null;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -2231,6 +2240,7 @@ async function apiFetchWithRetry(path, options = {}, {
     } catch (error) {
       lastError = error;
       if (attempt >= retries || !shouldRetry(error)) throw error;
+      try { onRetry?.(attempt + 1, error); } catch {}
       await waitMs(baseDelayMs * (attempt + 1));
     }
   }
@@ -9895,10 +9905,12 @@ function getShippingTargetDate(order) {
     return explicitPreparationDate;
   }
   const installationDate = order.operations?.installation?.installDate;
-  if (installationDate) {
-    const date = new Date(`${installationDate}T00:00:00`);
-    date.setDate(date.getDate() - 1);
-    return date.toISOString().slice(0, 10);
+  const match = String(installationDate || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    // Giorno prima della posa, in ora locale: toISOString() (UTC) in Italia
+    // tornava indietro di un giorno in più (posa il 15 → preparazione il 13).
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) - 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   }
   return "";
 }
@@ -10703,8 +10715,8 @@ function renderInboxFlowControls(order) {
           <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
         </div>
       </div>
-      <div class="flow-helper-note flow-autosave-note">
-        ${state.lang === "it" ? "Inbox salva instradamento, uscita merce e data. Lo stato operativo lo aggiorna il magazzino." : "Inbox saves routing, goods exit mode and date. Warehouse updates the operational status."}
+      <div class="flow-helper-note flow-autosave-note" data-order-flow-save-status="${order.id}" data-save-state="${escapeHtml(_inboxFlowSaveStatus.get(order.id)?.kind || "idle")}" role="status" aria-live="polite">
+        ${renderInboxFlowSaveStatus(order.id)}
       </div>
     </article>
   `;
@@ -13909,6 +13921,9 @@ function renderOrders() {
       group.querySelectorAll(".flow-chip").forEach((c) => c.classList.remove("is-active"));
       chipBtn.classList.add("is-active");
       group.dataset.value = chipBtn.dataset.v || "";
+      if (group.hasAttribute("data-order-flow-mode") && group.dataset.value !== "da-definire") {
+        ensureInboxWarehouseRouted(order.id);
+      }
       // Debounce: selezioni ravvicinate (stato + uscita merce) si fondono in un
       // solo salvataggio che rilegge entrambi i valori dal DOM.
       debouncedSaveInboxOrderFlow(order.id);
@@ -13917,6 +13932,9 @@ function renderOrders() {
   // Data preparazione: campo testo → debounce
   ui.orderDetailSummary.querySelectorAll("[data-order-flow-date]").forEach((input) => {
     input.addEventListener("change", () => {
+      // Anno ancora a metà (Chrome manda 0002, 0020, 0202…): si aspetta.
+      if (input.value && !isPlausibleInboxFlowDate(input.value)) return;
+      if (input.value) ensureInboxWarehouseRouted(order.id);
       debouncedSaveInboxOrderFlow(order.id);
     });
   });
@@ -27019,6 +27037,7 @@ function applySessionPayload(session = {}) {
     ? normalizeSalesContentCategoryFilter(state.salesContentCategory || "all")
     : "all";
   if (userChanged) {
+    resetInboxFlowSaveQueue();
     state.leadIntakeStatus = null;
     leadIntakeStatusFetchedAt = 0;
     state.lastSalesGeneratorSignature = "";
@@ -30316,7 +30335,7 @@ function isActiveElementInsideCurrentViewForm() {
   if (!(active instanceof HTMLElement)) return false;
   const viewNode = active.closest(".view");
   if (!viewNode || viewNode.id !== state.currentView) return false;
-  return Boolean(active.closest("form"));
+  return Boolean(active.closest("form") || active.matches("[data-order-flow-date]"));
 }
 
 function clearPendingCurrentViewRefresh() {
@@ -31528,7 +31547,11 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
   const warehouseSelected = warehouseManuallySelected;
   const nextModeRaw = warehouseSelected ? readGroup(modeInput, "da-definire") : "da-definire";
   const nextMode = warehouseSelected && installSelected && nextModeRaw === "da-definire" ? "furgone" : nextModeRaw;
-  const nextDate = warehouseSelected ? (dateInput?.value || "") : "";
+  // Data a metà (anno ancora in digitazione) → resta quella già salvata.
+  const typedDate = dateInput?.value || "";
+  const nextDate = warehouseSelected
+    ? (!typedDate || isPlausibleInboxFlowDate(typedDate) ? typedDate : (currentWarehouse.preparationDate || ""))
+    : "";
   const shouldRouteWarehouse = warehouseToggle && !warehouseSelected
     ? false
     : Boolean(
@@ -31572,10 +31595,169 @@ function buildInboxOrderFlowPayload(orderId, currentOrder = null) {
 const _inboxFlowSaveTimers = new Map();
 const _inboxFlowSaveInFlight = new Set();
 const _inboxFlowLatestPendingSave = new Map();
+// Ordine com'era sul server prima delle modifiche non ancora confermate: serve
+// solo per tornare indietro sugli errori definitivi (sessione scaduta, ecc.).
+const _inboxFlowBaseOrder = new Map();
+// Modifiche che il server non ha ricevuto nemmeno dopo i ritentativi rapidi
+// (riavvio lungo, connessione assente): restano a video e ripartono da sole.
+const _inboxFlowUnsaved = new Map();
+const _inboxFlowSaveStatus = new Map();
+const INBOX_FLOW_BACKGROUND_RETRY_MS = 15000;
+
+function mergeInboxFlowPayloads(base = {}, next = {}) {
+  const merged = { ...base, ...next };
+  for (const key of ["warehouse", "installation"]) {
+    if (base[key] || next[key]) merged[key] = { ...(base[key] || {}), ...(next[key] || {}) };
+  }
+  return merged;
+}
+
+function rememberInboxFlowBaseOrder(orderId) {
+  if (_inboxFlowBaseOrder.has(orderId)) return;
+  const current = state.orders.find((item) => item.id === orderId);
+  if (current) _inboxFlowBaseOrder.set(orderId, current);
+}
+
+function applyInboxFlowOptimistic(orderId, payload) {
+  const current = state.orders.find((item) => item.id === orderId);
+  if (!current || !payload) return;
+  const optimistic = {
+    ...current,
+    operations: {
+      ...current.operations,
+      warehouse: { ...(current.operations?.warehouse || {}), ...(payload.warehouse || {}) },
+      installation: { ...(current.operations?.installation || {}), ...(payload.installation || {}) },
+    },
+  };
+  state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
+}
+
+function renderInboxFlowSaveStatus(orderId) {
+  const it = state.lang === "it";
+  const status = _inboxFlowSaveStatus.get(orderId);
+  if (!status) {
+    return it
+      ? "Inbox salva instradamento, uscita merce e data. Lo stato operativo lo aggiorna il magazzino."
+      : "Inbox saves routing, goods exit mode and date. Warehouse updates the operational status.";
+  }
+  if (status.kind === "saving") return it ? "Salvataggio in corso…" : "Saving…";
+  if (status.kind === "retrying") {
+    return it
+      ? `Server momentaneamente non raggiungibile: riprovo il salvataggio (tentativo ${status.attempt})…`
+      : `Server temporarily unreachable: retrying save (attempt ${status.attempt})…`;
+  }
+  if (status.kind === "saved") {
+    const time = new Date(status.at).toLocaleTimeString(it ? "it-IT" : "en-GB", { hour: "2-digit", minute: "2-digit" });
+    return it ? `✓ Salvato alle ${time}` : `✓ Saved at ${time}`;
+  }
+  if (status.kind === "unsaved") {
+    return `${it
+      ? "⚠ Modifica NON ancora salvata: il server non risponde. Resta a video e riprovo da solo ogni 15 secondi, non chiudere la pagina."
+      : "⚠ Change NOT saved yet: the server is not responding. It stays on screen and is retried every 15 seconds, keep this page open."}
+      <button type="button" class="btn primary" data-action="inbox-flow-retry-now" data-id="${escapeHtml(orderId)}">${it ? "Riprova ora" : "Retry now"}</button>`;
+  }
+  return it
+    ? `⚠ Modifica non salvata: ${escapeHtml(status.message || "errore")}. Rifai la scelta.`
+    : `⚠ Change not saved: ${escapeHtml(status.message || "error")}. Please redo it.`;
+}
+
+function setInboxFlowSaveStatus(orderId, status) {
+  _inboxFlowSaveStatus.set(orderId, status);
+  const node = document.querySelector(`[data-order-flow-save-status="${orderId}"]`);
+  if (!node) return;
+  node.dataset.saveState = status.kind;
+  node.innerHTML = renderInboxFlowSaveStatus(orderId);
+}
+
+// Chrome manda "change" a ogni cifra dell'anno digitata (0002, 0020, 0202,
+// 2026): solo una data completa e sensata va salvata.
+function isPlausibleInboxFlowDate(value) {
+  const match = String(value || "").match(/^(\d{4})-\d{2}-\d{2}$/);
+  return Boolean(match) && Number(match[1]) >= 2000 && Number(match[1]) <= 2099;
+}
+
+// Scegliere Corriere/Furgone/Ritiro o una data vuol dire "esce dal magazzino":
+// con "In spedizione" spento la scelta veniva scartata in silenzio.
+function ensureInboxWarehouseRouted(orderId) {
+  const toggle = document.querySelector(`[data-order-flow-warehouse="${orderId}"]`);
+  if (!toggle || toggle.dataset.on === "1") return false;
+  toggle.dataset.on = "1";
+  toggle.classList.add("is-on");
+  toggle.setAttribute("aria-pressed", "true");
+  showToast(
+    state.lang === "it" ? "✓ Ordine instradato a Spedizioni" : "✓ Order routed to Logistics",
+    "success",
+    2500,
+  );
+  return true;
+}
+
+function queueInboxFlowBackgroundRetry(orderId, payload) {
+  const previous = _inboxFlowUnsaved.get(orderId);
+  clearTimeout(previous?.timer);
+  const timer = setTimeout(() => retryInboxFlowUnsaved(orderId), INBOX_FLOW_BACKGROUND_RETRY_MS);
+  _inboxFlowUnsaved.set(orderId, { payload, timer });
+  orderPendingPatchIds.add(orderId);
+  applyInboxFlowOptimistic(orderId, payload);
+  setInboxFlowSaveStatus(orderId, { kind: "unsaved" });
+  const it = state.lang === "it";
+  setStatus(
+    ui.ordersStatus,
+    "error",
+    it
+      ? "Il server non risponde: una modifica in Inbox NON è ancora salvata. Resta a video e riprovo da solo ogni 15 secondi, non chiudere la pagina."
+      : "The server is not responding: an Inbox change is NOT saved yet. It stays on screen and is retried every 15 seconds, keep this page open.",
+  );
+  if (!previous) {
+    showToast(it ? "Modifica non ancora salvata: riprovo da solo" : "Change not saved yet: retrying automatically", "error");
+  }
+}
+
+function retryInboxFlowUnsaved(orderId) {
+  const entry = _inboxFlowUnsaved.get(orderId);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  _inboxFlowUnsaved.delete(orderId);
+  void saveInboxOrderFlow(orderId, entry.payload);
+}
+
+function retryAllInboxFlowUnsaved() {
+  [..._inboxFlowUnsaved.keys()].forEach((orderId) => retryInboxFlowUnsaved(orderId));
+}
+
+function hasUnsavedInboxFlowChanges() {
+  return _inboxFlowUnsaved.size > 0 || _inboxFlowSaveInFlight.size > 0 || _inboxFlowSaveTimers.size > 0;
+}
+
+// Cambio account (logout SPA): le modifiche in sospeso dell'utente precedente
+// non devono partire con la sessione del nuovo.
+function resetInboxFlowSaveQueue() {
+  _inboxFlowSaveTimers.forEach((timer, orderId) => {
+    clearTimeout(timer);
+    orderPendingPatchIds.delete(orderId);
+  });
+  _inboxFlowSaveTimers.clear();
+  _inboxFlowUnsaved.forEach((entry, orderId) => {
+    clearTimeout(entry.timer);
+    orderPendingPatchIds.delete(orderId);
+  });
+  _inboxFlowUnsaved.clear();
+  _inboxFlowLatestPendingSave.clear();
+  _inboxFlowBaseOrder.clear();
+  _inboxFlowSaveStatus.clear();
+}
 
 function debouncedSaveInboxOrderFlow(orderId) {
   clearTimeout(_inboxFlowSaveTimers.get(orderId));
   const payload = buildInboxOrderFlowPayload(orderId);
+  if (payload) {
+    // Subito "in sospeso": un aggiornamento da altri utenti che arriva nei
+    // 400 ms di attesa non deve rimettere a video il valore vecchio.
+    rememberInboxFlowBaseOrder(orderId);
+    orderPendingPatchIds.add(orderId);
+    applyInboxFlowOptimistic(orderId, payload);
+    setInboxFlowSaveStatus(orderId, { kind: "saving" });
+  }
   _inboxFlowSaveTimers.set(orderId, setTimeout(() => {
     _inboxFlowSaveTimers.delete(orderId);
     if (payload) void saveInboxOrderFlow(orderId, payload);
@@ -31583,8 +31765,17 @@ function debouncedSaveInboxOrderFlow(orderId) {
 }
 
 async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
-  const payload = patch || buildInboxOrderFlowPayload(orderId);
+  let payload = patch || buildInboxOrderFlowPayload(orderId);
   if (!payload) return;
+  // Una modifica rimasta in sospeso viaggia insieme a quella nuova: l'ultima
+  // scelta vince campo per campo e nessuna delle due va persa.
+  const unsaved = _inboxFlowUnsaved.get(orderId);
+  if (unsaved) {
+    clearTimeout(unsaved.timer);
+    _inboxFlowUnsaved.delete(orderId);
+    payload = mergeInboxFlowPayloads(unsaved.payload, payload);
+  }
+  rememberInboxFlowBaseOrder(orderId);
   const previousOrder = state.orders.find((item) => item.id === orderId) || null;
   // Se l'ordine era stato marcato "shipped" automaticamente (bug vecchio) ma non ha
   // allocazioni evase, resetta shipped:false quando si cambia stato verso un non-terminale
@@ -31601,48 +31792,48 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
     // Latest-wins: mentre un POST è in corso, ricordiamo solo l'ultima
     // intenzione dell'utente per questo ordine. Non accumuliamo una coda.
     const queued = _inboxFlowLatestPendingSave.get(orderId)?.payload || {};
-    const mergedPayload = { ...queued, ...payload };
-    for (const key of ["warehouse", "installation"]) {
-      if (queued[key] || payload[key]) mergedPayload[key] = { ...(queued[key] || {}), ...(payload[key] || {}) };
-    }
-    _inboxFlowLatestPendingSave.set(orderId, { payload: mergedPayload, triggerButton });
-    if (previousOrder) {
-      const optimistic = {
-        ...previousOrder,
-        operations: {
-          ...previousOrder.operations,
-          warehouse: { ...(previousOrder.operations?.warehouse || {}), ...(payload.warehouse || {}) },
-          installation: { ...(previousOrder.operations?.installation || {}), ...(payload.installation || {}) },
-        },
-      };
-      state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
-    }
+    _inboxFlowLatestPendingSave.set(orderId, { payload: mergeInboxFlowPayloads(queued, payload), triggerButton });
+    applyInboxFlowOptimistic(orderId, payload);
     return;
   }
   _inboxFlowSaveInFlight.add(orderId);
-  if (previousOrder) {
-    const optimistic = {
-      ...previousOrder,
-      operations: {
-        ...previousOrder.operations,
-        warehouse: { ...(previousOrder.operations?.warehouse || {}), ...(payload.warehouse || {}) },
-        installation: { ...(previousOrder.operations?.installation || {}), ...(payload.installation || {}) },
-      },
-    };
-    state.orders = state.orders.map((item) => (item.id === orderId ? optimistic : item));
-  }
+  applyInboxFlowOptimistic(orderId, payload);
   if (orderId) orderPendingPatchIds.add(orderId);
+  setInboxFlowSaveStatus(orderId, { kind: "saving" });
   let saved;
   try {
-    saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+    // Con ritentativi: un riavvio del server su Render (deploy, crash) dura
+    // decine di secondi e prima bastava per perdere la scelta fatta in Inbox
+    // ("Corriere" che tornava "Da definire" con "request_failed").
+    saved = await apiFetchWithRetry(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }, {
+      // 2+4+6+8+10 s: copre un riavvio di Render senza far aspettare troppo.
+      retries: 5,
+      baseDelayMs: 2000,
+      onRetry: (attempt) => setInboxFlowSaveStatus(orderId, { kind: "retrying", attempt }),
     });
   } catch (error) {
-    if (previousOrder) {
-      state.orders = state.orders.map((item) => (item.id === orderId ? previousOrder : item));
-      renderCurrentViewOnly(state.currentView);
+    _inboxFlowSaveInFlight.delete(orderId);
+    // Le scelte fatte mentre si ritentava viaggiano insieme a quella fallita.
+    const latestPendingSave = _inboxFlowLatestPendingSave.get(orderId);
+    _inboxFlowLatestPendingSave.delete(orderId);
+    const pendingPayload = latestPendingSave ? mergeInboxFlowPayloads(payload, latestPendingSave.payload) : payload;
+    if (isTransientApiError(error)) {
+      // Server ancora giù dopo ~30 s: la scelta NON si annulla più. Resta a
+      // video come "non salvata" e si rispedisce da sola finché non passa.
+      queueInboxFlowBackgroundRetry(orderId, pendingPayload);
+      return;
     }
+    // Errore definitivo (sessione scaduta, ordine inesistente…): riprovare non
+    // serve, si torna ai dati del server e si dice perché.
+    const baseOrder = _inboxFlowBaseOrder.get(orderId);
+    _inboxFlowBaseOrder.delete(orderId);
+    if (orderId) orderPendingPatchIds.delete(orderId);
+    if (baseOrder) state.orders = state.orders.map((item) => (item.id === orderId ? baseOrder : item));
+    setInboxFlowSaveStatus(orderId, { kind: "failed", message: describeApiSaveError(error) });
+    renderCurrentViewOnly(state.currentView);
     showToast(
       state.lang === "it"
         ? "Salvataggio flusso ordine non riuscito. Riprova."
@@ -31653,12 +31844,9 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
       ui.ordersStatus,
       "error",
       state.lang === "it"
-        ? `Impossibile salvare il flusso ordine. ${String(error.message || "").trim()}`
-        : `Unable to save order flow. ${String(error.message || "").trim()}`,
+        ? `Impossibile salvare il flusso ordine: ${describeApiSaveError(error)}. La scelta è stata annullata, rifalla.`
+        : `Unable to save order flow: ${describeApiSaveError(error)}. The change was reverted, please redo it.`,
     );
-    if (orderId) orderPendingPatchIds.delete(orderId);
-    _inboxFlowLatestPendingSave.delete(orderId);
-    _inboxFlowSaveInFlight.delete(orderId);
     return;
   }
   _inboxFlowSaveInFlight.delete(orderId);
@@ -31668,10 +31856,20 @@ async function saveInboxOrderFlow(orderId, patch = null, triggerButton = null) {
     state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
     return saveInboxOrderFlow(orderId, latestPendingSave.payload, latestPendingSave.triggerButton);
   }
+  if (_inboxFlowSaveTimers.has(orderId)) {
+    // Un'altra scelta è già in attesa di partire (debounce): si lascia a video
+    // lo stato con quella scelta, i dati del server arrivano col suo salvataggio.
+    _inboxFlowBaseOrder.set(orderId, saved);
+    return;
+  }
+  _inboxFlowBaseOrder.delete(orderId);
   if (orderId) orderPendingPatchIds.delete(orderId);
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
-  state.selectedOrderId = saved.id;
-  renderCurrentViewOnly(state.currentView);
+  if (!_inboxFlowUnsaved.size) clearStatus(ui.ordersStatus);
+  setInboxFlowSaveStatus(orderId, { kind: "saved", at: Date.now() });
+  // Rinvio del ridisegno se si sta ancora scrivendo la data: prima il pannello
+  // veniva ricostruito sotto le dita e le cifre successive andavano perse.
+  refreshCurrentView({ allowDefer: true });
   flashButtonFeedback(triggerButton);
 }
 
@@ -33835,6 +34033,10 @@ function handleGlobalClick(event) {
   }
   if (action === "save-inbox-flow") {
     saveInboxOrderFlow(id, null, button);
+    return;
+  }
+  if (action === "inbox-flow-retry-now") {
+    retryInboxFlowUnsaved(id);
     return;
   }
   if (action === "open-sold-sqm") {
@@ -37757,6 +37959,7 @@ window.addEventListener("focus", () => {
 try { startScrollGuardian(); } catch {}
 
 window.addEventListener("online", () => {
+  retryAllInboxFlowUnsaved();
   flushPendingCurrentViewRefresh();
   if (!state.currentUser) return;
   void keepSessionAlive({ silent: true });
@@ -37767,7 +37970,14 @@ window.addEventListener("online", () => {
     triggerSalesRequestAutoSync({ force: true });
   }
 });
-window.addEventListener("beforeunload", () => {
+window.addEventListener("beforeunload", (event) => {
+  // Una scelta di Inbox non ancora arrivata al server andrebbe persa: il
+  // browser chiede conferma prima di chiudere/ricaricare.
+  if (state.currentUser && hasUnsavedInboxFlowChanges()) {
+    event.preventDefault();
+    event.returnValue = "";
+    return;
+  }
   stopSessionKeepalive();
   stopShopifyAutoSync();
   stopSalesRequestAutoSync();

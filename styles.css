@@ -1881,6 +1881,21 @@ body.mobile-safe-mode .sidebar-section-head .sidebar-section-label {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: #8a8a84;
 }
+/* Esito del salvataggio sempre visibile: chi sceglie Corriere/data sa se è arrivato. */
+.flow-autosave-note[data-save-state="saving"],
+.flow-autosave-note[data-save-state="retrying"] { color: #8a6d1a; }
+.flow-autosave-note[data-save-state="saved"] { color: var(--brand, #29543c); font-weight: 600; }
+.flow-autosave-note[data-save-state="unsaved"],
+.flow-autosave-note[data-save-state="failed"] {
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid #fecdca;
+  border-radius: 8px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 600;
+}
 .prep-autosave-hint { font-size: 11px; color: #8a8a84; }
 
 .route-visibility-grid {

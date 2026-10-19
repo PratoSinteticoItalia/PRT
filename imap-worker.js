@@ -408,6 +408,14 @@ async function runPollCycle(pool) {
       socketTimeout: 60_000,
       greetingTimeout: 30_000,
     });
+    // ImapFlow emette "error" quando la connessione con la casella va in
+    // timeout o cade: senza un ascoltatore Node lo tratta come eccezione non
+    // gestita e chiude l'INTERO server ("Exited with status 1" su Render,
+    // 7-8 e 19 ott 2026). L'errore resta visibile nello stato del lettore.
+    client.on("error", (err) => {
+      workerState.lastError = JSON.stringify({ message: err?.message, code: err?.code });
+      console.warn("[imap-worker] errore connessione IMAP (gestito, il server resta attivo):", err?.code || err?.message);
+    });
     console.log(`[imap-worker] connecting to ${cfg.host}:${cfg.port}...`);
     await client.connect();
     console.log(`[imap-worker] connected, opening mailbox ${cfg.mailbox}...`);

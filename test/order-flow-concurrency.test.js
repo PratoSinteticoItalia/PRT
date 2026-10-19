@@ -8,8 +8,12 @@ test('rapid partial Inbox changes preserve every queued field',async()=>{
  const requests=[];
  const context={state,orderPendingPatchIds:new Set(),getOrderInventoryAllocations:()=>[],
   apiFetch:(_url,options)=>new Promise(resolve=>requests.push({body:JSON.parse(options.body),resolve})),
-  renderCurrentViewOnly:()=>{},flashButtonFeedback:()=>{},showToast:()=>{},setStatus:()=>{},ui:{},
+  renderCurrentViewOnly:()=>{},refreshCurrentView:()=>{},flashButtonFeedback:()=>{},showToast:()=>{},setStatus:()=>{},clearStatus:()=>{},ui:{},
+  isTransientApiError:()=>true,describeApiSaveError:()=>'',document:{querySelector:()=>null},
   setTimeout,clearTimeout};
+ // Il salvataggio passa da apiFetchWithRetry (ritentativi sui riavvii del server):
+ // qui basta delegare all'apiFetch simulato.
+ context.apiFetchWithRetry=(url,options)=>context.apiFetch(url,options);
  const start=source.indexOf('const _inboxFlowSaveTimers');
  const end=source.indexOf('async function saveShipping(',start);
  const save=vm.runInNewContext(source.slice(start,end)+';saveInboxOrderFlow',context);
@@ -29,7 +33,8 @@ test('rapid partial Inbox changes preserve every queued field',async()=>{
 test('Inbox debounce is independent per order and captures the form before selection changes',()=>{
  const tasks=new Map();let timer=0;const saves=[];
  const context={setTimeout:fn=>{tasks.set(++timer,fn);return timer;},clearTimeout:id=>tasks.delete(id),
- buildInboxOrderFlowPayload:id=>({warehouse:{note:id}})};
+ buildInboxOrderFlowPayload:id=>({warehouse:{note:id}}),
+ state:{orders:[],lang:'it'},orderPendingPatchIds:new Set(),document:{querySelector:()=>null}};
  const start=source.indexOf('const _inboxFlowSaveTimers');
  const end=source.indexOf('async function saveInboxOrderFlow(',start);
  context.saveInboxOrderFlow=(id,payload)=>saves.push([id,payload]);
