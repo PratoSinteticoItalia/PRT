@@ -28787,54 +28787,9 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
 .inv-missing-model-link{border:1px solid #e6c98d;background:#fff;color:#7a5410;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer}
 .inv-missing-model-link:hover{background:#fdf0d6}
 
-/* Pilot grafico ottobre 2026 — Inventario e Inbox Ordini.
-   La classe sulla shell è aggiornata da renderNavigation: nessuna modifica
-   alle superfici delle altre viste. Mantiene breakpoint e drill-down esistenti. */
-body.ops-light-view {
-  --bg: #f6f8f5;
-  --panel: #fff;
-  --line: #e0e7df;
-  --text: #26392d;
-  --muted: #657468;
-  --brand: #176747;
-  --brand-strong: #125238;
-  --brand-soft: #e4f2e8;
-  --shadow: none;
-  --shadow-lg: 0 3px 14px rgb(25 54 35 / 6%);
-  background: var(--bg);
-}
-body.ops-light-view .main-content { background: #f6f8f5; }
-body.ops-light-view .topbar {
-  background: #fff;
-  color: #26392d;
-  border-bottom: 1px solid #e0e7df;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-body.ops-light-view :is(.topbar-logo-copy span, .topbar-user-copy, .topbar-user-copy span) { color: #26392d; }
-body.ops-light-view :is(.topbar-logo-copy small, .topbar-user-copy small) { color: #657468; }
-body.ops-light-view :is(.topbar-btn, .topbar-user, .lang-switch, .topbar-logo-mark) {
-  background: #fff; color: #425a49; border-color: #dce5dc; box-shadow: none; border-radius: 8px;
-}
-body.ops-light-view .topbar-btn:hover { background: #edf4ed; color: #125238; }
-body.ops-light-view .topbar-search { background: #f5f7f3; border-color: #e0e7df; border-radius: 7px; box-shadow: none; color: #657468; }
-body.ops-light-view .topbar-search :is(.search-icon, .topbar-search-placeholder) { color: #657468; }
-body.ops-light-view :is(.topbar-avatar, .lang-btn.is-active) { background: #e4f2e8; color: #176747; box-shadow: none; }
-body.ops-light-view .lang-btn:not(.is-active) { color: #657468; }
-body.ops-light-view #new-order-button { background: #176747; color: #fff; border-color: #176747; }
-body.ops-light-view .sidebar { background: #fff; color: #425a49; border-right: 1px solid #e0e7df; box-shadow: none; }
-body.ops-light-view .sidebar :is(.sidebar-brand-title, .sidebar-section-title, .sidebar-section-toggle, .sidebar-section-label, .sidebar-quick-link, .sidebar-mobile-head) { color: #425a49; }
-body.ops-light-view .sidebar :is(.eyebrow, .card-label, .sidebar-brand-sub, .sidebar-section-chevron) { color: #657468; }
-body.ops-light-view .sidebar :is(.sidebar-section, .sidebar-divider-line) { border-color: #e0e7df; }
-body.ops-light-view .sidebar .sidebar-divider-line { background: #e0e7df; }
-body.ops-light-view .sidebar .nav-link { color: #536859; background: transparent; border-radius: 7px; font-weight: 600; box-shadow: none; }
-body.ops-light-view .sidebar .nav-link:hover { background: #f2f6f0; color: #176747; }
-body.ops-light-view .sidebar .nav-link.is-active { background: #e4f2e8; color: #125238; box-shadow: inset 3px 0 #23835c; }
-body.ops-light-view .sidebar .nav-link.is-active .nav-icon { color: #176747; }
-body.ops-light-view .sidebar .nav-count-badge { background: #eef2ec; color: #536859; }
-body.ops-light-view .sidebar .nav-link.is-active .nav-count-badge { background: #176747; color: #fff; }
-body.ops-light-view .sidebar :is(.sidebar-card, .sidebar-pinned) { background: #f6f8f4; color: #425a49; box-shadow: none; border-color: #e0e7df; }
-body.ops-light-view .mobile-drill-back-bar { background: #fff; color: #26392d; border-color: #e0e7df; box-shadow: none; }
+/* Pilot grafico ottobre 2026 — Inventario e Inbox Ordini (contenuto della
+   pagina). La cornice (barra laterale e barra in alto) resta quella di tutte le
+   altre pagine: cambiarla solo qui la faceva lampeggiare da scura a bianca. */
 
 /* Superfici e controlli, sempre circoscritti alle due pagine. */
 :is(#warehouse, #orders).ops-light-page { color: #26392d; }
@@ -28897,29 +28852,6 @@ body.ops-light-view .mobile-drill-back-bar { background: #fff; color: #26392d; b
 #warehouse.ops-light-page .inv-tools { gap: 6px; }
 #warehouse.ops-light-page .inv-clear:not(:disabled) { color: #a04338; border-color: #e4c6bf; }
 
-/* Ordini: selezione netta, materiali su fondo neutro, stato sempre leggibile. */
-#orders.ops-light-page .order-list { gap: 10px; }
-#orders.ops-light-page .inbox-row.inbox-ticket { border: 1px solid #dfe6dc; border-radius: 8px; background: #fff; box-shadow: none; }
-#orders.ops-light-page .inbox-row.inbox-ticket:hover { border-color: #a9c8b0; transform: none; box-shadow: none; }
-#orders.ops-light-page .inbox-row.inbox-ticket.selected { background: #f2f8f2; border-color: #23835c; box-shadow: inset 0 0 0 1px #23835c; }
-#orders.ops-light-page .inbox-ticket-rail { width: 3px; }
-#orders.ops-light-page .inbox-ticket-rail.tone-green { background: #23835c; }
-#orders.ops-light-page .inbox-ticket-rail.tone-amber { background: #c18a22; }
-#orders.ops-light-page .inbox-ticket-rail.tone-red { background: #b44d43; }
-#orders.ops-light-page .inbox-ticket-main { padding: 16px; gap: 10px; }
-#orders.ops-light-page .inbox-ticket .order-name { font-weight: 600; font-size: 15px; color: #26392d; }
-#orders.ops-light-page .inbox-ticket .order-name small { color: #176747; font-weight: 600; }
-#orders.ops-light-page .inbox-ticket-address { color: #657468; }
-#orders.ops-light-page .inbox-material-focus { background: #f5f8f2; border-color: #e3e9de; border-radius: 5px; box-shadow: none; }
-#orders.ops-light-page .inbox-material-name { color: #26392d; font-weight: 600; }
-#orders.ops-light-page .inbox-material-metric { color: #176747; font-weight: 600; }
-#orders.ops-light-page .inbox-row-next-step { background: transparent; border-color: #e0e7df; }
-#orders.ops-light-page .inbox-row-next-step strong { color: #176747; font-weight: 600; }
-#orders.ops-light-page .inbox-ticket .order-type-badge { border-radius: 4px; font-weight: 600; }
-#orders.ops-light-page .panel-subsection-emphasis { background: #f5f8f2; padding: 16px; border: 1px solid #e0e7df; border-radius: 6px; }
-#orders.ops-light-page .subsection-copy { color: #657468; font-size: 12px; }
-#orders.ops-light-page .detail-row { border-color: #e0e7df; }
-#orders.ops-light-page .detail-row-value { color: #26392d; font-weight: 600; }
 
 @media (min-width: 981px) {
   #warehouse.ops-light-page .two-col { grid-template-columns: minmax(0, 1fr) minmax(300px, .68fr); gap: 22px; }
@@ -28938,7 +28870,6 @@ body.ops-light-view .mobile-drill-back-bar { background: #fff; color: #26392d; b
   body.ops-light-view #warehouse.ops-light-page .inv-head { flex-wrap: wrap; gap: 8px; }
   body.ops-light-view #warehouse.ops-light-page .inv-name { min-width: 100px; }
   body.ops-light-view #warehouse.ops-light-page .inv-bar-legend { gap: 8px; }
-  body.ops-light-view #orders.ops-light-page .inbox-ticket .order-name { font-size: 14px; }
   body.ops-light-view :is(#warehouse, #orders).ops-light-page :is(.btn, .ghost-button, .primary-button, .filter-btn) { min-height: 44px; }
   body.ops-light-view :is(#warehouse, #orders).ops-light-page .text-input { font-size: 16px; }
 }
@@ -28946,36 +28877,387 @@ body.ops-light-view .mobile-drill-back-bar { background: #fff; color: #26392d; b
   #warehouse.ops-light-page .inv-kpi-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #warehouse.ops-light-page .inv-kpi:nth-child(3) { border-left: 0; padding-left: 0; }
 }
-/* Override mirati dei vecchi !important globali (sidebar/segmented control). */
-body.ops-light-view .sidebar { background: #fff !important; border-right: 1px solid #e0e7df !important; }
-body.ops-light-view .topbar-logo-mark { background: #176747; border-color: #176747; }
+/* Override mirati dei vecchi !important globali (segmented control). */
 :is(#warehouse, #orders).ops-light-page .filter-bar { background: transparent !important; gap: 4px !important; padding: 0 !important; }
 :is(#warehouse, #orders).ops-light-page .filter-btn { color: #536859 !important; border-radius: 6px !important; }
 :is(#warehouse, #orders).ops-light-page .filter-btn.is-active { background: #e4f2e8 !important; color: #125238 !important; box-shadow: inset 0 -2px #23835c !important; }
-@media (min-width:981px) {
-  body.ops-light-view .topbar-left { flex: 1 1 auto; min-width: 0; }
-  body.ops-light-view .topbar-search { flex: 1 1 180px; min-width: 120px; }
-  body.ops-light-view .topbar-right { flex: 0 0 auto; width: auto; flex-wrap: nowrap; gap: 7px; }
-  body.ops-light-view .topbar-btn { padding: 8px 12px; }
-}
 @media (max-width:980px) {
   :is(#warehouse, #orders).ops-light-page .filter-btn { height: auto !important; min-height: 44px !important; line-height: 1.3 !important; padding: 10px 12px !important; }
 }
-#orders.ops-light-page :is(.guidance-card, .detail-box, .checklist-card, .route-switch, .stepper) { background: #f7f9f5; border: 1px solid #e0e7df; border-radius: 7px; box-shadow: none; }
-#orders.ops-light-page .order-flow-card { background: #fff; border-left: 3px solid #23835c; }
-#orders.ops-light-page .detail-box { padding: 12px; }
-#orders.ops-light-page .detail-box p { color: #425a49; margin-bottom: 0; }
-#orders.ops-light-page .panel-eyebrow { color: #536859; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
-#orders.ops-light-page .stepper { padding: 12px; }
-#orders.ops-light-page .stepper-step:is(.done, .current) .stepper-dot { background: #176747; box-shadow: none; }
-#orders.ops-light-page :is(.flow-chip.is-active, .route-switch.is-on) { background: #e4f2e8; border-color: #23835c; color: #125238; box-shadow: none; }
-#orders.ops-light-page .flow-chip { border-radius: 6px; }
-/* Il drill-down ereditava testo bianco dalla vecchia barra verde. */
-body.ops-light-view .mobile-drill-back-bar :is(.mobile-drill-back-btn, .mobile-drill-back-icon, .mobile-drill-back-label, .mobile-drill-title) { color: #176747; }
-body.ops-light-view .mobile-drill-back-bar .mobile-drill-back-btn { background: #e4f2e8; border-color: #c7dfcc; }
-body.ops-light-view .mobile-drill-back-bar .mobile-drill-subtitle { color: #657468; }
 @media (max-width:980px) {
   #warehouse.ops-light-page .page-header > .inline-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   #warehouse.ops-light-page #inventory-jump-button { grid-column: 1 / -1; }
-  body.ops-light-view .topbar-search-placeholder { display: none; }
+}
+
+/* ── Inbox Ordini v2 (ottobre 2026) ─────────────────────────────────────────
+   Elenco a righe compatte (3 righe di testo, un solo indicatore di stato,
+   avvisi solo quando serve agire) e dettaglio a sezioni separate da spazio e
+   linee sottili, senza riquadri dentro riquadri. Tutto circoscritto a #orders. */
+#orders {
+  --oi-text: #1f2a22;
+  --oi-muted: #69736b;
+  --oi-faint: #8d968e;
+  --oi-line: #e6e9e4;
+  --oi-line-strong: #d6dcd4;
+  --oi-brand: #2d6a4f;
+  --oi-brand-strong: #24573f;
+  --oi-brand-soft: #edf5ef;
+  --oi-amber: #9a5b08;
+  --oi-amber-soft: #fcf2df;
+  --oi-red: #a3352c;
+  --oi-red-soft: #fcebe9;
+  --oi-blue: #2c5aa8;
+  --oi-blue-soft: #ebf1fc;
+  --oi-slate: #59625b;
+  --oi-slate-soft: #f0f2ef;
+}
+
+@media (min-width: 1151px) {
+  #orders .order-grid { grid-template-columns: minmax(360px, 0.8fr) minmax(0, 1fr); gap: 20px; }
+  #orders .order-grid > div:first-child,
+  #orders .order-detail-panel { max-height: calc(100vh - 220px); min-height: 520px; }
+}
+
+/* Elenco */
+#orders .order-list.order-list-pro {
+  display: block;
+  gap: 0;
+  padding: 0;
+  background: #fff;
+  border: 1px solid var(--oi-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+#orders .oi-row {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  padding: 11px 14px 11px 16px;
+  border-bottom: 1px solid var(--oi-line);
+  background: #fff;
+  color: var(--oi-text);
+  cursor: pointer;
+  transition: background-color .12s ease;
+}
+#orders .oi-row:last-child { border-bottom: 0; }
+#orders .oi-row:hover { background: #f7f9f6; }
+#orders .oi-row:focus-visible { outline: 2px solid var(--oi-brand); outline-offset: -2px; }
+#orders .oi-row.selected { background: var(--oi-brand-soft); }
+#orders .oi-row.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--oi-brand);
+}
+#orders .oi-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+#orders .oi-row-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#orders .oi-row-number,
+#orders .oi-row-date { flex: none; color: var(--oi-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+#orders .oi-row-date.is-fresh { color: var(--oi-brand); }
+#orders .oi-row-date.is-stale { color: var(--oi-amber); }
+#orders .oi-row-head .oi-status { margin-left: auto; }
+#orders .oi-row-sub { color: var(--oi-muted); }
+#orders .oi-row-product { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#orders .oi-row-place { flex: none; max-width: 40%; margin-left: auto; overflow: hidden; color: var(--oi-faint); text-overflow: ellipsis; white-space: nowrap; }
+#orders .oi-row-foot { flex-wrap: wrap; row-gap: 4px; }
+#orders .oi-row-next { min-width: 0; color: var(--oi-brand); font-weight: 600; }
+#orders .oi-row-next::before { content: "→ "; }
+#orders .oi-row-next.is-warn { color: var(--oi-amber); }
+#orders .oi-row-balance { margin-left: auto; color: var(--oi-amber); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#orders .oi-row.is-closed .oi-row-name { color: var(--oi-muted); font-weight: 600; }
+#orders .oi-row.is-closed .oi-status { color: var(--oi-slate); background: var(--oi-slate-soft); }
+#orders .oi-row.is-closed .oi-status::before { background: #a9b1aa; }
+
+/* Stato: un solo indicatore, punto + testo */
+#orders .oi-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 7px;
+  border-radius: 999px;
+  background: var(--oi-slate-soft);
+  color: var(--oi-slate);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+#orders .oi-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+#orders .oi-status.tone-green { background: var(--oi-brand-soft); color: var(--oi-brand); }
+#orders .oi-status.tone-amber { background: var(--oi-amber-soft); color: var(--oi-amber); }
+#orders .oi-status.tone-red { background: var(--oi-red-soft); color: var(--oi-red); }
+#orders .oi-status.tone-blue { background: var(--oi-blue-soft); color: var(--oi-blue); }
+
+/* Avvisi (solo quelli che chiedono un'azione) */
+#orders .oi-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--oi-amber);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+#orders .oi-flag::before { content: "!"; display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: currentColor; color: #fff; font-size: 10px; font-weight: 800; }
+#orders .oi-flag.is-alert { color: var(--oi-red); }
+
+/* Paginazione sotto l'elenco */
+#orders .list-pagination { padding: 10px 2px 0; border: 0; background: transparent; color: var(--oi-muted); font-size: 12px; }
+
+/* Dettaglio: contenitore unico, sezioni separate da linee sottili */
+#orders .order-detail-panel { padding: 0; border: 1px solid var(--oi-line); border-radius: 10px; background: #fff; box-shadow: none; }
+#orders .order-detail-panel > * { margin: 0; }
+#orders .oi-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--oi-line);
+  background: #fff;
+}
+#orders .oi-detail-header .detail-title { color: var(--oi-text); font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+#orders .oi-detail-header .detail-id { margin-top: 3px; color: var(--oi-muted); font-size: 12.5px; }
+#orders .oi-detail-badge { flex: none; padding: 0; border: 0; background: none; }
+#orders .oi-detail-badge .oi-status { font-size: 12px; padding: 3px 10px 3px 9px; }
+#orders #order-detail-summary { display: block; padding: 0; }
+#orders .oi-overview { display: grid; gap: 12px; padding: 16px 22px 18px; border-bottom: 1px solid var(--oi-line); }
+#orders .oi-next { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font-size: 14px; }
+#orders .oi-next span { color: var(--oi-muted); font-size: 12px; }
+#orders .oi-next strong { color: var(--oi-brand); font-weight: 650; }
+#orders .oi-flags { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+
+/* Avanzamento: sottile, in linea, senza riquadro */
+#orders .oi-overview .stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+#orders .oi-overview .stepper-step { display: inline-flex; align-items: center; gap: 6px; color: var(--oi-faint); font-size: 12px; font-weight: 600; white-space: nowrap; }
+#orders .oi-overview .stepper-dot { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid var(--oi-line-strong); border-radius: 50%; background: #fff; color: var(--oi-faint); font-size: 10px; font-weight: 700; box-shadow: none; }
+#orders .oi-overview .stepper-step.done { color: var(--oi-text); }
+#orders .oi-overview .stepper-step.done .stepper-dot { border-color: var(--oi-brand); background: var(--oi-brand); color: #fff; }
+#orders .oi-overview .stepper-line { flex: 1 1 16px; min-width: 12px; height: 1.5px; background: var(--oi-line-strong); }
+#orders .oi-overview .stepper-line.done { background: var(--oi-brand); }
+
+/* Sezioni */
+#orders .oi-section { padding: 18px 22px 20px; border-bottom: 1px solid var(--oi-line); }
+#orders .oi-section-title,
+#orders .order-detail-panel > .panel-subsection .subsection-head h4 {
+  margin: 0 0 12px;
+  color: var(--oi-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+#orders .order-detail-panel > .panel-subsection {
+  margin: 0;
+  padding: 18px 22px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--oi-line);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+#orders .order-detail-panel > .panel-subsection:last-child { border-bottom: 0; }
+#orders .order-detail-panel > .panel-subsection.hidden { display: none; }
+#orders .order-detail-panel > .panel-subsection .subsection-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0; padding: 0; border: 0; background: none; }
+#orders .order-detail-panel > .panel-subsection .subsection-head h4 { margin-bottom: 4px; }
+#orders .order-detail-panel > .panel-subsection .subsection-copy { margin: 0 0 12px; color: var(--oi-muted); font-size: 12.5px; }
+
+/* Spedizione e posa */
+#orders .oi-route { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+#orders .oi-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 0;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--oi-line-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--oi-text);
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+  transition: border-color .12s ease, background-color .12s ease;
+}
+#orders .oi-switch:hover { border-color: #b9c4b9; }
+#orders .oi-switch.is-on { border-color: var(--oi-brand); background: var(--oi-brand-soft); }
+#orders .oi-switch-text { display: grid; gap: 2px; min-width: 0; }
+#orders .oi-switch-text strong { font-size: 13.5px; font-weight: 650; }
+#orders .oi-switch-text small { color: var(--oi-muted); font-size: 11.5px; line-height: 1.35; }
+#orders .oi-switch-track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 999px; background: #cfd6ce; transition: background-color .15s ease; }
+#orders .oi-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 20%); transition: transform .15s ease; }
+#orders .oi-switch.is-on .oi-switch-track { background: var(--oi-brand); }
+#orders .oi-switch.is-on .oi-switch-track::after { transform: translateX(14px); }
+#orders .oi-switch:focus-visible { outline: 2px solid var(--oi-brand); outline-offset: 2px; }
+
+#orders .oi-flow-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 190px); gap: 14px 16px; align-items: start; }
+#orders .oi-field { display: grid; gap: 6px; margin: 0; min-width: 0; }
+#orders .oi-field-mode { grid-column: 1 / -1; }
+#orders .oi-label { color: var(--oi-muted); font-size: 12px; font-weight: 600; }
+#orders .oi-field-date .text-input { width: 100%; max-width: none; min-height: 38px; padding: 7px 10px; border: 1px solid var(--oi-line-strong); border-radius: 7px; background: #fff; color: var(--oi-text); font-size: 13.5px; }
+#orders .oi-field-readonly strong { color: var(--oi-text); font-size: 13.5px; font-weight: 650; line-height: 38px; }
+#orders .oi-field-readonly { gap: 0; }
+#orders .oi-field-readonly .oi-label { margin-bottom: 6px; }
+#orders .oi-field-readonly strong { line-height: 1.3; padding-top: 9px; }
+#orders .oi-field-readonly small { color: var(--oi-faint); font-size: 11.5px; }
+
+/* Uscita merce: controllo segmentato */
+#orders .oi-segmented {
+  display: inline-grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  width: 100%;
+  max-width: 460px;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--oi-line-strong);
+  border-radius: 8px;
+  background: #f4f6f3;
+}
+#orders .oi-segmented .flow-chip {
+  min-height: 32px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--oi-muted);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+  cursor: pointer;
+}
+#orders .oi-segmented .flow-chip:hover { color: var(--oi-text); }
+#orders .oi-segmented .flow-chip.is-active { background: #fff; color: var(--oi-brand); box-shadow: 0 1px 2px rgb(16 40 26 / 12%), 0 0 0 1px var(--oi-line-strong); }
+#orders .oi-segmented .flow-chip:focus-visible { outline: 2px solid var(--oi-brand); outline-offset: 1px; }
+
+#orders .oi-flow .flow-autosave-note { margin: 14px 0 0; padding: 0; border: 0; background: none; font-size: 12px; }
+#orders .oi-flow .flow-autosave-note[data-save-state="unsaved"],
+#orders .oi-flow .flow-autosave-note[data-save-state="failed"] { padding: 9px 11px; border: 1px solid #f1c7c1; border-radius: 8px; background: var(--oi-red-soft); }
+
+/* Cliente e pagamento: coppie etichetta/valore, niente riquadri */
+#orders .oi-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; margin: 0; }
+#orders .oi-kv > div { display: grid; gap: 2px; min-width: 0; }
+#orders .oi-kv-wide { grid-column: 1 / -1; }
+#orders .oi-kv-span2 { grid-column: span 2; }
+#orders .oi-kv dt { color: var(--oi-muted); font-size: 11.5px; }
+#orders .oi-kv dd { margin: 0; overflow-wrap: anywhere; color: var(--oi-text); font-size: 13.5px; font-weight: 550; font-variant-numeric: tabular-nums; }
+#orders .oi-kv dd.is-warn,
+#orders .oi-kv .is-warn { color: var(--oi-amber); font-weight: 650; }
+#orders .oi-kv dd.is-ok { color: var(--oi-brand); }
+#orders .oi-actions,
+#orders .order-job-hub-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; border: 0; background: none; }
+#orders .order-job-hub-actions { margin-top: 2px; }
+#orders :is(.oi-actions, .order-job-hub-actions) .btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--oi-line-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--oi-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: none;
+}
+#orders :is(.oi-actions, .order-job-hub-actions) .btn:hover { border-color: #b9c4b9; background: #f7f9f6; }
+#orders .detail-note-chip { padding: 10px 12px; border-radius: 8px; background: #f7f9f6; color: var(--oi-text); font-size: 13px; white-space: pre-wrap; }
+
+/* Materiali da preparare: righe compatte */
+#orders .oi-prep-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 8px; font-size: 13px; }
+#orders .oi-prep-summary strong { color: var(--oi-text); }
+#orders .oi-prep-summary span { color: var(--oi-muted); }
+#orders .oi-prep-summary .oi-prep-count { margin-left: auto; color: var(--oi-faint); font-size: 12px; }
+#orders .prep-list { display: block; }
+#orders .oi-prep-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--oi-line);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+#orders .oi-prep-check { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; cursor: pointer; }
+#orders .oi-prep-check input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--oi-brand); }
+#orders .oi-prep-name { display: grid; min-width: 0; }
+#orders .oi-prep-name strong { overflow: hidden; color: var(--oi-text); font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+#orders .oi-prep-name small { color: var(--oi-muted); font-size: 12px; }
+#orders .oi-prep-qty { color: var(--oi-text); font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+#orders .oi-prep-row.is-excluded .oi-prep-name strong,
+#orders .oi-prep-row.is-excluded .oi-prep-qty { color: var(--oi-faint); text-decoration: line-through; }
+#orders .oi-prep-note { display: contents; }
+#orders .oi-prep-note summary { grid-column: 3; color: var(--oi-brand); font-size: 12px; font-weight: 600; list-style: none; cursor: pointer; white-space: nowrap; }
+#orders .oi-prep-note summary::-webkit-details-marker { display: none; }
+#orders .oi-prep-note.has-note summary { color: var(--oi-amber); }
+#orders .oi-prep-note textarea { grid-column: 1 / -1; width: 100%; min-height: 0; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--oi-line-strong); border-radius: 7px; font-size: 13px; }
+#orders .prep-service-lines { margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px dashed var(--oi-line-strong); background: none; }
+#orders .prep-service-lines-label { color: var(--oi-faint); font-size: 11.5px; }
+#orders .prep-service-line { display: flex; justify-content: space-between; padding: 4px 0; color: var(--oi-muted); font-size: 12.5px; }
+
+/* Allegati e storia */
+#orders .order-detail-panel #order-attachments .info-card,
+#orders .order-detail-panel .audit-trail-list .empty-state-text { margin: 0; padding: 0 !important; border: 0; background: none; color: var(--oi-faint) !important; font-size: 12.5px !important; }
+#orders .order-detail-panel #order-attachment-button { min-height: 30px; padding: 5px 11px; font-size: 12px; }
+
+/* Vecchie regole più specifiche (padding del pannello, barrette colorate a
+   sinistra delle sezioni, sfondo della lista materiali, bottone nascosto). */
+#orders .order-grid > .order-detail-panel.detail-panel { padding: 0; border: 1px solid var(--oi-line); border-radius: 10px; background: #fff; box-shadow: none; }
+#orders .order-detail-panel > .panel-subsection::before,
+#orders .order-detail-panel > .panel-subsection::after { content: none !important; display: none !important; }
+#orders .order-detail-panel #order-prep-list { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+#orders #save-prep-list-button[hidden] { display: none !important; }
+
+/* Schermi stretti e drawer mobile */
+@media (max-width: 1150px) {
+  #orders .order-list.order-list-pro { border-radius: 10px; }
+}
+@media (max-width: 768px) {
+  #orders .oi-row { padding: 12px 14px; }
+  #orders .oi-row-place { display: none; }
+  #orders .oi-detail-header { padding: 16px 16px 12px; }
+  #orders :is(.oi-overview, .oi-section) { padding-left: 16px; padding-right: 16px; }
+  #orders .order-detail-panel > .panel-subsection { padding-left: 16px; padding-right: 16px; }
+  #orders .oi-route { grid-template-columns: 1fr; }
+  #orders .oi-flow-fields { grid-template-columns: 1fr; }
+  #orders .oi-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #orders .oi-overview .stepper { flex-wrap: nowrap; gap: 5px; }
+  #orders .oi-overview .stepper-step { gap: 4px; font-size: 11px; }
+  #orders .oi-overview .stepper-dot { width: 9px; height: 9px; border-width: 1.5px; font-size: 0; }
+  #orders .oi-overview .stepper-line { flex: 1 1 0; min-width: 4px; }
+  #orders .oi-flow .oi-segmented { max-width: none; }
+  #orders .oi-flow .oi-segmented .flow-chip { min-height: 38px; padding: 6px 2px; font-size: 12.5px; white-space: nowrap; }
 }

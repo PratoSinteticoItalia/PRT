@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-inventario-ordini-chiari-v4";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-inventario-ordini-chiari-v4";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-inbox-ordini-v2";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-inbox-ordini-v2";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-inventario-ordini-chiari-v4";
+} from "./lib/order-money.js?v=20261020-inbox-ordini-v2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-inventario-ordini-chiari-v4";
+import { regionForCity } from "./lib/geo.js?v=20261020-inbox-ordini-v2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-inventario-ordini-chiari-v4";
+} from "./lib/shipping-eligibility.js?v=20261020-inbox-ordini-v2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-inventario-ordini-chiari-v4";
+} from "./lib/profit-split.js?v=20261020-inbox-ordini-v2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-inventario-ordini-chiari-v4";
+} from "./lib/preventivo-pricing.js?v=20261020-inbox-ordini-v2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-inventario-ordini-chiari-v4";
+} from "./lib/sales-assignment.js?v=20261020-inbox-ordini-v2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-inventario-ordini-chiari-v4";
+} from "./lib/surveys.js?v=20261020-inbox-ordini-v2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-inventario-ordini-chiari-v4";
+const APP_SHELL_VERSION = "20261020-inbox-ordini-v2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -598,9 +598,9 @@ const translations = {
     complete: "Da completare",
     installationShort: "Posa",
     orderItems: "Articoli ordine",
-    officePreparation: "Preparazione ufficio",
+    officePreparation: "Materiali da preparare",
     officePreparationCopy: "Seleziona cosa il magazzino deve davvero preparare per questo ordine.",
-    officeOperations: "Operatività ufficio",
+    officeOperations: "Nota sull'ordine",
     orderAttachments: "Allegati ordine",
     edit: "Modifica",
     customer: "Cliente",
@@ -862,9 +862,9 @@ const translations = {
     complete: "To complete",
     installationShort: "Install",
     orderItems: "Order items",
-    officePreparation: "Office preparation",
+    officePreparation: "Materials to prepare",
     officePreparationCopy: "Choose exactly what warehouse must prepare for this order.",
-    officeOperations: "Office operations",
+    officeOperations: "Order note",
     orderAttachments: "Order attachments",
     edit: "Edit",
     customer: "Customer",
@@ -1809,6 +1809,7 @@ const ui = {
   usageReportStatus: document.getElementById("usage-report-status"),
   orderDetailTitle: document.getElementById("order-detail-title"),
   orderDetailBadge: document.getElementById("order-detail-badge"),
+  orderDetailMeta: document.getElementById("order-detail-meta"),
   orderDetailSummary: document.getElementById("order-detail-summary"),
   orderDetailSections: Array.from(document.querySelectorAll("#orders .order-detail-panel > .panel-subsection")),
   orderJobHub: document.getElementById("order-job-hub"),
@@ -2112,9 +2113,9 @@ function staticLabels() {
     ["#orders .route-subsection .subsection-copy", t("routeOfficeCopy")],
     ["#orders .panel-subsection-office h4", t("officeOperations")],
     ["#orders .panel-subsection-items h4", state.lang === "it" ? "Articoli ordine" : "Order items"],
-    ["#orders .panel-subsection-prep h4", state.lang === "it" ? "Preparazione ufficio" : "Office preparation"],
+    ["#orders .panel-subsection-prep h4", state.lang === "it" ? "Materiali da preparare" : "Materials to prepare"],
     ["#orders .panel-subsection-docs h4", state.lang === "it" ? "Allegati ordine" : "Order attachments"],
-    ["#orders .panel-subsection-job-hub h4", state.lang === "it" ? "Commessa unificata" : "Unified job"],
+    ["#orders .panel-subsection-job-hub h4", state.lang === "it" ? "Apri l'ordine in" : "Open the order in"],
     ["#save-prep-list-button", t("savePreparation")],
     ["#order-attachment-button", t("uploadAttachment")],
     ["#installations .toolbar-row .search-pill", t("crewViewCopy")],
@@ -8348,13 +8349,6 @@ function statusChip(label, tone) {
   return `<span class="status-chip status-${tone}">${label}</span>`;
 }
 
-function buildOrderTone(order) {
-  const ops = order.operations || {};
-  if (ops.warehouse?.status === "bloccato" || ops.installation?.status === "problema") return [state.lang === "it" ? "Blocco" : "Blocked", "red"];
-  const stage = getUnifiedOrderStage(order);
-  return [stage.label, stage.tone];
-}
-
 function getSelectedOrder() {
   return state.orders.find((order) => order.id === state.selectedOrderId) || state.orders[0] || null;
 }
@@ -10300,35 +10294,6 @@ function getNextOrderAction(order) {
   return t("noActionRequired");
 }
 
-function getInboxRouteLabel(order) {
-  const installSelected = isRoutedToInstallation(order);
-  const mode = String(order.operations?.warehouse?.fulfillmentMode || "").trim();
-  if (installSelected && isRoutedToWarehouse(order)) {
-    return state.lang === "it" ? "Ufficio -> Magazzino/Spedizioni -> Posa" : "Office -> Warehouse/Logistics -> Installation";
-  }
-  if (installSelected) return state.lang === "it" ? "Ufficio -> Posa" : "Office -> Installation";
-  if (mode === "corriere") {
-    return state.lang === "it" ? "Ufficio -> Magazzino -> Corriere" : "Office -> Warehouse -> Courier";
-  }
-  if (mode === "ritiro") {
-    return state.lang === "it" ? "Ufficio -> Magazzino -> Ritiro cliente" : "Office -> Warehouse -> Customer pickup";
-  }
-  if (mode === "furgone") {
-    return state.lang === "it" ? "Ufficio -> Magazzino -> Furgone" : "Office -> Warehouse -> Van";
-  }
-  if (isRoutedToWarehouse(order)) {
-    return state.lang === "it" ? "Ufficio -> Magazzino" : "Office -> Warehouse";
-  }
-  return state.lang === "it" ? "Da instradare" : "To route";
-}
-
-function getInboxVisibilityLabel(order) {
-  const targets = [];
-  if (isRoutedToWarehouse(order)) targets.push(state.lang === "it" ? "Spedizioni" : "Logistics");
-  if (isRoutedToInstallation(order)) targets.push(state.lang === "it" ? "Posa" : "Installation");
-  return targets.length ? targets.join(" + ") : (state.lang === "it" ? "Solo ufficio" : "Office only");
-}
-
 // isRoutedToWarehouse / isRoutedToInstallation: vedi lib/shipping-eligibility.js.
 function getCrewForCurrentUser() {
   if (state.currentUser?.role !== "crew") return "";
@@ -10661,8 +10626,6 @@ function renderInboxFlowControls(order) {
   const warehouseStatusLabel = getShipmentStateLabel(order);
   const fulfillmentMode = order.operations?.warehouse?.fulfillmentMode || "da-definire";
   const preparationDate = getShippingTargetDate(order);
-  const stage = getUnifiedOrderStage(order);
-  const nextAction = getNextOrderAction(order);
   const modeOptions = [
     ["da-definire", state.lang === "it" ? "Da definire" : "To define"],
     ["corriere", state.lang === "it" ? "Corriere" : "Courier"],
@@ -10672,53 +10635,50 @@ function renderInboxFlowControls(order) {
   // Gruppo di chip a selezione singola (sostituisce i menu a tendina): il chip attivo
   // ha il contorno evidenziato, così da Inbox si vede che l'ordine è stato gestito.
   const chipGroup = (attr, value, options) => `
-    <div class="flow-chip-group" ${attr}="${order.id}" data-value="${escapeHtml(value)}">
-      ${options.map(([v, label]) => `<button type="button" class="flow-chip ${value === v ? "is-active" : ""}" data-v="${v}">${escapeHtml(label)}</button>`).join("")}
+    <div class="flow-chip-group oi-segmented" ${attr}="${order.id}" data-value="${escapeHtml(value)}" role="group">
+      ${options.map(([v, label]) => `<button type="button" class="flow-chip ${value === v ? "is-active" : ""}" data-v="${v}" aria-pressed="${value === v ? "true" : "false"}">${escapeHtml(label)}</button>`).join("")}
     </div>`;
+  const it = state.lang === "it";
+  // Una sezione sola, senza riquadri annidati: "Fase attuale" e "Prossimo
+  // passo" stanno già in cima al dettaglio, qui solo le scelte dell'ufficio.
   return `
-    <article class="guidance-card order-flow-card">
-      <span class="panel-eyebrow">${state.lang === "it" ? "Preparazione & instradamento" : "Preparation & routing"}</span>
-      <div class="detail-grid detail-grid-tight">
-        ${renderInfoLine(state.lang === "it" ? "Fase attuale" : "Current stage", stage.label)}
-        ${renderInfoLine(state.lang === "it" ? "Prossimo passo" : "Next step", nextAction)}
-      </div>
-      <div class="route-switch-grid">
-        <button type="button" class="route-switch ${warehouseSelected ? "is-on" : ""}" data-order-flow-warehouse="${order.id}" data-on="${warehouseSelected ? "1" : "0"}" aria-pressed="${warehouseSelected ? "true" : "false"}">
-          <span class="route-switch-row">
-            <span class="route-switch-label">${state.lang === "it" ? "In spedizione" : "In logistics"}</span>
-            <span class="route-switch-toggle" aria-hidden="true"></span>
+    <section class="oi-section oi-flow" aria-labelledby="oi-flow-title-${escapeHtml(order.id)}">
+      <h4 class="oi-section-title" id="oi-flow-title-${escapeHtml(order.id)}">${it ? "Spedizione e posa" : "Shipping and installation"}</h4>
+      <div class="oi-route">
+        <button type="button" class="route-switch oi-switch ${warehouseSelected ? "is-on" : ""}" data-order-flow-warehouse="${order.id}" data-on="${warehouseSelected ? "1" : "0"}" aria-pressed="${warehouseSelected ? "true" : "false"}">
+          <span class="oi-switch-text">
+            <strong>${it ? "In spedizione" : "In logistics"}</strong>
+            <small>${it ? "Il magazzino prepara e fa uscire la merce" : "Warehouse prepares and ships the goods"}</small>
           </span>
-          <small class="route-switch-copy">${state.lang === "it" ? "Da preparare / spedire in sede" : "Prepare / ship at HQ"}</small>
+          <span class="oi-switch-track" aria-hidden="true"></span>
         </button>
-        <button type="button" class="route-switch ${installSelected ? "is-on" : ""}" data-order-flow-installation="${order.id}" data-on="${installSelected ? "1" : "0"}" aria-pressed="${installSelected ? "true" : "false"}">
-          <span class="route-switch-row">
-            <span class="route-switch-label">${state.lang === "it" ? "Da posare" : "To install"}</span>
-            <span class="route-switch-toggle" aria-hidden="true"></span>
+        <button type="button" class="route-switch oi-switch ${installSelected ? "is-on" : ""}" data-order-flow-installation="${order.id}" data-on="${installSelected ? "1" : "0"}" aria-pressed="${installSelected ? "true" : "false"}">
+          <span class="oi-switch-text">
+            <strong>${it ? "Da posare" : "To install"}</strong>
+            <small>${it ? "Entra nel planning delle squadre" : "Enters crew planning"}</small>
           </span>
-          <small class="route-switch-copy">${state.lang === "it" ? "Entra nel planning squadra" : "Enters crew planning"}</small>
+          <span class="oi-switch-track" aria-hidden="true"></span>
         </button>
       </div>
-      <div class="order-flow-controls">
-        <div class="field flow-readonly-field">
-          <span>${state.lang === "it" ? "Stato magazzino" : "Warehouse status"}</span>
-          <div class="flow-readonly-status" data-warehouse-status="${escapeHtml(warehouseStatus)}">
-            <strong>${escapeHtml(warehouseStatusLabel)}</strong>
-            <small>${state.lang === "it" ? "Si aggiorna da Spedizioni / Magazzino" : "Updated from Logistics / Warehouse"}</small>
-          </div>
-        </div>
-        <div class="field">
-          <span>${state.lang === "it" ? "Uscita merce" : "Goods exit mode"}</span>
+      <div class="oi-flow-fields">
+        <div class="oi-field oi-field-mode">
+          <span class="oi-label">${it ? "Uscita merce" : "Goods exit"}</span>
           ${chipGroup("data-order-flow-mode", fulfillmentMode, modeOptions)}
         </div>
-        <div class="field flow-date-field">
-          <span>${state.lang === "it" ? "Data preparazione merce" : "Goods preparation date"}</span>
+        <label class="oi-field oi-field-date">
+          <span class="oi-label">${it ? "Data preparazione merce" : "Preparation date"}</span>
           <input class="text-input" type="date" data-order-flow-date="${order.id}" value="${preparationDate || ""}" />
+        </label>
+        <div class="oi-field oi-field-readonly">
+          <span class="oi-label">${it ? "Stato magazzino" : "Warehouse status"}</span>
+          <strong data-warehouse-status="${escapeHtml(warehouseStatus)}">${escapeHtml(warehouseStatusLabel)}</strong>
+          <small>${it ? "Lo aggiorna il magazzino da Spedizioni" : "Updated by the warehouse from Logistics"}</small>
         </div>
       </div>
       <div class="flow-helper-note flow-autosave-note" data-order-flow-save-status="${order.id}" data-save-state="${escapeHtml(_inboxFlowSaveStatus.get(order.id)?.kind || "idle")}" role="status" aria-live="polite">
         ${renderInboxFlowSaveStatus(order.id)}
       </div>
-    </article>
+    </section>
   `;
 }
 
@@ -13398,62 +13358,6 @@ function getOrderMaterialAvailability(order) {
   return { tone: "is-warn", label: state.lang === "it" ? "Stock esaurito" : "Out of stock", icon: "⚠" };
 }
 
-function buildOrderInboxStatusTrack(order) {
-  const chips = [];
-  const stage = getUnifiedOrderStage(order);
-  const stageIsActionable = stage.key === "warehouse-work" || stage.key === "office-review";
-
-  // Material availability — most useful operational signal: do we have
-  // enough stock for this order, or is it blocking?
-  if (!isLogisticsOrderCompleted(order)) {
-    const material = getOrderMaterialAvailability(order);
-    if (material) chips.push(material);
-  }
-
-  // Warehouse / logistics signals — only show actionable states
-  if (isLogisticsOrderCompleted(order)) {
-    const wh = order.operations?.warehouse || {};
-    const doneLabel = wh.shipped ? (state.lang === "it" ? "Spedito" : "Shipped") : (state.lang === "it" ? "Ritirato" : "Collected");
-    chips.push({ label: doneLabel, tone: "is-ok", icon: "📦" });
-  } else if (isRoutedToWarehouse(order) && getWarehousePreparedLines(order).length === 0) {
-    chips.push({ label: state.lang === "it" ? "Prep. mancante" : "Prep. missing", tone: "is-warn", icon: "📦" });
-  } else if (isRoutedToWarehouse(order) && !stageIsActionable) {
-    // Only show "Pronto" when the stage badge is also positive — avoids
-    // the confusing "Pronto" + "DA PREPARARE" combo on the same row.
-    chips.push({ label: state.lang === "it" ? "Pronto" : "Ready", tone: "is-info", icon: "📦" });
-  }
-
-  // Installation signals — only when relevant (skip "Solo fornitura" since
-  // the type-badge in the row already shows it).
-  if (isRoutedToInstallation(order)) {
-    if (isInstallationOrderCompleted(order)) {
-      chips.push({ label: state.lang === "it" ? "Posa ok" : "Install done", tone: "is-ok", icon: "🔧" });
-    } else if (order.operations?.installation?.installDate) {
-      chips.push({ label: formatDate(order.operations.installation.installDate), tone: "is-info", icon: "🔧" });
-    } else {
-      chips.push({ label: state.lang === "it" ? "Data mancante" : "No date", tone: "is-warn", icon: "🔧" });
-    }
-  }
-
-  // Payment chip — only show if there's something to highlight (saldato in
-  // green, residuo in amber). Skip for not-yet-due cases to reduce noise.
-  const openBalance = getOpenBalance(order);
-  if (openBalance <= 0) {
-    chips.push({ label: state.lang === "it" ? "Saldato" : "Paid", tone: "is-ok", icon: "€" });
-  } else {
-    // Niente icona "€" qui: formatCurrency() include già il simbolo nel
-    // numero ("1.322,85 €") — con l'icona si leggeva "€ Residuo 1.322,85 €",
-    // il simbolo ripetuto due volte sullo stesso chip.
-    chips.push({
-      label: state.lang === "it" ? `Residuo ${formatCurrency(openBalance)}` : `Open ${formatCurrency(openBalance)}`,
-      tone: "is-warn",
-    });
-  }
-
-  if (chips.length === 0) return "";
-  return `<div class="inbox-status-track">${chips.map((c) => `<span class="inbox-status-chip ${c.tone}">${c.icon ? `<span class="inbox-status-chip-icon" aria-hidden="true">${c.icon}</span>` : ""}<span>${escapeHtml(c.label)}</span></span>`).join("")}</div>`;
-}
-
 function getShopifyAdminOrderUrl(order) {
   const shop = String(state.settings?.storeDomain || "").trim();
   const numericId = String(order?.shopifyNumericId || "").trim();
@@ -13556,65 +13460,53 @@ function getOrderUrgencyBadges(order) {
   return badges;
 }
 
+// Riga dell'Inbox Ordini: tre righe di testo, un solo indicatore di stato e
+// solo gli avvisi che chiedono un'azione (l'assenza di avvisi vuol dire "a
+// posto"). Prima ogni ordine era un riquadro alto con 4-5 pillole sempre
+// presenti ("Materiale OK", "Data mancante", "Saldato"…) e ne stavano 3 a schermo.
 function renderOrderRow(order, view = "orders") {
-  const selected = order.id === state.selectedOrderId ? "selected" : "";
-  const orderType = view === "orders" ? getInboxCommercialType(order) : getOrderType(order);
+  const it = state.lang === "it";
+  const selected = order.id === state.selectedOrderId;
   const stage = getUnifiedOrderStage(order);
-  const nextAction = getNextOrderAction(order);
-  const stageChipTone = stage.tone === "green"
-    ? "badge-success"
-    : stage.tone === "red"
-      ? "badge-urgent"
-      : stage.tone === "blue"
-        ? "badge-info"
-        : "badge-warning";
-  const statusTrack = view === "orders" ? buildOrderInboxStatusTrack(order) : "";
-  const relativeDate = formatOrderRelativeDate(order.createdAt);
-  const urgencyBadges = view === "orders" ? getOrderUrgencyBadges(order) : [];
-  const urgencyHtml = urgencyBadges.length
-    ? `<div class="order-urgency-badges">${urgencyBadges.map((b) => `<span class="order-urgency-badge ${b.tone}" title="${escapeHtml(b.title)}">${escapeHtml(b.label)}</span>`).join("")}</div>`
-    : "";
+  const closed = isOrderClosed(order) || stage.key === "closed";
+  const orderType = getInboxCommercialType(order);
   const material = getShippingMaterialCardSummary(order);
-  const typeClass = view === "orders"
-    ? orderType.className
-    : (orderType.tone === "status-amber" ? "type-posa" : orderType.tone === "status-blue" ? "type-spedizione" : "type-ritiro");
-  const orderId = escapeHtml(order.id);
-  const orderNumber = escapeHtml(getOrderNumber(order));
-  const clientName = escapeHtml(composeClientName(order));
-  const relativeDateHtml = relativeDate.label
-    ? `<span class="order-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>`
-    : "";
-  const address = composeAddress(order) || addressIncompleteText();
+  const relativeDate = formatOrderRelativeDate(order.createdAt);
+  const nextAction = getNextOrderAction(order);
+  const addressMissing = !order.address || !order.city;
+  const flags = [];
+  if (!closed && !isLogisticsOrderCompleted(order)) {
+    const availability = getOrderMaterialAvailability(order);
+    if (availability?.tone === "is-warn") flags.push({ tone: "warn", label: availability.label });
+  }
+  getOrderUrgencyBadges(order).forEach((badge) => {
+    flags.push({ tone: "alert", label: String(badge.label || "").replace(/^⚠\s*/, ""), title: badge.title });
+  });
+  const openBalance = getOpenBalance(order);
+  const productLine = [
+    material.name || order.operations?.product || undefinedText(),
+    material.metric,
+    orderType.label,
+  ].filter(Boolean).join(" · ");
+  const place = addressMissing ? "" : String(order.city || "").trim();
   return `
-    <article class="order-row inbox-row inbox-ticket tone-${stage.tone} ${selected}" data-action="select-order" data-id="${orderId}" data-view="${escapeHtml(view)}">
-      <span class="inbox-ticket-rail tone-${stage.tone}" aria-hidden="true"></span>
-      <div class="inbox-row-main inbox-ticket-main">
-        <div class="inbox-ticket-head">
-          <div class="inbox-ticket-client">
-            <div class="order-name">${clientName} <small>${orderNumber}</small>${relativeDateHtml}</div>
-            <div class="inbox-ticket-address">${escapeHtml(address)}</div>
-          </div>
-          <div class="inbox-ticket-status">
-            <div class="order-type-badge ${typeClass}">${escapeHtml(orderType.label)}</div>
-            <div class="action-badge ${stageChipTone} badge-key-${stage.key}">${escapeHtml(stage.label)}</div>
-          </div>
-        </div>
-        <div class="inbox-material-focus">
-          <div>
-            <span class="inbox-material-name">${escapeHtml(material.name || order.operations?.product || undefinedText())}</span>
-            <span class="inbox-material-detail">${escapeHtml(material.detail || noPhysicalGoodsText())}</span>
-          </div>
-          <strong class="inbox-material-metric">${escapeHtml(material.metric)}</strong>
-        </div>
-        ${statusTrack}
-        ${urgencyHtml}
-        <div class="inbox-ticket-bottom">
-          <div class="inbox-row-next-step">
-            <span>${state.lang === "it" ? "Prossimo passo" : "Next step"}</span>
-            <strong>${escapeHtml(nextAction)}</strong>
-          </div>
-        </div>
+    <article class="oi-row tone-${escapeHtml(stage.tone)} ${selected ? "selected" : ""} ${closed ? "is-closed" : ""}" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(view)}" role="button" tabindex="0"${selected ? ' aria-current="true"' : ""}>
+      <div class="oi-row-line oi-row-head">
+        <span class="oi-row-name">${escapeHtml(composeClientName(order))}</span>
+        <span class="oi-row-number">${escapeHtml(getOrderNumber(order))}</span>
+        ${relativeDate.label ? `<span class="oi-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>` : ""}
+        <span class="oi-status tone-${escapeHtml(stage.tone)}">${escapeHtml(stage.label)}</span>
       </div>
+      <div class="oi-row-line oi-row-sub">
+        <span class="oi-row-product">${escapeHtml(productLine)}</span>
+        ${place ? `<span class="oi-row-place">${escapeHtml(place)}</span>` : ""}
+      </div>
+      ${closed && !flags.length && openBalance <= 0 ? "" : `
+      <div class="oi-row-line oi-row-foot">
+        ${closed ? "" : `<span class="oi-row-next${addressMissing ? " is-warn" : ""}">${escapeHtml(nextAction)}</span>`}
+        ${flags.map((flag) => `<span class="oi-flag is-${flag.tone}"${flag.title ? ` title="${escapeHtml(flag.title)}"` : ""}>${escapeHtml(flag.label)}</span>`).join("")}
+        ${openBalance > 0 ? `<span class="oi-row-balance">${it ? "Da incassare" : "Due"} ${escapeHtml(formatCurrency(openBalance))}</span>` : ""}
+      </div>`}
     </article>
   `;
 }
@@ -13841,52 +13733,56 @@ function renderOrders() {
   }
   ui.orderDetailSections.forEach((section) => section.classList.remove("hidden"));
 
-  const [label, tone] = buildOrderTone(order);
-  const orderType = getOrderType(order);
   const nextAction = getNextOrderAction(order);
   const stage = getUnifiedOrderStage(order);
-  const prepItems = getWarehousePrepItems(order);
-  const routeLabel = getInboxRouteLabel(order);
-  const visibilityLabel = getInboxVisibilityLabel(order);
-  const shippingModeLabel = getShippingModeLabel(order);
-  const prepSummary = prepItems.length
-    ? prepItems
-      .filter((item) => item.included !== false)
-      .slice(0, 3)
-      .map((item) => `${item.title} x${item.quantity}`)
-      .join(" · ")
-    : (state.lang === "it" ? "Nessuna riga selezionata" : "No prep lines selected");
-  const paymentSummary = getOpenBalance(order) > 0
-    ? (state.lang === "it" ? `Residuo ${formatCurrency(getOpenBalance(order))}` : `Open balance ${formatCurrency(getOpenBalance(order))}`)
-    : (state.lang === "it" ? "Saldo operativo allineato" : "Balance aligned");
-  ui.orderDetailTitle.textContent = `${composeClientName(order)} · ${getOrderNumber(order)}`;
-  ui.orderDetailBadge.innerHTML = statusChip(label, tone);
+  const it = state.lang === "it";
+  const orderClosed = isOrderClosed(order) || stage.key === "closed";
+  const openBalance = getOpenBalance(order);
+  const address = composeAddress(order);
+  const shopifyUrl = getShopifyAdminOrderUrl(order);
+  const detailFlags = [];
+  if (!orderClosed && !isLogisticsOrderCompleted(order)) {
+    const availability = getOrderMaterialAvailability(order);
+    if (availability?.tone === "is-warn") detailFlags.push({ tone: "warn", label: availability.label });
+  }
+  getOrderUrgencyBadges(order).forEach((badge) => {
+    detailFlags.push({ tone: "alert", label: String(badge.label || "").replace(/^⚠\s*/, ""), title: badge.title });
+  });
+  ui.orderDetailTitle.textContent = composeClientName(order);
+  if (ui.orderDetailMeta) {
+    ui.orderDetailMeta.textContent = [
+      getOrderNumber(order),
+      getInboxCommercialType(order).label,
+      order.createdAt ? formatDate(order.createdAt) : "",
+    ].filter(Boolean).join(" · ");
+  }
+  // Un solo linguaggio di stato tra elenco e dettaglio (prima: badge, fase,
+  // situazione e stato magazzino ripetevano "Da preparare" quattro volte).
+  ui.orderDetailBadge.innerHTML = `<span class="oi-status tone-${escapeHtml(stage.tone)}">${escapeHtml(stage.label)}</span>`;
   ui.orderDetailSummary.innerHTML = `
-    ${renderOrderStepper(order)}
+    <section class="oi-overview">
+      ${renderOrderStepper(order)}
+      ${orderClosed ? "" : `<p class="oi-next"><span>${it ? "Prossimo passo" : "Next step"}</span><strong>${escapeHtml(nextAction)}</strong></p>`}
+      ${detailFlags.length ? `<div class="oi-flags">${detailFlags.map((flag) => `<span class="oi-flag is-${flag.tone}"${flag.title ? ` title="${escapeHtml(flag.title)}"` : ""}>${escapeHtml(flag.label)}</span>`).join("")}</div>` : ""}
+    </section>
     ${renderInboxFlowControls(order)}
-    <div class="detail-grid detail-grid-tight order-summary-grid">
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Situazione ordine" : "Order status",
-        value: stage.label,
-        meta: nextAction,
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Cliente e cantiere" : "Customer and site",
-        value: composeAddress(order) || addressIncompleteText(),
-        meta: order.phone || order.email || (state.lang === "it" ? "Contatti da verificare" : "Contacts to verify"),
-      })}
-      ${renderDetailBox({
-        label: state.lang === "it" ? "Pagamento" : "Payment",
-        value: formatCurrency(order.total),
-        meta: `${paymentSummary} · ${state.lang === "it" ? "Shopify incassato" : "Shopify paid"} ${formatCurrency(getShopifyPaidAmount(order))}`,
-      })}
-    </div>
-    <div class="detail-actions detail-actions-primary">
-      ${getShopifyAdminOrderUrl(order) ? `<a class="btn" href="${escapeHtml(getShopifyAdminOrderUrl(order))}" target="_blank" rel="noopener">${state.lang === "it" ? "Apri su Shopify ↗" : "Open in Shopify ↗"}</a>` : ""}
-      ${composeAddress(order) ? `<button class="btn" data-action="open-maps" data-id="${order.id}">${state.lang === "it" ? "Apri Maps" : "Open Maps"}</button>` : ""}
-      ${order.phone ? `<button class="btn" data-action="call-client" data-id="${order.id}">${state.lang === "it" ? "Chiama cliente" : "Call customer"}</button>` : ""}
-      ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${order.id}">${state.lang === "it" ? "Chiedi recensione" : "Request review"}</button>` : ""}
-    </div>
+    <section class="oi-section oi-facts">
+      <h4 class="oi-section-title">${it ? "Cliente e pagamento" : "Customer and payment"}</h4>
+      <dl class="oi-kv">
+        <div class="oi-kv-wide"><dt>${it ? "Cantiere" : "Site"}</dt><dd>${address ? escapeHtml(address) : `<span class="is-warn">${escapeHtml(addressIncompleteText())}</span>`}</dd></div>
+        <div><dt>${it ? "Telefono" : "Phone"}</dt><dd>${order.phone ? escapeHtml(order.phone) : "—"}</dd></div>
+        <div class="oi-kv-span2"><dt>Email</dt><dd>${order.email ? escapeHtml(order.email) : "—"}</dd></div>
+        <div><dt>${it ? "Totale ordine" : "Order total"}</dt><dd>${escapeHtml(formatCurrency(order.total))}</dd></div>
+        <div><dt>${it ? "Incassato" : "Collected"}</dt><dd>${escapeHtml(formatCurrency(getCollectedAmount(order)))}</dd></div>
+        <div><dt>${it ? "Da incassare" : "Due"}</dt><dd class="${openBalance > 0 ? "is-warn" : "is-ok"}">${openBalance > 0 ? escapeHtml(formatCurrency(openBalance)) : (it ? "Saldato" : "Paid")}</dd></div>
+      </dl>
+      <div class="oi-actions">
+        ${order.phone ? `<button class="btn" data-action="call-client" data-id="${escapeHtml(order.id)}">${it ? "Chiama" : "Call"}</button>` : ""}
+        ${address ? `<button class="btn" data-action="open-maps" data-id="${escapeHtml(order.id)}">${it ? "Apri Maps" : "Open Maps"}</button>` : ""}
+        ${shopifyUrl ? `<a class="btn" href="${escapeHtml(shopifyUrl)}" target="_blank" rel="noopener">${it ? "Shopify ↗" : "Shopify ↗"}</a>` : ""}
+        ${order.phone && isOrderFulfilledOrClosed(order) ? `<button class="btn" data-action="request-order-review" data-id="${escapeHtml(order.id)}">${it ? "Chiedi recensione" : "Request review"}</button>` : ""}
+      </div>
+    </section>
   `;
   // Interruttori di instradamento (In logistica / Da posare): sono <button> con
   // data-on. Salvataggio IMMEDIATO al click (azione discreta) + toast.
@@ -13920,8 +13816,12 @@ function renderOrders() {
       const chipBtn = ev.target.closest(".flow-chip");
       if (!chipBtn || !group.contains(chipBtn)) return;
       if (chipBtn.classList.contains("is-active")) return;
-      group.querySelectorAll(".flow-chip").forEach((c) => c.classList.remove("is-active"));
+      group.querySelectorAll(".flow-chip").forEach((c) => {
+        c.classList.remove("is-active");
+        c.setAttribute("aria-pressed", "false");
+      });
       chipBtn.classList.add("is-active");
+      chipBtn.setAttribute("aria-pressed", "true");
       group.dataset.value = chipBtn.dataset.v || "";
       if (group.hasAttribute("data-order-flow-mode") && group.dataset.value !== "da-definire") {
         ensureInboxWarehouseRouted(order.id);
@@ -13940,10 +13840,15 @@ function renderOrders() {
       debouncedSaveInboxOrderFlow(order.id);
     });
   });
-  if (ui.orderJobHub) ui.orderJobHub.innerHTML = renderOrderJobHub(order);
+  if (ui.orderJobHub) {
+    ui.orderJobHub.innerHTML = renderOrderJobHub(order);
+    ui.orderJobHub.closest(".panel-subsection")?.classList.toggle("hidden", !ui.orderJobHub.innerHTML.trim());
+  }
   ui.orderOfficeSummary.innerHTML = order.note
     ? `<div class="detail-note-chip">${escapeHtml(order.note)}</div>`
     : "";
+  // Sezioni vuote nascoste: prima restavano titoli senza contenuto.
+  ui.orderOfficeSummary.closest(".panel-subsection")?.classList.toggle("hidden", !order.note);
   // Lista articoli Shopify ora UNITA nella sezione materiali (vedi orderPrepList).
   // L'elemento resta nel DOM ma nascosto: lo svuotiamo per non duplicare dati.
   if (ui.orderLineList) ui.orderLineList.innerHTML = "";
@@ -13960,55 +13865,38 @@ function renderOrders() {
       return lineType === "service";
     });
     const prepSummaryHtml = prepItems.length
-      ? `<section class="prep-command-summary">
-          <div>
-            <span class="panel-eyebrow">${state.lang === "it" ? "Materiale da comunicare" : "Material to prepare"}</span>
-            <strong>${escapeHtml(prepMaterialSummary.name || t("product"))}</strong>
-            <p>${escapeHtml(prepMaterialSummary.detail || getShippingTargetLabel(order))}</p>
-          </div>
-          <div class="prep-command-stats">
-            <span><strong>${includedPrepItems.length}</strong>${state.lang === "it" ? "spuntati" : "selected"}</span>
-            <span><strong>${prepItems.length}</strong>${state.lang === "it" ? "righe" : "lines"}</span>
-          </div>
-        </section>`
+      ? `<p class="oi-prep-summary">
+          <strong>${escapeHtml(prepMaterialSummary.name || t("product"))}</strong>
+          <span>${escapeHtml([prepMaterialSummary.metric, prepMaterialSummary.detail].filter(Boolean).join(" · "))}</span>
+          <span class="oi-prep-count">${state.lang === "it"
+            ? `${includedPrepItems.length} di ${prepItems.length} righe da preparare`
+            : `${includedPrepItems.length} of ${prepItems.length} lines to prepare`}</span>
+        </p>`
       : "";
     const prepHtml = prepItems.length
       ? prepItems.map((item, index) => {
         const split = splitShippingMaterialTitle(item.title);
         const dims = extractDimensions(item.title);
         const dimsLabel = split.detail || (dims ? `${formatMeasure(dims.width)} × ${formatMeasure(dims.length)} m` : "");
-        const metaParts = [
-          dimsLabel,
-          `${t("prepQty")}: ${item.quantity}`,
-        ].filter(Boolean).join(" · ");
         const noteToggleLabel = item.note
-          ? (state.lang === "it" ? "Nota inserita" : "Note added")
-          : (state.lang === "it" ? "Aggiungi nota magazzino" : "Add warehouse note");
+          ? (state.lang === "it" ? "Nota per il magazzino" : "Warehouse note")
+          : (state.lang === "it" ? "+ Nota" : "+ Note");
+        // Riga compatta: la spunta è lo stato (niente più pillola "Da preparare"
+        // ripetuta su ogni riga), quantità allineata a destra.
         return `
-        <article class="prep-item prep-ticket ${item.included === false ? "is-excluded" : ""}">
-          <label class="prep-item-toggle prep-ticket-toggle">
+        <article class="prep-item oi-prep-row ${item.included === false ? "is-excluded" : ""}">
+          <label class="oi-prep-check">
             <input type="checkbox" data-prep-field="included" data-index="${index}" ${item.included === false ? "" : "checked"} />
-            <span aria-hidden="true"></span>
+            <span class="oi-prep-name">
+              <strong>${escapeHtml(split.name || item.title)}</strong>
+              ${dimsLabel ? `<small>${escapeHtml(dimsLabel)}</small>` : ""}
+            </span>
           </label>
-          <div class="prep-item-body prep-ticket-body">
-            <div class="prep-item-head prep-ticket-head">
-              <div>
-                <strong>${escapeHtml(split.name || item.title)}</strong>
-                <div class="prep-item-meta">${escapeHtml(metaParts)}</div>
-              </div>
-              <div class="prep-ticket-status">
-                <span class="prep-ticket-qty">x${escapeHtml(item.quantity)}</span>
-                ${statusChip(item.included === false ? t("excluded") : t("included"), item.included === false ? "slate" : "green")}
-              </div>
-            </div>
-            <details class="prep-ticket-note ${item.note ? "has-note" : ""}">
-              <summary>${noteToggleLabel}</summary>
-              <label class="field field-full prep-ticket-note-field">
-                <span>${t("warehouseNoteLabel")}</span>
-                <textarea class="text-input prep-item-note" data-prep-field="note" data-index="${index}" rows="2" placeholder="${state.lang === "it" ? "Taglio, priorità, esclusioni, note bancale..." : "Cutting, priority, exclusions, pallet notes..."}">${escapeHtml(item.note || "")}</textarea>
-              </label>
-            </details>
-          </div>
+          <span class="oi-prep-qty" title="${escapeHtml(t("prepQty"))}">× ${escapeHtml(item.quantity)}</span>
+          <details class="oi-prep-note ${item.note ? "has-note" : ""}">
+            <summary>${noteToggleLabel}</summary>
+            <textarea class="text-input prep-item-note" data-prep-field="note" data-index="${index}" rows="2" aria-label="${escapeHtml(t("warehouseNoteLabel"))}" placeholder="${state.lang === "it" ? "Taglio, priorità, esclusioni, note bancale..." : "Cutting, priority, exclusions, pallet notes..."}">${escapeHtml(item.note || "")}</textarea>
+          </details>
         </article>
       `;
       }).join("")
@@ -26932,15 +26820,6 @@ function renderDetailBox(item) {
   `;
 }
 
-function renderInfoLine(label, value) {
-  return `
-    <div class="detail-box">
-      <span class="panel-eyebrow">${label}</span>
-      <p>${value || "—"}</p>
-    </div>
-  `;
-}
-
 function renderAttachmentGrid(items, orderId = "") {
   if (!items?.length) return `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
   return items.map((item, index) => `
@@ -31640,9 +31519,7 @@ function renderInboxFlowSaveStatus(orderId) {
   const it = state.lang === "it";
   const status = _inboxFlowSaveStatus.get(orderId);
   if (!status) {
-    return it
-      ? "Inbox salva instradamento, uscita merce e data. Lo stato operativo lo aggiorna il magazzino."
-      : "Inbox saves routing, goods exit mode and date. Warehouse updates the operational status.";
+    return it ? "Le scelte si salvano da sole." : "Changes are saved automatically.";
   }
   if (status.kind === "saving") return it ? "Salvataggio in corso…" : "Saving…";
   if (status.kind === "retrying") {
