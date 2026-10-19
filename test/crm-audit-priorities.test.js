@@ -37,7 +37,8 @@ test('completed shipments do not request preparation even with past or absent da
 test('closed orders take precedence over missing address',()=>{
  const start=source.indexOf('function getNextOrderAction(');
  const end=source.indexOf('\nfunction ',start+1);
- const next=vm.runInNewContext(source.slice(start,end)+';getNextOrderAction',{
+ // "\n;" e non ";": il testo estratto può finire con un commento di riga.
+ const next=vm.runInNewContext(source.slice(start,end)+'\n;getNextOrderAction',{
  state:{lang:'it'},isOrderClosed:o=>o.closed,t:s=>s
  });
  assert.match(next({closed:true}),/Ordine chiuso/);

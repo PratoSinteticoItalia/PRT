@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261020-inventario-ordini-chiari-v4" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261020-inventario-ordini-chiari-v4" />
+    <link rel="preload" href="./styles.css?v=20261020-inbox-ordini-v2" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261020-inbox-ordini-v2" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -531,22 +531,19 @@
             </div>
 
             <section class="detail-panel order-detail-panel">
-              <div class="detail-header">
+              <div class="detail-header oi-detail-header">
                 <div>
                   <div class="detail-title" id="order-detail-title">Seleziona un ordine</div>
-                  <div class="detail-id">Shopify live · ordine in lavorazione</div>
+                  <div class="detail-id" id="order-detail-meta"></div>
                 </div>
-                <span id="order-detail-badge" class="action-badge badge-info">—</span>
+                <span id="order-detail-badge" class="oi-detail-badge"></span>
               </div>
 
               <div id="order-detail-summary" class="detail-grid"></div>
 
-              <div class="panel-subsection panel-subsection-emphasis panel-subsection-job-hub">
+              <div class="panel-subsection panel-subsection-job-hub">
                 <div class="subsection-head">
-                  <div>
-                    <h4>Commessa unificata</h4>
-                    <p class="subsection-copy">Primo step: qui vedi in un solo punto i dati gia presenti in ufficio, magazzino, posa, contabilita e documenti, senza cambiare i flussi esistenti.</p>
-                  </div>
+                  <h4>Apri l'ordine in</h4>
                 </div>
                 <div id="order-job-hub" class="detail-stack"></div>
               </div>
@@ -561,11 +558,10 @@
               <div class="panel-subsection panel-subsection-prep">
                 <div class="subsection-head">
                   <div>
-                    <h4>Materiali ordine</h4>
-                    <p class="subsection-copy">Spunta cosa il magazzino deve davvero preparare. I servizi (es. posa) sono mostrati come riferimento.</p>
+                    <h4>Materiali da preparare</h4>
+                    <p class="subsection-copy">Togli la spunta a ciò che il magazzino non deve preparare. Si salva da solo.</p>
                   </div>
                   <button id="save-prep-list-button" class="primary-button small-button" hidden>Salva preparazione</button>
-                  <span class="prep-autosave-hint">Si salva da solo</span>
                 </div>
                 <div id="order-prep-list" class="prep-list"></div>
                 <!-- Lista articoli Shopify unita qui sopra: elemento mantenuto nascosto
@@ -2764,7 +2760,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261020-inventario-ordini-chiari-v4" defer></script>
-    <script src="./app.js?v=20261020-inventario-ordini-chiari-v4" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261020-inbox-ordini-v2" defer></script>
+    <script src="./app.js?v=20261020-inbox-ordini-v2" type="module"></script>
   </body>
 </html>
