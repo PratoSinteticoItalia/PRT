@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261019-inbox-posa-uscita-libera" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261019-inbox-posa-uscita-libera" />
+    <link rel="preload" href="./styles.css?v=20261020-inventario-ordini-chiari-v4" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261020-inventario-ordini-chiari-v4" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -481,7 +481,7 @@
           </div>
         </section>
 
-        <section class="view" id="orders">
+        <section class="view ops-light-page" id="orders">
           <div class="page-header">
             <div>
               <h1>Inbox Ordini</h1>
@@ -1096,7 +1096,7 @@
              Contenuto via JS in renderResellerProfile(). -->
         <section class="view" id="reseller-profile"></section>
 
-        <section class="view" id="warehouse">
+        <section class="view ops-light-page" id="warehouse">
           <div class="page-header">
             <div>
               <h1>Inventario</h1>
@@ -1131,10 +1131,10 @@
           <div class="two-col">
             <section>
 
-              <div class="info-card inventory-guide-card">
-                <strong>Come caricare le giacenze iniziali</strong>
+              <details class="info-card inventory-guide-card">
+                <summary>Come caricare le giacenze iniziali</summary>
                 <p>Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.</p>
-              </div>
+              </details>
 
               <div id="inventory-summary" class="inventory-catalog"></div>
             </section>
@@ -2764,7 +2764,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261019-inbox-posa-uscita-libera" defer></script>
-    <script src="./app.js?v=20261019-inbox-posa-uscita-libera" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261020-inventario-ordini-chiari-v4" defer></script>
+    <script src="./app.js?v=20261020-inventario-ordini-chiari-v4" type="module"></script>
   </body>
 </html>
