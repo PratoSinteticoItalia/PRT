@@ -19522,6 +19522,12 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const orderIndex = store.orders.findIndex((item) => item.id === orderId);
     if (orderIndex < 0) return sendJson(res, 404, { error: "order_not_found" });
+    // Data preparazione a metà digitazione (Chrome manda 0002, 0020, 0202 mentre
+    // si scrive l'anno): non si salva, resta quella precedente.
+    const typedPreparationDate = body?.warehouse?.preparationDate;
+    if (typeof typedPreparationDate === "string" && typedPreparationDate && !/^20\d{2}-\d{2}-\d{2}$/.test(typedPreparationDate)) {
+      delete body.warehouse.preparationDate;
+    }
     const current = store.orders[orderIndex];
     store.orders[orderIndex] = {
       ...current,
@@ -20629,6 +20635,13 @@ const server = createServer(async (req, res) => {
       res.end("Not found");
     }
   }
+});
+
+// Rete di sicurezza: una promessa rifiutata senza catch in un'attività di
+// sottofondo non deve spegnere il server per tutti gli utenti (da Node 15 il
+// processo esce con status 1). Resta tracciata nei log di Render.
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] promessa rifiutata non gestita (server mantenuto attivo):", reason?.stack || reason);
 });
 
 // Servizi in background che dipendono dallo schema relazionale (lettore email
