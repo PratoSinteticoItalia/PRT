@@ -128,3 +128,22 @@ test("data preparazione proposta = giorno prima della posa (non due giorni in It
   assert.equal(getShippingTargetDate({ operations: { warehouse: { preparationDate: "2026-10-20" }, installation: { installDate: "2026-10-25" } } }), "2026-10-20");
   assert.equal(getShippingTargetDate({ operations: {} }), "");
 });
+
+test("con 'Da posare' acceso l'uscita merce resta quella scelta (anche Corriere o Da definire)", () => {
+  const order = { id: "a", operations: { warehouse: { selected: true, fulfillmentMode: "furgone" }, installation: { selected: true } } };
+  const nodes = {
+    "[data-order-flow-mode=\"a\"]": { dataset: { value: "da-definire" } },
+    "[data-order-flow-date=\"a\"]": { value: "" },
+    "[data-order-flow-warehouse=\"a\"]": { dataset: { on: "1" } },
+    "[data-order-flow-installation=\"a\"]": { dataset: { on: "1" } },
+  };
+  const context = { state: { orders: [order] }, document: { querySelector: (sel) => nodes[sel] || null } };
+  const start = source.indexOf("function buildInboxOrderFlowPayload(");
+  const end = source.indexOf("const _inboxFlowSaveTimers", start);
+  const plausible = source.slice(source.indexOf("function isPlausibleInboxFlowDate("), source.indexOf("// Scegliere Corriere/Furgone/Ritiro"));
+  const build = vm.runInNewContext(`${plausible}\n${source.slice(start, end)};buildInboxOrderFlowPayload`, context);
+  assert.equal(build("a").warehouse.fulfillmentMode, "da-definire");
+  nodes["[data-order-flow-mode=\"a\"]"].dataset.value = "corriere";
+  assert.equal(build("a").warehouse.fulfillmentMode, "corriere");
+  assert.equal(build("a").installation.selected, true);
+});
