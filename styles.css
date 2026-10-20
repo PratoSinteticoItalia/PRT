@@ -29796,3 +29796,17 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
   #ddt-list .shp-main { flex-basis: calc(100% - 20px); }
   #ddt-list .shp-aside { margin-left: 15px; flex-wrap: wrap; }
 }
+
+/* La rotella deve proseguire sulla pagina anche quando è sopra la lista. */
+#sales-requests #sales-requests-list { overscroll-behavior: auto; }
+#profit-split .profit-split-partner-bar { margin: 12px 0 16px; }
+#profit-split .profit-split-partner-card > button { margin-top: 8px; }
+#profit-split .profit-split-history-row { padding: 16px; gap: 14px; flex-wrap: wrap; }
+#profit-split .profit-split-history-open { min-width: 0; flex: 1 1 300px; }
+#profit-split .profit-split-history-figures { padding: 0 8px; }
+#profit-split .profit-split-partner-meta { line-height: 1.6; }
+
+/* Un solo scorrimento per la lista: overflow clip non crea uno scroll container. */
+#sales-requests #sales-requests-list.sales-request-list { overflow: clip; max-height: none; }
+#profit-split .profit-split-partner-card { padding: 20px; }
+#profit-split .profit-split-history-panel { padding: 20px; }

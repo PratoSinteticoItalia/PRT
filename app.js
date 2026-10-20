@@ -1,6 +1,6 @@
-import { filterProfitHistory } from "./lib/profit-history.js";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-conti-posa-storico";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-conti-posa-storico";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-saldi-posatori-scroll";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-saldi-posatori-scroll";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -16,9 +16,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-conti-posa-storico";
+} from "./lib/order-money.js?v=20261020-saldi-posatori-scroll";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-conti-posa-storico";
+import { regionForCity } from "./lib/geo.js?v=20261020-saldi-posatori-scroll";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -37,7 +37,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-conti-posa-storico";
+} from "./lib/shipping-eligibility.js?v=20261020-saldi-posatori-scroll";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -48,7 +48,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-conti-posa-storico";
+} from "./lib/profit-split.js?v=20261020-saldi-posatori-scroll";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -63,7 +63,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-conti-posa-storico";
+} from "./lib/preventivo-pricing.js?v=20261020-saldi-posatori-scroll";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -71,13 +71,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-conti-posa-storico";
+} from "./lib/sales-assignment.js?v=20261020-saldi-posatori-scroll";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-conti-posa-storico";
+} from "./lib/surveys.js?v=20261020-saldi-posatori-scroll";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -91,7 +91,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-conti-posa-storico";
+const APP_SHELL_VERSION = "20261020-saldi-posatori-scroll";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -3818,7 +3818,7 @@ function getSavedProfitSplits() {
         orderId: order.id,
         order,
         draft,
-        result,
+        result: { ...result, ...profitPaymentBalance(result.partnerDue, order.operations?.installation?.partnerSettlement) },
         partnerName: result.partnerName || (state.lang === "it" ? "Senza nome" : "Unnamed"),
         savedAt: String(draft.savedAt || ""),
         jobLabel: String(draft.jobLabel || "").trim() || buildProfitSplitOrderLabel(order),
@@ -3833,13 +3833,15 @@ function getProfitSplitPartnerBalances(entries = getSavedProfitSplits()) {
   const map = new Map();
   entries.forEach((entry) => {
     const key = entry.partnerName;
-    const acc = map.get(key) || { partnerName: key, count: 0, revenue: 0, partnerDue: 0 };
+    const acc = map.get(key) || { partnerName: key, count: 0, revenue: 0, partnerDue: 0, paid: 0, remaining: 0 };
     acc.count += 1;
+    acc.paid = Number((acc.paid + entry.result.paid).toFixed(2));
+    acc.remaining = Number((acc.remaining + entry.result.remaining).toFixed(2));
     acc.revenue = Number((acc.revenue + entry.result.revenue).toFixed(2));
     acc.partnerDue = Number((acc.partnerDue + entry.result.partnerDue).toFixed(2));
     map.set(key, acc);
   });
-  return Array.from(map.values()).sort((left, right) => right.partnerDue - left.partnerDue);
+  return Array.from(map.values()).sort((left, right) => right.remaining - left.remaining);
 }
 
 function renderProfitSplitPartnerBalances() {
@@ -3851,9 +3853,9 @@ function renderProfitSplitPartnerBalances() {
       : "No balances yet: save a split on a job and it will show up here."}</div>`;
     return;
   }
-  const maxDue = Math.max(...balances.map((item) => item.partnerDue), 1);
+  const maxDue = Math.max(...balances.map((item) => item.remaining), 1);
   ui.profitSplitPartnerBalances.innerHTML = balances.map((item) => {
-    const pct = Math.max(2, Math.round((item.partnerDue / maxDue) * 100));
+    const pct = Math.max(0, Math.round((item.remaining / maxDue) * 100));
     const poseLabel = state.lang === "it"
       ? `${item.count} ${item.count === 1 ? "posa" : "pose"}`
       : `${item.count} ${item.count === 1 ? "job" : "jobs"}`;
@@ -3866,7 +3868,8 @@ function renderProfitSplitPartnerBalances() {
             <span class="profit-split-partner-meta">${escapeHtml(poseLabel)}</span>
           </div>
         </div>
-        <div class="profit-split-partner-amount">${escapeHtml(formatCurrency(item.partnerDue))}</div>
+        <div class="profit-split-partner-amount">${escapeHtml(formatCurrency(item.remaining))}</div>
+        <p class="profit-split-partner-meta">Residuo da saldare · Spettante ${escapeHtml(formatCurrency(item.partnerDue))} · Pagato ${escapeHtml(formatCurrency(item.paid))}</p>
         <div class="profit-split-partner-bar"><span style="width:${pct}%"></span></div>
         <button type="button" class="ghost-button small-button" data-profit-history-partner="${escapeHtml(item.partnerName)}">Apri storico</button>
         <button type="button" class="ghost-button small-button profit-split-partner-pdf" data-profit-split-statement-partner="${escapeHtml(item.partnerName)}">${state.lang === "it" ? "Estratto PDF" : "PDF statement"}</button>
@@ -3898,7 +3901,9 @@ function renderProfitSplitHistory() {
     ["Recuperi aggiuntivi", formatCurrency(sum("partnerRecovery"))],
     ["Compenso fisso", formatCurrency(sum("partnerFixedTotal"))],
     ["Quota utile", formatCurrency(sum("partnerProfitShare"))],
-    ["Totale spettante", formatCurrency(sum("partnerDue"))]
+    ["Totale spettante", formatCurrency(sum("partnerDue"))],
+    ["Pagato", formatCurrency(sum("paid"))],
+    ["Residuo da saldare", formatCurrency(sum("remaining"))]
   ].map(([label,value]) => `<div><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   document.getElementById("profit-history-export").disabled = !filters.partner || !entries.length;
   if (!entries.length) {
@@ -3919,10 +3924,12 @@ function renderProfitSplitHistory() {
             <span class="profit-split-history-sub">${subline}</span>
           </span>
           <span class="profit-split-history-figures">
-            <span class="profit-split-history-due">Spettante ${escapeHtml(formatCurrency(entry.result.partnerDue))}</span>
-            <span class="profit-split-history-rev">Ricavo commessa ${escapeHtml(formatCurrency(entry.result.revenue))}</span>
+            <span class="profit-split-history-due">${entry.result.settled ? "Saldato" : "Residuo"} ${escapeHtml(formatCurrency(entry.result.remaining))}</span>
+            <span class="profit-split-history-rev">Spettante ${escapeHtml(formatCurrency(entry.result.partnerDue))} · Pagato ${escapeHtml(formatCurrency(entry.result.paid))}</span>
           </span>
         </button>
+        <button type="button" class="ghost-button small-button" data-partner-settlement="${escapeHtml(entry.orderId)}" ${entry.result.partnerDue <= 0 && !entry.result.paid ? "disabled" : ""}>${entry.result.settled ? "Annulla saldo" : "Segna saldato"}</button>
+        ${entry.order.operations?.installation?.partnerSettlement?.updatedAt ? `<small>Registrazione: ${escapeHtml(formatDate(entry.order.operations.installation.partnerSettlement.updatedAt))}</small>` : ""}
         <button type="button" class="profit-split-history-pdf ghost-button small-button" data-profit-split-pdf-order="${escapeHtml(entry.orderId)}" aria-label="${state.lang === "it" ? "Scarica PDF conto" : "Download conto PDF"}">PDF</button>
       </div>`;
   }).join("");
@@ -37803,7 +37810,26 @@ bindEvent(ui.profitSplitForm, "change", () => {
   syncProfitSplitDraftAfterInput(readProfitSplitDraftFromForm());
   renderProfitSplitCalculator({ syncForm: false });
 });
-bindEvent(ui.profitSplitHistory, "click", (event) => {
+bindEvent(ui.profitSplitHistory, "click", async (event) => {
+  const payment = event.target.closest("[data-partner-settlement]");
+  if (payment) {
+    const entry = getSavedProfitSplits().find(e => e.orderId === payment.dataset.partnerSettlement);
+    if (!entry || payment.disabled) return;
+    const action = entry.result.settled ? "reopen" : "settle";
+    if (!window.confirm(action === "settle"
+      ? `Confermi di avere già pagato al posatore il totale di ${formatCurrency(entry.result.partnerDue)} per ${entry.jobLabel}? È una registrazione, non un pagamento bancario.`
+      : `Annullare la registrazione di saldo per ${entry.jobLabel}? L’operazione resterà tracciata.`)) return;
+    payment.disabled = true;
+    try {
+      const saved = await apiFetch(`/api/orders/${encodeURIComponent(entry.orderId)}/partner-settlement`, {
+        method: "POST", body: JSON.stringify({ action, expectedPartnerName: entry.draft.partnerName, expectedDue: entry.result.partnerDue, expectedUpdatedAt: entry.order.operations?.installation?.partnerSettlement?.updatedAt || "" })
+      });
+      state.orders = state.orders.map(o => o.id === saved.id ? saved : o);
+      renderProfitSplitPartnerBalances();
+      renderProfitSplitHistory();
+    } catch (err) { window.alert(err.message || "Salvataggio non riuscito."); payment.disabled = false; }
+    return;
+  }
   const pdfBtn = event.target.closest("[data-profit-split-pdf-order]");
   if (pdfBtn) {
     event.preventDefault();
