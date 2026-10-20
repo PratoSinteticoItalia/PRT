@@ -350,3 +350,10 @@ Richiesta utente: adeguare tutto lo stile a quello di Inbox Ordini. Piano concor
 - **Pannello di preparazione** (`#shipping-standard-detail-panel`, agganciato a `<body>`): "Cosa fare ora" in riga `oi-next` + `<dl class="oi-kv">`; `renderShippingMaterialPreview` ridotto al riepilogo (le righe erano duplicate con "Cosa evadere"); `renderShippingPrepList` a righe `oi-prep-row` con la nota nel meta. Lo stile comune ora vale anche per `#shipping-standard-detail-panel` e `#sample-detail-panel` (fuori da `.view`); componenti `oi-*` e token `--oi-*` estesi al pannello.
 - **DDT e Sopralluoghi**: `#ddt-list` e `#survey-list` resi elenco unico a righe (solo CSS).
 - Verificato desktop e telefono (scheda mobile sistemata), `npm run check` verde (288). Da raccogliere: feedback del magazzino sulle schede (ora città invece dell'indirizzo completo).
+
+## Fase 3 del restyling: Pose — 20 ottobre
+
+- **Bacheca Pose** (`renderInstallationKanbanCard`): stessa scheda `sv2-card` di Spedizioni (nome·numero + data posa o "Senza data" arancione, prodotto·mq, città, squadra col suo colore o "Squadra da assegnare" arancione, "Problema" in rosso). Tolte pillola di stato ed emoji dei titoli corsia. Il CSS "Spedizioni e Pose v2" è condiviso via `:is(#shipping, #installations)` (selettore card `.shp-groups .shp-row.sv2-card.sv2-card`, ora senza dipendere da `.shp-ticket`).
+- **Dettaglio posa** (drawer): `installationDetailSummary` da 5-6 `renderDetailBox` a `<dl class="oi-kv">` (voci brevi affiancate, lunghe a tutta riga). Token `--oi-*` e `.oi-kv` validi anche per `#installations`.
+- **Programmate / Sistemazioni / Completati** (`renderInstallationOrderRow`): elenco unico a righe, stato a punto + testo, etichette non più in maiuscolo.
+- Cantieri Live e Presenze già coerenti, invariati. `npm run check` verde (288).

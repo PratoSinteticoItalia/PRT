@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-fase2-ddt-sopralluoghi-b";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-fase2-ddt-sopralluoghi-b";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-fase3-pose-e";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-fase3-pose-e";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-fase2-ddt-sopralluoghi-b";
+} from "./lib/order-money.js?v=20261020-fase3-pose-e";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-fase2-ddt-sopralluoghi-b";
+import { regionForCity } from "./lib/geo.js?v=20261020-fase3-pose-e";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-fase2-ddt-sopralluoghi-b";
+} from "./lib/shipping-eligibility.js?v=20261020-fase3-pose-e";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-fase2-ddt-sopralluoghi-b";
+} from "./lib/profit-split.js?v=20261020-fase3-pose-e";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-fase2-ddt-sopralluoghi-b";
+} from "./lib/preventivo-pricing.js?v=20261020-fase3-pose-e";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-fase2-ddt-sopralluoghi-b";
+} from "./lib/sales-assignment.js?v=20261020-fase3-pose-e";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-fase2-ddt-sopralluoghi-b";
+} from "./lib/surveys.js?v=20261020-fase3-pose-e";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-fase2-ddt-sopralluoghi-b";
+const APP_SHELL_VERSION = "20261020-fase3-pose-e";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19796,37 +19796,32 @@ function renderInstallationKanbanCard(order) {
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const dateLabel = install.installDate
     ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
-    : (state.lang === "it" ? "Data da definire" : "Date to set");
+    : (state.lang === "it" ? "Senza data" : "No date");
   const installStatus = String(install.status || "").trim();
   const statusLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
-  // Stesso schema cromatico dei chip/dot della Logistica (.shp-chip/.shp-dot)
-  const toneClass = installStatus === "completata" ? "ready"
-    : installStatus === "in-corso" ? "work"
-    : installStatus === "problema" ? "block"
-    : "prep";
-  const crewLabel = install.crew || (state.lang === "it" ? "Squadra da assegnare" : "Crew to assign");
+  const it = state.lang === "it";
+  const crewName = String(install.crew || "").trim();
   const crewColor = getCrewColor(install.crew);
   const destination = composeAddress(order) || addressIncompleteText();
-  // Card IDENTICA alla Logistica (.shp-row): dentro .shp-groups si impila da sola.
-  // data-installation-drag-id → riusa il drag esistente verso calendario/corsie.
+  const addressMissing = !order.address || !order.city;
+  const place = addressMissing ? addressIncompleteText() : String(order.city || "").trim();
+  const done = installStatus === "completata";
+  // Stessa scheda di Spedizioni (sv2): la corsia dice già lo stato, quindi
+  // niente pillola; colore solo su data mancante, squadra mancante, problema.
   return `
-    <article class="shp-row ${selected}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
-      <span class="shp-dot ${toneClass}"></span>
-      <div class="shp-main">
-        <div class="shp-name-line">
-          <span class="shp-name">${escapeHtml(composeClientName(order))}</span>
-          <span class="shp-num">${escapeHtml(getOrderNumber(order))}</span>
-        </div>
-        <div class="shp-meta">
-          <span>${escapeHtml(order.operations?.product || t("undefined"))} · ${Math.round(getSafeOrderSqm(order))} mq</span>
-          <span class="shp-sep">·</span>
-          <span>${escapeHtml(destination)}</span>
-          <span class="shp-mode-tag shp-crew-tag"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewLabel)}</span>
-        </div>
+    <article class="shp-row sv2-card ${selected} ${done ? "is-done" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
+      <div class="sv2-head">
+        <span class="sv2-name">${escapeHtml(composeClientName(order))}</span>
+        <span class="sv2-num">${escapeHtml(getOrderNumber(order))}</span>
+        <span class="sv2-date ${install.installDate ? "" : "is-today"}" title="${escapeHtml(statusLabel)}">${escapeHtml(dateLabel)}</span>
       </div>
-      <div class="shp-aside">
-        <span class="shp-date">${escapeHtml(dateLabel)}</span>
-        <span class="shp-chip ${toneClass}">${escapeHtml(statusLabel)}</span>
+      <div class="sv2-line sv2-material">${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}</div>
+      <div class="sv2-line sv2-place${addressMissing ? " is-warn" : ""}" title="${escapeHtml(destination)}">${escapeHtml(place)}</div>
+      <div class="sv2-foot">
+        <div class="sv2-line sv2-meta">
+          <span class="sv2-crew${crewName ? "" : " is-warn"}"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewName || (it ? "Squadra da assegnare" : "Crew to assign"))}</span>
+          ${installStatus === "problema" ? `<span class="sv2-sep" aria-hidden="true">·</span><span class="is-alert">${escapeHtml(statusLabel)}</span>` : ""}
+        </div>
       </div>
       ${kanbanGripHandle(order.id, "installation")}
     </article>
@@ -19872,7 +19867,7 @@ function renderInstallationsKanban(listOrders) {
     <div class="shp-groups inst-kanban-groups" data-mobile-lane="${escapeAttr(mobileLane)}">
       ${lanes.map((g) => `
         <section class="shp-group shp-lane-${g.key} inst-lane-${g.key}" data-install-lane-drop="${g.key}">
-          <div class="shp-group-label"><h3>${g.icon} ${escapeHtml(g.title)}</h3><span class="shp-gc">${g.orders.length}</span></div>
+          <div class="shp-group-label"><h3>${escapeHtml(g.title)}</h3><span class="shp-gc">${g.orders.length}</span></div>
           <div class="shp-group-list">
             ${g.orders.length
               ? g.orders.map(renderInstallationKanbanCard).join("")
@@ -20097,7 +20092,13 @@ function renderInstallations() {
           { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
           { label: state.lang === "it" ? "Gestione spedizione" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || t("timePending")}` : t("installationDatePending") },
         ];
-    ui.installationDetailSummary.innerHTML = summaryCards.map(renderDetailBox).join("");
+    // Coppie etichetta/valore come nel dettaglio di Inbox Ordini (prima ogni
+    // voce era un riquadro a sé e il pannello superava i 3.600 px).
+    const wideLabels = new Set(["Cliente", "Customer", "Cantiere", "Site", "Materiale in uscita", "Outbound goods", "Preparazione ufficio", "Office preparation"]);
+    // Voci brevi affiancate in alto, quelle lunghe (indirizzo, materiale) sotto a tutta riga.
+    const orderedCards = [...summaryCards].sort((a, b) => Number(wideLabels.has(a.label)) - Number(wideLabels.has(b.label)));
+    ui.installationDetailSummary.innerHTML = `<dl class="oi-kv">${orderedCards.map((card) => `
+      <div class="${wideLabels.has(card.label) ? "oi-kv-wide" : ""}"><dt>${escapeHtml(card.label)}</dt><dd>${escapeHtml(card.value)}${card.meta ? `<small>${escapeHtml(card.meta)}</small>` : ""}</dd></div>`).join("")}</dl>`;
   }
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
@@ -20185,7 +20186,7 @@ function renderInstallationOrderRow(order) {
   const sqm = getSafeOrderSqm(order);
   const product = order?.operations?.product || "—";
   const orderNum = getOrderNumber(order);
-  const stageBadge = isInstallationCompleted(order) ? "COMPLETATA" : (installDate ? "PROGRAMMATA" : "DA PIANIFICARE");
+  const stageBadge = isInstallationCompleted(order) ? "Completata" : (installDate ? "Programmata" : "Da pianificare");
   const stageClass = isInstallationCompleted(order) ? "is-done" : (installDate ? "is-scheduled" : "is-todo");
   const selectedClass = order?.id && order.id === state.selectedOrderId ? "is-selected" : "";
   return `
