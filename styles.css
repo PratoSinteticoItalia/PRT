@@ -29821,3 +29821,9 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 @media (max-width: 480px) {
   #profit-split .profit-history-summary { grid-template-columns: minmax(0, 1fr); }
 }
+.ts-export-range { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 12px 0; }
+.ts-export-range label { display: grid; gap: 6px; }
+.ts-export-range input { padding: 8px; border: 1px solid var(--ui-line, #ddd); border-radius: 7px; }
+.ts-certificate-panel { margin-top: 20px; border-top: 1px solid var(--ui-line, #ddd); padding-top: 16px; }
+.ts-certificate-panel summary { cursor: pointer; font-weight: 650; margin-bottom: 12px; }
+[data-ts-absence-save] { margin-top: 10px; }
