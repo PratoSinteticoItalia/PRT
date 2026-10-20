@@ -29709,6 +29709,62 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 #dashboard :is(.dash-date-chip, .dashboard-command-filter).is-active,
 #dashboard .btn.primary.dashboard-command-filter.is-active { border-color: transparent; background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); box-shadow: inset 0 -2px var(--brand, #2f7a55); }
 
+/* ── Elenco e dettaglio della stessa altezza (ottobre 2026) ────────────────
+   Nelle pagine a due colonne le colonne avevano limiti diversi (es. DDT:
+   elenco 700 px, dettaglio 816 px) e finivano disallineate in basso. Ora
+   hanno la stessa altezza fissa e scorrono ciascuna al proprio interno. */
+@media (min-width: 1151px) {
+  :is(#ddt, #sopralluoghi) .order-grid { align-items: stretch; }
+  :is(#ddt, #sopralluoghi) .order-grid > :is(#ddt-list, #survey-list),
+  :is(#ddt, #sopralluoghi) .order-grid > .detail-panel {
+    height: calc(100vh - 250px);
+    min-height: 480px;
+    max-height: none;
+    overflow-y: auto;
+    align-self: stretch;
+  }
+  :is(#ddt, #sopralluoghi) .order-grid > .detail-panel { position: sticky; top: 82px; }
+  #orders .order-grid > div:first-child,
+  #orders .order-detail-panel { height: calc(100vh - 220px); max-height: none; }
+}
+@media (min-width: 981px) {
+  #warehouse .two-col > section:first-child,
+  #warehouse .two-col > .detail-panel { height: calc(100vh - 250px); max-height: none; }
+}
+
+/* ── Presenze: giustificativi (ottobre 2026) ─────────────────────────────── */
+.ts-docs { display: grid; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ui-line, #e6e9e4); }
+.ts-docs-head { display: flex; align-items: center; gap: 8px; }
+.ts-docs-head strong { color: var(--ui-muted, #69736b); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.ts-docs-count:not(:empty) { padding: 1px 7px; border-radius: 999px; background: #eceeeb; color: #4d5650; font-size: 11px; font-weight: 600; }
+.ts-docs-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.ts-docs-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ui-line, #e6e9e4); font-size: 13px; }
+.ts-docs-item:last-child { border-bottom: 0; }
+.ts-docs-icon { flex: none; display: inline-grid; place-items: center; width: 32px; height: 22px; border-radius: 5px; font-size: 9.5px; font-weight: 800; letter-spacing: .04em; }
+.ts-docs-icon.is-pdf { background: #fcebe9; color: #a3352c; }
+.ts-docs-icon.is-img { background: #ebf1fc; color: #2c5aa8; }
+.ts-docs-name { min-width: 0; overflow: hidden; color: var(--ui-text, #1f2a22); font-weight: 600; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.ts-docs-name:hover { color: var(--brand, #2f7a55); text-decoration: underline; }
+.ts-docs-date { flex: none; margin-left: auto; color: var(--ui-faint, #8d968e); font-size: 12px; }
+.ts-docs-remove { flex: none; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-faint, #8d968e); font-size: 16px; line-height: 1; cursor: pointer; }
+.ts-docs-remove:hover { background: #fcebe9; color: #a3352c; }
+.ts-docs-empty { padding: 4px 0; color: var(--ui-faint, #8d968e); font-size: 12.5px; }
+.ts-docs-drop { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px dashed var(--ui-line-strong, #d6dcd4); border-radius: 10px; background: #fbfcfa; cursor: pointer; transition: border-color .12s ease, background-color .12s ease; }
+.ts-docs-drop:hover, .ts-docs-drop.is-over { border-color: var(--brand, #2f7a55); background: var(--brand-soft, #e8f2ec); }
+.ts-docs-drop input[type="file"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.ts-docs-drop-icon { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); font-size: 16px; font-weight: 700; }
+.ts-docs-drop-text { display: grid; gap: 1px; }
+.ts-docs-drop-text strong { color: var(--ui-text, #1f2a22); font-size: 13px; }
+.ts-docs-drop-text small { color: var(--ui-muted, #69736b); font-size: 12px; }
+.ts-docs.is-busy .ts-docs-drop { opacity: .6; pointer-events: none; }
+.ts-docs-status { min-height: 0; margin: 0; font-size: 12px; }
+.ts-docs-status:empty { display: none; }
+.ts-docs-status[data-tone="error"] { color: #a3352c; font-weight: 600; }
+.ts-docs-status[data-tone="ok"] { color: var(--brand, #2f7a55); font-weight: 600; }
+.ts-request-file input[type="file"] { width: 100%; min-height: 38px; padding: 4px; border: 1px dashed var(--ui-line-strong, #d6dcd4); border-radius: 7px; background: #fbfcfa; color: var(--ui-muted, #69736b); font-size: 12.5px; }
+.ts-request-file input[type="file"]::file-selector-button { margin-right: 10px; padding: 6px 12px; border: 1px solid var(--ui-line-strong, #d6dcd4); border-radius: 6px; background: #fff; color: var(--ui-text, #1f2a22); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.ts-request-file input[type="file"]::file-selector-button:hover { background: var(--brand-soft, #e8f2ec); }
+
 /* ── Palette dell'app (ottobre 2026) ────────────────────────────────────────
    Scelta: "grafite" (attributo data-palette su <html> in index.html). Le altre
    due proposte mostrate all'utente restano qui come set di variabili: per
@@ -29824,6 +29880,4 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 .ts-export-range { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 12px 0; }
 .ts-export-range label { display: grid; gap: 6px; }
 .ts-export-range input { padding: 8px; border: 1px solid var(--ui-line, #ddd); border-radius: 7px; }
-.ts-certificate-panel { margin-top: 20px; border-top: 1px solid var(--ui-line, #ddd); padding-top: 16px; }
-.ts-certificate-panel summary { cursor: pointer; font-weight: 650; margin-bottom: 12px; }
 [data-ts-absence-save] { margin-top: 10px; }

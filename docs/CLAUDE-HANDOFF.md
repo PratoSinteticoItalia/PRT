@@ -372,3 +372,10 @@ Nota: il commit "Restyling fase 5" (14f1a89 / main 3fd3cb5) l'ha registrato Code
 - Giustificativi: `GET/POST /api/timesheet/certificates` e `GET /api/timesheet/certificates/:id/file`, solo ufficio; tipo verificato sui byte (PDF/PNG/JPEG), massimo 5 MB, bucket `timesheet-private`, download `private, no-store`; record in `store.timesheetCertificates`.
 - Export: `/api/timesheet/export?from&to[&userId]` con validazione intervallo; `lib/timesheet-export.js` (separatore `;`, BOM, una riga per turno e una per assenza, minuti permesso, protezione formule CSV). Test `test/timesheet-controls.test.js`.
 - Verificato da Claude in locale: errore orari, salvataggio permesso 09–11, CSV con 120 minuti, upload PNG ok e PDF finto rifiutato, download con header privati. `npm run check` verde (294).
+
+## DDT colonne allineate + giustificativi anche dal dipendente — 21 ottobre
+
+- **Altezze**: in DDT elenco (700 px) e dettaglio (816 px) avevano limiti diversi. Blocco "Elenco e dettaglio della stessa altezza" in styles.css: DDT e Sopralluoghi `height: calc(100vh - 250px)` su entrambe le colonne (≥1151 px), Ordini e Inventario `height` invece di `max-height` sulle due colonne.
+- **Giustificativi**: componente unico `renderTimesheetDocsBox` + `bindTimesheetDocsBox` (elenco con icona PDF/IMG, nome scaricabile, data, elimina; zona trascina/clicca; stato caricamento) al posto del campo file nel `<details>` di Codex. Usato in Presenze ufficio (dettaglio giorno) e in "Le mie presenze" (dettaglio del giorno scelto); il modulo di richiesta assenza ha un giustificativo facoltativo caricato subito dopo la richiesta.
+- **Server** `/api/timesheet/certificates`: GET/POST consentiti all'ufficio e al dipendente per i propri giorni (`userIsEmployee`, stesso `userId`); `GET …/:id/file` e nuovo `DELETE …/:id` per ufficio o proprietario; notifica all'ufficio quando carica un dipendente. Nota: la DELETE toglie il record ma non il file salvato (orfano).
+- Verificato in locale: ufficio vede/carica; magazziniere carica dal proprio account, vede i suoi, 403 sui documenti di altri. `npm run check` verde (294).
