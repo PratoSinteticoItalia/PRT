@@ -29646,6 +29646,47 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 :is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-meta b { color: var(--ui-text); font-weight: 600; }
 :is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-when { color: var(--ui-text); font-weight: 600; }
 
+/* ── Richieste (CRM) nello stile di Inbox Ordini (ottobre 2026) ───────────
+   Elenco unico a righe, nomi in tondo (non più in maiuscolo), servizio come
+   testo e non come pillola, "Apri" generico nascosto (si apre cliccando la
+   riga): restano solo le azioni particolari (Apri ordine, Riapri). */
+#sales-requests #sales-requests-list.sales-request-list { display: block; gap: 0; padding: 0; overflow: hidden; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; }
+#sales-requests #sales-requests-list .sales-request-card.crm-row {
+  margin: 0;
+  padding: 11px 14px 11px 46px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-line);
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  transform: none;
+}
+#sales-requests #sales-requests-list .sales-request-card.crm-row:last-child { border-bottom: 0; }
+#sales-requests #sales-requests-list .sales-request-card.crm-row:hover { background: var(--ui-hover); box-shadow: none; transform: none; }
+#sales-requests #sales-requests-list .sales-request-card.crm-row.is-active { border-color: transparent; background: var(--brand-soft, #e8f2ec); box-shadow: inset 3px 0 var(--brand, #2f7a55); }
+#sales-requests #sales-requests-list .crm-row-name { margin-bottom: 2px; color: var(--ui-text); font-size: 14px; font-weight: 650; text-transform: none; letter-spacing: 0; }
+#sales-requests #sales-requests-list .crm-row-meta { gap: 6px; color: var(--ui-muted); font-size: 12.5px; }
+#sales-requests #sales-requests-list .crm-row-meta .crm-row-service-tag { padding: 0; border-radius: 0; background: none; color: var(--ui-muted); font-size: inherit; font-weight: 500; letter-spacing: 0; text-transform: none; }
+#sales-requests #sales-requests-list .crm-row-meta .crm-row-meta-dot { margin: 0 2px; color: #b4bbb4; }
+#sales-requests #sales-requests-list .crm-row-stale-badge { padding: 0; border-radius: 0; background: none; color: #a3352c; font-size: 12px; font-weight: 600; }
+#sales-requests #sales-requests-list .crm-row-stale-badge.is-warn { color: #9a6410; }
+#sales-requests #sales-requests-list .crm-row-aside { padding: 0; border: 0; background: none; color: var(--ui-muted); font-size: 12px; }
+#sales-requests #sales-requests-list .crm-row-action:not(.is-green):not(.is-ghost):not(.is-blue) { display: none; }
+#sales-requests #sales-requests-list .crm-row-action { min-height: 30px; padding: 5px 11px; border: 1px solid var(--ui-line-strong); border-radius: 7px; background: #fff; color: var(--ui-text); font-size: 12px; font-weight: 600; box-shadow: none; opacity: 1; transform: none; }
+#sales-requests #sales-requests-list .crm-row-action.is-green { border-color: var(--brand, #2f7a55); background: var(--brand, #2f7a55); color: #fff; }
+
+/* ── Generatore: sezioni del preventivo piatte (ottobre 2026) ──────────────
+   Via la fascia verde sfumata con bordo sinistro: intestazione bianca con
+   linea sottile, numero piccolo, titolo come le altre sezioni dell'app. */
+#sales-generator .native-form .nf-section { border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; }
+#sales-generator .native-form .nf-section-head { margin: 0 -16px 14px; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--ui-line); background: #fff; }
+#sales-generator details.nf-section:not([open]) > .nf-section-head { border-bottom: 0; border-radius: 0; }
+#sales-generator .native-form .nf-section-head::before { width: 20px; height: 20px; background: var(--brand-soft, #e8f2ec); box-shadow: none; color: var(--brand-strong, #276647); font-size: 11px; font-weight: 700; }
+#sales-generator .native-form .nf-legend-txt { color: var(--ui-muted); font-size: 11.5px; font-weight: 700; letter-spacing: .06em; }
+#sales-generator .native-form .nf-legend-hint { color: var(--ui-faint); font-weight: 500; }
+#sales-generator .native-form .field > span { color: #4a554d; font-size: 12px; }
+#sales-generator .native-form .nf-output { border-color: var(--ui-line-strong); border-radius: 7px; background: var(--ui-soft); color: var(--ui-text); font-weight: 650; }
+
 /* ── Palette dell'app (ottobre 2026) ────────────────────────────────────────
    Scelta: "grafite" (attributo data-palette su <html> in index.html). Le altre
    due proposte mostrate all'utente restano qui come set di variabili: per

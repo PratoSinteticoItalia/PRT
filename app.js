@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-fase3-pose-e";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-fase3-pose-e";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-fase4-richieste-b";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-fase4-richieste-b";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-fase3-pose-e";
+} from "./lib/order-money.js?v=20261020-fase4-richieste-b";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-fase3-pose-e";
+import { regionForCity } from "./lib/geo.js?v=20261020-fase4-richieste-b";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-fase3-pose-e";
+} from "./lib/shipping-eligibility.js?v=20261020-fase4-richieste-b";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-fase3-pose-e";
+} from "./lib/profit-split.js?v=20261020-fase4-richieste-b";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-fase3-pose-e";
+} from "./lib/preventivo-pricing.js?v=20261020-fase4-richieste-b";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-fase3-pose-e";
+} from "./lib/sales-assignment.js?v=20261020-fase4-richieste-b";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-fase3-pose-e";
+} from "./lib/surveys.js?v=20261020-fase4-richieste-b";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-fase3-pose-e";
+const APP_SHELL_VERSION = "20261020-fase4-richieste-b";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -14440,9 +14440,9 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
   const regionLabel = regionForCity(item.city); // regione derivata dalla città
   const staleDays = getSalesRequestStaleDays(item);
   const staleBadge = staleDays >= 5
-    ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-stale-badge">🕒 ${staleDays}${state.lang === "it" ? "gg senza contatto" : "d no contact"}</span>`
+    ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-stale-badge">${staleDays} ${state.lang === "it" ? "gg senza contatto" : "d no contact"}</span>`
     : staleDays >= 3
-      ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-stale-badge is-warn">🕒 ${staleDays}${state.lang === "it" ? "gg senza contatto" : "d no contact"}</span>`
+      ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-stale-badge is-warn">${staleDays} ${state.lang === "it" ? "gg senza contatto" : "d no contact"}</span>`
       : "";
   // Popover NON inline: viene renderizzato al body via openCrmV2StatusPopoverPortal
 

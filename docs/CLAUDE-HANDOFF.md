@@ -357,3 +357,9 @@ Richiesta utente: adeguare tutto lo stile a quello di Inbox Ordini. Piano concor
 - **Dettaglio posa** (drawer): `installationDetailSummary` da 5-6 `renderDetailBox` a `<dl class="oi-kv">` (voci brevi affiancate, lunghe a tutta riga). Token `--oi-*` e `.oi-kv` validi anche per `#installations`.
 - **Programmate / Sistemazioni / Completati** (`renderInstallationOrderRow`): elenco unico a righe, stato a punto + testo, etichette non più in maiuscolo.
 - Cantieri Live e Presenze già coerenti, invariati. `npm run check` verde (288).
+
+## Fase 4 del restyling: Richieste, Generatore (Contenuti e Marketing già coerenti) — 20 ottobre
+
+- **Richieste (CRM v2)**: solo CSS + rimozione emoji 🕒 dal badge "gg senza contatto" (`renderCrmV2Row`). `#sales-requests-list` reso elenco unico a righe; nomi non più in maiuscolo, servizio come testo, badge giorni in testo arancione/rosso, "Apri" generico nascosto (restano `is-green` Apri ordine / `is-ghost` Riapri). **Verificato solo con righe finte iniettate nel DOM** (in locale manca il DB del CRM): controllare in produzione con dati reali.
+- **Generatore** (`.native-form`): intestazioni sezione piatte (niente fascia verde sfumata né bordo sinistro), numero piccolo su fondo tenue, titolo come le altre sezioni.
+- Contenuti e Marketing: già allineati dallo stile comune. `npm run check` verde (288).
