@@ -29810,3 +29810,14 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 #sales-requests #sales-requests-list.sales-request-list { overflow: clip; max-height: none; }
 #profit-split .profit-split-partner-card { padding: 20px; }
 #profit-split .profit-split-history-panel { padding: 20px; }
+
+/* Otto indicatori in righe regolari, senza una singola scheda isolata. */
+#profit-split .profit-history-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#profit-split .profit-history-summary > div { min-width: 0; }
+#profit-split .profit-history-summary span { white-space: nowrap; }
+@media (max-width: 1100px) {
+  #profit-split .profit-history-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  #profit-split .profit-history-summary { grid-template-columns: minmax(0, 1fr); }
+}
