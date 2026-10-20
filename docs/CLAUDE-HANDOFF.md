@@ -327,3 +327,11 @@ Ripresa del lavoro grafico avviato con Codex (commit "UX: tema chiaro per Invent
 - CSS nuovo in fondo a styles.css ("Inbox Ordini v2"), tutto sotto `#orders` con variabili `--oi-*`; alcune regole vecchie più specifiche sovrascritte esplicitamente (padding del pannello, `::before` colorati delle sezioni, sfondo `#order-prep-list`, `#save-prep-list-button[hidden]`).
 
 **Verificato** in locale a 1440×900 e 375×812 (drawer mobile): 8 ordini a schermo invece di 3, dettaglio da ~3.000 a ~1.660 px, nessuno sconfinamento orizzontale; scelta uscita merce salvata, spunta/ripristino materiali salvati, nessun errore in console. `npm run check` verde (288). **Da fare**: stesso lavoro su Inventario se l'utente lo chiede; decidere se la cornice dell'app va resa chiara ovunque (oggi scura ovunque).
+
+## Elenco ordini più sobrio + palette Grafite su tutta l'app — 20 ottobre
+
+Feedback utente sulla v2: dettaglio a destra approvato, elenco a sinistra "più confusionario di prima" (troppe scritte colorate: data verde, prossimo passo, importo arancione, pillola di stato) e richiesta di cambiare la palette generale.
+
+- **Elenco** (`renderOrderRow` + nuova `getOrderRowAlerts`): due righe neutre (nome·numero·stato; prodotto·mq·tipo·città) e una terza solo con un avviso reale (indirizzo mancante, disponibilità materiale, `getOrderUrgencyBadges`; i rossi prima, "+N altro" se più di uno). Stato in elenco = punto colorato + testo neutro (`oi-row-state`). Importo, prossimo passo e data solo nel dettaglio.
+- **Palette**: mostrate all'utente 3 proposte (bosco, grafite, chiaro) con schermate; scelta "grafite" (attributo `data-palette="grafite"` su `<html>` in index.html). Blocco "Palette dell'app" in fondo a styles.css: variabili `--pal-*` per le tre proposte, cornice (topbar/sidebar) e accento (`--brand`, pulsanti principali, `--oi-*`) con `!important` per battere le regole storiche. Per cambiare palette basta cambiare l'attributo. Controllate Dashboard, Ordini, Spedizioni, Richieste, telefono.
+- `npm run check` verde (288).
