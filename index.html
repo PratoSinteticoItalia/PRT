@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261020-conti-posa-storico" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261020-conti-posa-storico" />
+    <link rel="preload" href="./styles.css?v=20261020-saldi-posatori-scroll" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261020-saldi-posatori-scroll" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1890,7 +1890,7 @@
               <button type="reset" class="ghost-button">Azzera filtri</button>
               <button type="button" id="profit-history-export" class="primary-button">Estratto PDF del posatore</button>
             </form>
-            <p class="panel-note">Periodo riferito all’ultimo salvataggio del conto. Gli importi indicano quanto spetta al posatore: non attestano pagamenti effettuati o debiti residui.</p>
+            <p class="panel-note">Periodo riferito all’ultimo salvataggio del conto. Il residuo è lo spettante meno i saldi registrati. “Segna saldato” registra un pagamento già effettuato; non esegue bonifici.</p>
             <div id="profit-history-summary" class="profit-history-summary" aria-live="polite"></div>
             <div id="profit-split-history" class="profit-split-history"></div>
           </section>
@@ -2654,7 +2654,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261020-conti-posa-storico" defer></script>
-    <script src="./app.js?v=20261020-conti-posa-storico" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261020-saldi-posatori-scroll" defer></script>
+    <script src="./app.js?v=20261020-saldi-posatori-scroll" type="module"></script>
   </body>
 </html>

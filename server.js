@@ -1,3 +1,4 @@
+import { profitPaymentBalance } from "./lib/profit-history.js";
 import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { createServer } from "node:http";
@@ -11854,6 +11855,7 @@ function normalizeOperations(order, linkedJob = null) {
       reportNote: current.installation?.reportNote || defaults.installation.reportNote,
       travelExpenses: sourceExpenses,
       profitSplit: savedSplit ? syncInstallationExpenses(savedSplit, order.id, sourceExpenses) : null,
+      partnerSettlement: current.installation?.partnerSettlement || null,
     },
     // Rivenditore a cui è assegnato l'ordine (assente = nessuno, es. tutti gli
     // ordini storici pre-esistenti a questa feature) — sibling di installation,
@@ -19494,6 +19496,7 @@ async function handleApi(req, res, url) {
           savedAt: c?.savedAt || "",
           revenue: r.revenue,
           partnerDue: r.partnerDue,
+          ...profitPaymentBalance(r.partnerDue, linkedOrder?.operations?.installation?.partnerSettlement),
         };
       }).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
       const totalDue = Number(entries.reduce((sum, e) => sum + e.partnerDue, 0).toFixed(2));
@@ -19517,6 +19520,40 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  // Record a payment already made; no transfer of money is performed here.
+  if (url.pathname.match(/^\/api\/orders\/[^/]+\/partner-settlement$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const orderId = decodeURIComponent(url.pathname.split("/")[3]);
+    const index = store.orders.findIndex(o => o.id === orderId);
+    if (index < 0) return sendJson(res, 404, { error: "order_not_found" });
+    const current = store.orders[index];
+    const operations = normalizeOperations(current);
+    const draft = operations.installation.profitSplit;
+    if (!draft) return sendJson(res, 400, { error: "missing_profit_split" });
+    const previous = operations.installation.partnerSettlement;
+    const due = computeProfitSplitScenario(draft).partnerDue;
+    if (body.expectedPartnerName !== draft.partnerName || body.expectedUpdatedAt !== (previous?.updatedAt || "") || Number(body.expectedDue) !== due) {
+      return sendJson(res, 409, { error: "Conto aggiornato da un altro utente. Ricarica i dati e riprova." });
+    }
+    if (!["settle", "reopen"].includes(body.action)) return sendJson(res, 400, { error: "invalid_action" });
+    if (body.action === "settle" && due <= 0) return sendJson(res, 400, { error: "no_amount_due" });
+    const updatedAt = new Date().toISOString();
+    const settlement = {
+      amount: body.action === "settle" ? due : 0,
+      updatedAt,
+      updatedBy: currentUser.email || currentUser.name,
+      history: [...(previous?.history || []), { action: body.action, amount: body.action === "settle" ? due : 0, updatedAt, updatedBy: currentUser.email || currentUser.name }],
+    };
+    const updated = { ...current, operations: { ...operations, installation: { ...operations.installation, partnerSettlement: settlement } } };
+    store.orders[index] = updated;
+    await upsertOrderToDb(updated, currentUser.email || null);
+    invalidateOrdersDbCache();
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, updated);
+  }
+
   if (url.pathname.match(/^\/api\/orders\/[^/]+\/operations$/) && req.method === "POST") {
     const orderId = decodeURIComponent(url.pathname.split("/")[3]);
     const body = await readBody(req);
@@ -19529,6 +19566,12 @@ async function handleApi(req, res, url) {
       delete body.warehouse.preparationDate;
     }
     const current = store.orders[orderIndex];
+    const previousSplit = current.operations?.installation?.profitSplit;
+    const paidAmount = Number(current.operations?.installation?.partnerSettlement?.amount || 0);
+    if (paidAmount > 0 && Object.hasOwn(body.installation || {}, "profitSplit") &&
+        String(body.installation?.profitSplit?.partnerName || "").trim() !== String(previousSplit?.partnerName || "").trim()) {
+      return sendJson(res, 409, { error: "Annulla la registrazione del saldo prima di cambiare collaboratore." });
+    }
     store.orders[orderIndex] = {
       ...current,
       operations: normalizeOperations(
@@ -19548,6 +19591,7 @@ async function handleApi(req, res, url) {
             installation: {
               ...(current.operations?.installation || {}),
               ...(body.installation || {}),
+              partnerSettlement: current.operations?.installation?.partnerSettlement || null,
             },
           },
         },

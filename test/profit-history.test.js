@@ -16,3 +16,16 @@ test('storico: senza periodo mantiene conti senza data; periodo li esclude', () 
   assert.equal(filterProfitHistory(entries, {to:'2026-10-20'}).length, 2);
   assert.equal(entries.length, 3);
 });
+
+import { profitPaymentBalance } from '../lib/profit-history.js';
+import { generateProfitSplitStatementPdf } from '../lib/profit-split-pdf.js';
+test('saldo: storico intatto, residuo aggiornato anche dopo modifica del conto', () => {
+  assert.deepEqual(profitPaymentBalance(100, {amount:100}), {paid:100,remaining:0,settled:true});
+  assert.equal(profitPaymentBalance(130, {amount:100}).remaining, 30);
+  assert.equal(profitPaymentBalance(90, {amount:100}).remaining, -10);
+  assert.equal(profitPaymentBalance(100, {amount:0}).remaining, 100);
+});
+test('estratto PDF con pagamenti registrati viene generato', async () => {
+  const pdf = await generateProfitSplitStatementPdf({partnerName:'Test',entries:[{jobLabel:'Commessa test',savedAt:'2026-10-20',partnerDue:100,paid:100,remaining:0}],totalDue:100,totalRevenue:200});
+  assert.equal(pdf.subarray(0,4).toString(), '%PDF');
+});
