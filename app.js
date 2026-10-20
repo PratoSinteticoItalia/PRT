@@ -1,7 +1,7 @@
 import { validateAbsenceInput } from "./lib/timesheet-absence.js";
 import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261021-presenze-assenze-documenti";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261021-presenze-assenze-documenti";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261021-presenze-giustificativi-b";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261021-presenze-giustificativi-b";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -17,9 +17,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261021-presenze-assenze-documenti";
+} from "./lib/order-money.js?v=20261021-presenze-giustificativi-b";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261021-presenze-assenze-documenti";
+import { regionForCity } from "./lib/geo.js?v=20261021-presenze-giustificativi-b";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -38,7 +38,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261021-presenze-assenze-documenti";
+} from "./lib/shipping-eligibility.js?v=20261021-presenze-giustificativi-b";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -49,7 +49,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261021-presenze-assenze-documenti";
+} from "./lib/profit-split.js?v=20261021-presenze-giustificativi-b";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -64,7 +64,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261021-presenze-assenze-documenti";
+} from "./lib/preventivo-pricing.js?v=20261021-presenze-giustificativi-b";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -72,13 +72,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261021-presenze-assenze-documenti";
+} from "./lib/sales-assignment.js?v=20261021-presenze-giustificativi-b";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261021-presenze-assenze-documenti";
+} from "./lib/surveys.js?v=20261021-presenze-giustificativi-b";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -92,7 +92,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261021-presenze-assenze-documenti";
+const APP_SHELL_VERSION = "20261021-presenze-giustificativi-b";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23190,6 +23190,122 @@ function formatTimesheetLocalDate(date) {
   }).format(value);
 }
 
+// ── Giustificativi (Presenze) ────────────────────────────────────────────────
+// Stesso componente per l'ufficio (dettaglio dipendente/giorno) e per il
+// dipendente (la propria giornata): elenco documenti + zona di caricamento
+// con trascinamento. Prima era un campo file nudo dentro un <details>, solo
+// per l'ufficio: il magazziniere non poteva allegare il proprio certificato.
+const TS_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+const TS_DOC_MAX_BYTES = 5 * 1024 * 1024;
+
+function renderTimesheetDocsBox({ title = "", hint = "" } = {}) {
+  const it = state.lang === "it";
+  return `
+    <div class="ts-docs" data-ts-docs>
+      <div class="ts-docs-head">
+        <strong>${escapeHtml(title || (it ? "Giustificativi" : "Supporting documents"))}</strong>
+        <span class="ts-docs-count" data-ts-docs-count></span>
+      </div>
+      <ul class="ts-docs-list" data-ts-docs-list></ul>
+      <label class="ts-docs-drop" data-ts-docs-drop>
+        <input type="file" accept="${TS_DOC_TYPES.join(",")}" data-ts-docs-input>
+        <span class="ts-docs-drop-icon" aria-hidden="true">＋</span>
+        <span class="ts-docs-drop-text">
+          <strong>${it ? "Allega un documento" : "Attach a document"}</strong>
+          <small>${escapeHtml(hint || (it ? "Trascinalo qui o clicca per sceglierlo · PDF, JPG o PNG fino a 5 MB" : "Drop it here or click to choose · PDF, JPG or PNG up to 5 MB"))}</small>
+        </span>
+      </label>
+      <p class="ts-docs-status" data-ts-docs-status aria-live="polite"></p>
+    </div>`;
+}
+
+function bindTimesheetDocsBox(box, { userId, date } = {}) {
+  if (!box || !userId || !date || box.dataset.tsDocsBound === "1") return;
+  box.dataset.tsDocsBound = "1";
+  const it = state.lang === "it";
+  const listUrl = `/api/timesheet/certificates?userId=${encodeURIComponent(userId)}&date=${encodeURIComponent(date)}`;
+  const list = box.querySelector("[data-ts-docs-list]");
+  const count = box.querySelector("[data-ts-docs-count]");
+  const status = box.querySelector("[data-ts-docs-status]");
+  const input = box.querySelector("[data-ts-docs-input]");
+  const drop = box.querySelector("[data-ts-docs-drop]");
+  const setStatusText = (text, tone = "") => {
+    status.textContent = text;
+    status.dataset.tone = tone;
+  };
+  const renderDocs = (docs = []) => {
+    count.textContent = docs.length ? String(docs.length) : "";
+    list.innerHTML = docs.length
+      ? docs.map((doc) => {
+        const isPdf = String(doc.type || doc.name || "").toLowerCase().includes("pdf");
+        return `
+          <li class="ts-docs-item">
+            <span class="ts-docs-icon ${isPdf ? "is-pdf" : "is-img"}" aria-hidden="true">${isPdf ? "PDF" : "IMG"}</span>
+            <a class="ts-docs-name" href="/api/timesheet/certificates/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">${escapeHtml(doc.name)}</a>
+            <span class="ts-docs-date">${escapeHtml(formatDate(doc.createdAt))}</span>
+            <button type="button" class="ts-docs-remove" data-ts-docs-remove="${escapeAttr(doc.id)}" aria-label="${it ? `Elimina ${escapeAttr(doc.name)}` : `Delete ${escapeAttr(doc.name)}`}" title="${it ? "Elimina" : "Delete"}">×</button>
+          </li>`;
+      }).join("")
+      : `<li class="ts-docs-empty">${it ? "Nessun documento allegato." : "No documents attached."}</li>`;
+  };
+  const load = async () => {
+    try {
+      const result = await apiFetch(listUrl);
+      renderDocs(Array.isArray(result?.documents) ? result.documents : []);
+    } catch {
+      list.innerHTML = "";
+      setStatusText(it ? "Impossibile caricare i documenti." : "Unable to load documents.", "error");
+    }
+  };
+  const upload = async (file) => {
+    if (!file) return;
+    if (!TS_DOC_TYPES.includes(file.type) || file.size > TS_DOC_MAX_BYTES) {
+      setStatusText(it ? "Usa un PDF, JPG o PNG fino a 5 MB." : "Use a PDF, JPG or PNG up to 5 MB.", "error");
+      return;
+    }
+    box.classList.add("is-busy");
+    input.disabled = true;
+    setStatusText(it ? `Caricamento di “${file.name}”…` : `Uploading “${file.name}”…`);
+    try {
+      await apiFetch(listUrl, { method: "POST", body: JSON.stringify({ name: file.name, dataUrl: await readFileAsDataUrl(file) }) });
+      setStatusText(it ? "Documento allegato." : "Document attached.", "ok");
+      await load();
+    } catch (error) {
+      setStatusText(error?.message || (it ? "Caricamento non riuscito." : "Upload failed."), "error");
+    } finally {
+      box.classList.remove("is-busy");
+      input.disabled = false;
+      input.value = "";
+    }
+  };
+  input.addEventListener("change", () => upload(input.files?.[0]));
+  ["dragenter", "dragover"].forEach((type) => drop.addEventListener(type, (event) => {
+    event.preventDefault();
+    drop.classList.add("is-over");
+  }));
+  ["dragleave", "drop"].forEach((type) => drop.addEventListener(type, () => drop.classList.remove("is-over")));
+  drop.addEventListener("drop", (event) => {
+    event.preventDefault();
+    upload(event.dataTransfer?.files?.[0]);
+  });
+  list.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-ts-docs-remove]");
+    if (!button) return;
+    const ok = window.confirm(it ? "Eliminare questo documento?" : "Delete this document?");
+    if (!ok) return;
+    button.disabled = true;
+    try {
+      await apiFetch(`/api/timesheet/certificates/${encodeURIComponent(button.dataset.tsDocsRemove)}`, { method: "DELETE" });
+      setStatusText(it ? "Documento eliminato." : "Document deleted.", "ok");
+      await load();
+    } catch (error) {
+      button.disabled = false;
+      setStatusText(error?.message || (it ? "Eliminazione non riuscita." : "Delete failed."), "error");
+    }
+  });
+  void load();
+}
+
 function renderTimesheetDayDetail({
   date,
   shift = null,
@@ -23375,6 +23491,7 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
           absence: absenceByDate.get(selectedDate) || null,
           request: requestByDate.get(selectedDate) || null,
         })}
+        ${renderTimesheetDocsBox()}
       </section>
       <section class="ts-request-panel panel">
         <div class="ts-request-panel-head">
@@ -23407,6 +23524,10 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
             <label class="ts-detail-field ts-request-note">
               <span>Nota per l’ufficio</span>
               <input type="text" name="note" maxlength="500" placeholder="Facoltativa">
+            </label>
+            <label class="ts-detail-field ts-request-file">
+              <span>${state.lang === "it" ? "Giustificativo (facoltativo)" : "Supporting document (optional)"}</span>
+              <input type="file" name="certificate" accept="${TS_DOC_TYPES.join(",")}">
             </label>
             <button type="submit" class="btn primary">Invia richiesta</button>
           </div>
@@ -23441,7 +23562,8 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
             shift: byDate.get(date) || null,
             absence: absenceByDate.get(date) || null,
             request: requestByDate.get(date) || null,
-          });
+          }) + renderTimesheetDocsBox();
+          bindTimesheetDocsBox(detail.querySelector("[data-ts-docs]"), { userId: state.currentUser?.id, date });
           detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
         const requestDate = root.querySelector('[data-ts-request-form] input[name="date"]');
@@ -23449,6 +23571,7 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
       });
     });
     bindTimesheetMeRequests(root);
+    bindTimesheetDocsBox(root.querySelector("#timesheet-me-day-detail [data-ts-docs]"), { userId: state.currentUser?.id, date: selectedDate });
     if (preserveScroll) {
       requestAnimationFrame(() => window.scrollTo({ top: previousScrollY, behavior: "auto" }));
     }
@@ -23479,6 +23602,11 @@ function bindTimesheetMeRequests(root) {
     event.preventDefault();
     const submitButton = form.querySelector('[type="submit"]');
     const values = new FormData(form);
+    const certificate = form.querySelector('input[name="certificate"]')?.files?.[0] || null;
+    if (certificate && (!TS_DOC_TYPES.includes(certificate.type) || certificate.size > TS_DOC_MAX_BYTES)) {
+      showToast(state.lang === "it" ? "Il giustificativo deve essere un PDF, JPG o PNG fino a 5 MB." : "The document must be a PDF, JPG or PNG up to 5 MB.", "error");
+      return;
+    }
     if (submitButton) submitButton.disabled = true;
     try {
       await apiFetch("/api/timesheet/absence-requests", {
@@ -23491,7 +23619,19 @@ function bindTimesheetMeRequests(root) {
           note: values.get("note"),
         }),
       });
+      // Il giustificativo, se scelto, viaggia subito dopo la richiesta.
+      if (certificate && state.currentUser?.id) {
+        try {
+          await apiFetch(`/api/timesheet/certificates?userId=${encodeURIComponent(state.currentUser.id)}&date=${encodeURIComponent(values.get("date"))}`, {
+            method: "POST",
+            body: JSON.stringify({ name: certificate.name, dataUrl: await readFileAsDataUrl(certificate) }),
+          });
+        } catch (uploadError) {
+          showToast(state.lang === "it" ? `Richiesta inviata, ma il giustificativo non è stato caricato: ${uploadError?.message || uploadError}` : `Request sent, but the document upload failed: ${uploadError?.message || uploadError}`, "error");
+        }
+      }
       showToast("Richiesta inviata all’ufficio.", "success");
+      state.timesheetMeSelectedDate = String(values.get("date") || state.timesheetMeSelectedDate || "");
       await renderTimesheetMe({ preserveScroll: true });
     } catch (error) {
       showToast(`Impossibile inviare la richiesta: ${error?.message || error}`, "error");
@@ -23639,11 +23779,7 @@ function renderTimesheetOfficeDetailMarkup({
           </label>
           <p class="panel-note" data-ts-absence-status aria-live="polite">Seleziona il tipo, compila i campi e salva.</p>
           <button type="button" class="primary-button" data-ts-absence-save>Salva assenza</button>
-          <details class="ts-certificate-panel"><summary>Documenti giustificativi · accesso ufficio</summary>
-            <p class="panel-note">PDF, JPG o PNG, massimo 5 MB. Allega il giustificativo necessario, evitando informazioni cliniche non necessarie.</p>
-            <input type="file" data-ts-certificate accept="application/pdf,image/jpeg,image/png" aria-label="Allega giustificativo">
-            <div data-ts-certificates></div>
-          </details>
+          ${renderTimesheetDocsBox({ hint: state.lang === "it" ? "Trascinalo qui o clicca per sceglierlo · PDF, JPG o PNG fino a 5 MB · evita dati clinici non necessari" : "" })}
         </div>
       </div>
       <form class="ts-payroll-form" data-ts-profile-form data-user-id="${escapeAttr(user.id || "")}">
@@ -24113,26 +24249,7 @@ function bindTimesheetOfficeEditors(root, context = {}) {
       controls.forEach(el => { el.disabled = false; }); updateFields();
     }
   });
-  const documentsUrl = `/api/timesheet/certificates?userId=${encodeURIComponent(selectedDay.userId)}&date=${encodeURIComponent(selectedDay.date)}`;
-  const documentList = detail.querySelector("[data-ts-certificates]");
-  const loadDocuments = async () => {
-    try {
-      const result = await apiFetch(documentsUrl);
-      documentList.innerHTML = result.documents.map(doc => `<p><a href="/api/timesheet/certificates/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">${escapeHtml(doc.name)}</a> · ${escapeHtml(formatDate(doc.createdAt))}</p>`).join("") || "Nessun documento allegato.";
-    } catch { documentList.textContent = "Impossibile caricare i documenti."; }
-  };
-  detail.querySelector(".ts-certificate-panel")?.addEventListener("toggle", event => { if (event.target.open) void loadDocuments(); });
-  detail.querySelector("[data-ts-certificate]")?.addEventListener("change", async event => {
-    const input = event.target; const file = input.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024 || !["application/pdf","image/jpeg","image/png"].includes(file.type)) { showToast("Usa PDF, JPG o PNG fino a 5 MB.", "error"); return; }
-    input.disabled = true;
-    try {
-      await apiFetch(documentsUrl, {method:"POST",body:JSON.stringify({name:file.name,dataUrl:await readFileAsDataUrl(file)})});
-      await loadDocuments(); input.value = "";
-    } catch (error) { showToast(error.message || "Caricamento non riuscito.", "error"); }
-    finally { input.disabled = false; }
-  });
+  bindTimesheetDocsBox(detail.querySelector("[data-ts-docs]"), { userId: selectedDay.userId, date: selectedDay.date });
 
   }
   root.querySelectorAll("[data-ts-request-review]").forEach((button) => {

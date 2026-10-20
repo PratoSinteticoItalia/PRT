@@ -16328,12 +16328,15 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/timesheet/certificates" && ["GET", "POST"].includes(req.method)) {
     if (!currentUser) return sendJson(res, 401, {error:"unauthorized"});
-    if (currentUser.role !== "office") return sendJson(res, 403, {error:"forbidden"});
     const userId = url.searchParams.get("userId") || "";
     const date = url.searchParams.get("date") || "";
+    // L'ufficio gestisce i giustificativi di tutti; il dipendente (es. il
+    // magazziniere) solo i propri, per poter allegare da sé il certificato.
+    const isOwnEmployeeDay = String(currentUser.id) === userId && userIsEmployee(currentUser);
+    if (currentUser.role !== "office" && !isOwnEmployeeDay) return sendJson(res, 403, {error:"forbidden"});
     if (!(store.users || []).some(u => u.id === userId && userIsEmployee(u)) || validateAbsenceInput({date,type:"none"})) return sendJson(res,400,{error:"invalid_employee_or_date"});
     const documents = store.timesheetCertificates || [];
-    if (req.method === "GET") return sendJson(res,200,{documents:documents.filter(d => d.userId === userId && d.date === date).map(d => ({id:d.id,name:d.name,createdAt:d.createdAt}))});
+    if (req.method === "GET") return sendJson(res,200,{documents:documents.filter(d => d.userId === userId && d.date === date).map(d => ({id:d.id,name:d.name,type:d.asset?.type || "",createdAt:d.createdAt}))});
     const body = await readBody(req, {maxBytes: 7 * 1024 * 1024});
     const parsed = parseDataUrl(body.dataUrl || "");
     const buffer = parsed?.buffer;
@@ -16347,14 +16350,31 @@ async function handleApi(req, res, url) {
     store.timesheetCertificates = [...(store.timesheetCertificates || []),record];
     await writeJson(STORE_PATH,store);
     writeAuditLog("timesheet_certificate",id,"upload",{userId,date},currentUser.email || null).catch(() => {});
-    return sendJson(res,200,{ok:true});
+    if (currentUser.role !== "office") {
+      notify(store, { role: "office", exceptUserId: currentUser.id }, {
+        type: "timesheet_certificate",
+        title: "Nuovo giustificativo",
+        body: `${currentUser.name || currentUser.email || "Dipendente"} · ${date}`,
+        data: { view: "timesheet-office" },
+      }).catch((err) => logError("notify:timesheet_certificate", err, { userId, date }));
+    }
+    return sendJson(res,200,{ok:true,document:{id,name:record.name,type,createdAt:record.createdAt}});
   }
-  if (/^\/api\/timesheet\/certificates\/[^/]+\/file$/.test(url.pathname) && req.method === "GET") {
+  if (/^\/api\/timesheet\/certificates\/[^/]+(\/file)?$/.test(url.pathname) && ["GET", "DELETE"].includes(req.method)) {
     if (!currentUser) return sendJson(res,401,{error:"unauthorized"});
-    if (currentUser.role !== "office") return sendJson(res,403,{error:"forbidden"});
-    const document = (store.timesheetCertificates || []).find(d => d.id === url.pathname.split("/")[4]);
+    const isFile = url.pathname.endsWith("/file");
+    if (isFile !== (req.method === "GET")) return sendJson(res,405,{error:"method_not_allowed"});
+    const docId = url.pathname.split("/")[4];
+    const document = (store.timesheetCertificates || []).find(d => d.id === docId);
     if (!document) return sendJson(res,404,{error:"not_found"});
-    return streamAttachmentAsset(req,res,document.asset,{cacheControl:"private, no-store",forceDownload:true});
+    const isOwner = String(document.userId) === String(currentUser.id);
+    if (currentUser.role !== "office" && !isOwner) return sendJson(res,403,{error:"forbidden"});
+    if (req.method === "GET") return streamAttachmentAsset(req,res,document.asset,{cacheControl:"private, no-store",forceDownload:true});
+    // Eliminazione: l'ufficio sempre, il dipendente solo i propri documenti.
+    store.timesheetCertificates = (store.timesheetCertificates || []).filter(d => d.id !== docId);
+    await writeJson(STORE_PATH,store);
+    writeAuditLog("timesheet_certificate",docId,"delete",{userId:document.userId,date:document.date},currentUser.email || null).catch(() => {});
+    return sendJson(res,200,{ok:true});
   }
 
   // GET /api/timesheet/export?from=X&to=Y → CSV office
