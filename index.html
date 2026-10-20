@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261020-fase5-dashboard-b" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261020-fase5-dashboard-b" />
+    <link rel="preload" href="./styles.css?v=20261020-conti-posa-storico" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261020-conti-posa-storico" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1585,124 +1585,7 @@
               </div>
           </section>
 
-          <section class="coverage-panel" data-installation-pane="coverage">
-            <div class="coverage-shell">
-              <aside class="coverage-sidebar">
-                <div class="coverage-card">
-                  <p class="coverage-eyebrow">Territorio squadre</p>
-                  <h3>Radar copertura</h3>
-                  <p class="coverage-copy">
-                    Seleziona una squadra, definisci le regioni presidiate e disegna le aree reali. I cantieri
-                    programmati compaiono direttamente sulla cartina con indicatori dedicati.
-                  </p>
-                </div>
 
-                <div class="coverage-card">
-                  <div class="coverage-card-head">
-                    <h4>Squadre operative</h4>
-                    <button id="coverage-add-team-button" class="btn" type="button">Nuova squadra</button>
-                  </div>
-                  <div id="coverage-team-list" class="coverage-team-list"></div>
-                </div>
-
-                <div class="coverage-card">
-                  <div class="coverage-card-head">
-                    <h4>Regioni presidiate</h4>
-                    <span id="coverage-region-count" class="coverage-count">0</span>
-                  </div>
-                  <div id="coverage-region-grid" class="coverage-region-grid"></div>
-                </div>
-
-              </aside>
-
-              <div class="coverage-main">
-                <div class="coverage-toolbar">
-                  <div>
-                    <p class="coverage-eyebrow">Vista attiva</p>
-                    <h3 id="coverage-active-title">Nessuna squadra selezionata</h3>
-                    <p id="coverage-active-subtitle" class="coverage-copy">Seleziona una squadra per vedere copertura e cantieri assegnati.</p>
-                  </div>
-                  <div class="detail-actions">
-                    <button id="coverage-draw-button" class="btn" type="button">Disegna area</button>
-                    <button id="coverage-undo-point-button" class="btn" type="button">Togli ultimo punto</button>
-                    <button id="coverage-close-polygon-button" class="btn" type="button">Conferma area</button>
-                    <button id="coverage-clear-polygons-button" class="btn" type="button">Cancella aree</button>
-                  </div>
-                </div>
-
-                <div class="coverage-map-card">
-                  <div class="coverage-map-frame">
-                    <div id="coverage-map-stage" class="coverage-map-stage">
-                      <img src="./coverage-map-base.png" alt="Cartina operativa Italia" class="coverage-map-image" draggable="false" />
-                      <svg id="coverage-map-overlay" class="coverage-map-overlay is-idle" viewBox="0 0 1558 1420" preserveAspectRatio="none"></svg>
-                    </div>
-                  </div>
-                  <div class="coverage-hud">
-                    <div class="coverage-card-head">
-                      <h4>Cantieri squadra</h4>
-                      <span id="coverage-job-count" class="coverage-count">0</span>
-                    </div>
-                    <div id="coverage-jobs-list" class="coverage-jobs-list"></div>
-                  </div>
-                </div>
-
-                <div class="coverage-operations-grid">
-                  <div class="coverage-card">
-                    <div class="coverage-card-head">
-                      <h4>Impostazioni squadra</h4>
-                    </div>
-                    <form id="coverage-team-form" class="inline-form-grid">
-                      <label class="field">
-                        <span>Nome squadra</span>
-                        <input class="text-input" type="text" name="teamName" placeholder="Squadra Roma" />
-                      </label>
-                      <label class="field">
-                        <span>Base operativa</span>
-                        <input class="text-input" type="text" name="teamBase" placeholder="Roma" />
-                      </label>
-                      <label class="field">
-                        <span>Colore</span>
-                        <input class="text-input coverage-color-input" type="color" name="teamColor" value="#2d6a4f" />
-                      </label>
-                      <label class="field field-full">
-                        <span>Note operative</span>
-                        <textarea class="text-input" name="teamNote" rows="3" placeholder="Zona attiva da lun a ven, trasferte solo sopra 80 mq..."></textarea>
-                      </label>
-                      <div class="inline-actions field-full coverage-team-actions">
-                        <button type="submit" class="primary-button small-button">Salva squadra</button>
-                        <button type="button" id="coverage-remove-team-button" class="ghost-button small-button">Rimuovi squadra</button>
-                      </div>
-                    </form>
-                  </div>
-
-                  <div class="coverage-card">
-                    <div class="coverage-card-head">
-                      <h4>Trova squadra per località</h4>
-                    </div>
-                    <p class="coverage-copy coverage-nearest-copy">
-                      Inserisci comune, provincia o capoluogo e confronta le squadre in base a base operativa, provincia, regione e cantieri già seguiti in zona.
-                    </p>
-                    <form id="coverage-nearest-form" class="coverage-nearest-form">
-                      <label class="field field-full">
-                        <span>Località / provincia</span>
-                        <input
-                          id="coverage-nearest-city-input"
-                          class="text-input"
-                          type="text"
-                          placeholder="Es. Arenzano, Savona, Genova"
-                          autocomplete="address-level2"
-                        />
-                      </label>
-                      <div class="inline-actions field-full coverage-nearest-actions">
-                        <button id="coverage-nearest-run-button" type="submit" class="primary-button small-button">Trova squadra</button>
-                      </div>
-                    </form>
-                    <div id="coverage-nearest-result" class="coverage-nearest-result"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
         </section>
 
         <section class="view" id="accounting">
@@ -1827,7 +1710,7 @@
               <div class="page-header-sub">Ripartizione utili, rimborsi e fissi collaboratori in una vista dedicata lato ufficio.</div>
             </div>
             <div class="detail-actions">
-              <button type="button" id="profit-split-open-installations-button" class="ghost-button small-button">Apri radar squadre</button>
+
             </div>
           </div>
 
@@ -1985,8 +1868,8 @@
           <section class="panel profit-split-balances-panel">
             <div class="panel-head">
               <div>
-                <p class="panel-eyebrow">Saldi collaboratori</p>
-                <h3>Quanto spetta a ciascuno sul totale delle pose</h3>
+                <p class="panel-eyebrow">Compensi per posatore</p>
+                <h3>Conti salvati per collaboratore</h3>
               </div>
             </div>
             <div id="profit-split-partner-balances" class="profit-split-partner-balances"></div>
@@ -1999,10 +1882,20 @@
                 <h3>Conti salvati sulle commesse</h3>
               </div>
             </div>
+            <form id="profit-history-filters" class="profit-history-filters">
+              <label class="field"><span>Posatore</span><select class="text-input" name="partner"><option value="">Tutti i posatori</option></select></label>
+              <label class="field"><span>Cerca commessa o cliente</span><input class="text-input" name="query" type="search" placeholder="Numero, cliente o località" /></label>
+              <label class="field"><span>Salvato dal</span><input class="text-input" name="from" type="date" /></label>
+              <label class="field"><span>Al</span><input class="text-input" name="to" type="date" /></label>
+              <button type="reset" class="ghost-button">Azzera filtri</button>
+              <button type="button" id="profit-history-export" class="primary-button">Estratto PDF del posatore</button>
+            </form>
+            <p class="panel-note">Periodo riferito all’ultimo salvataggio del conto. Gli importi indicano quanto spetta al posatore: non attestano pagamenti effettuati o debiti residui.</p>
+            <div id="profit-history-summary" class="profit-history-summary" aria-live="polite"></div>
             <div id="profit-split-history" class="profit-split-history"></div>
           </section>
 
-          <section id="profit-split-coverage-mount" class="profit-split-coverage-mount"></section>
+
         </section>
 
         <section class="view" id="reseller-report">
@@ -2761,7 +2654,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261020-fase5-dashboard-b" defer></script>
-    <script src="./app.js?v=20261020-fase5-dashboard-b" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261020-conti-posa-storico" defer></script>
+    <script src="./app.js?v=20261020-conti-posa-storico" type="module"></script>
   </body>
 </html>
