@@ -1,5 +1,6 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-fase5-dashboard-b";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-fase5-dashboard-b";
+import { filterProfitHistory } from "./lib/profit-history.js";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-conti-posa-storico";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-conti-posa-storico";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +16,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-fase5-dashboard-b";
+} from "./lib/order-money.js?v=20261020-conti-posa-storico";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-fase5-dashboard-b";
+import { regionForCity } from "./lib/geo.js?v=20261020-conti-posa-storico";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +37,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-fase5-dashboard-b";
+} from "./lib/shipping-eligibility.js?v=20261020-conti-posa-storico";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +48,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-fase5-dashboard-b";
+} from "./lib/profit-split.js?v=20261020-conti-posa-storico";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +63,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-fase5-dashboard-b";
+} from "./lib/preventivo-pricing.js?v=20261020-conti-posa-storico";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +71,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-fase5-dashboard-b";
+} from "./lib/sales-assignment.js?v=20261020-conti-posa-storico";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-fase5-dashboard-b";
+} from "./lib/surveys.js?v=20261020-conti-posa-storico";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +91,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-fase5-dashboard-b";
+const APP_SHELL_VERSION = "20261020-conti-posa-storico";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1958,8 +1959,6 @@ const ui = {
   profitSplitSaveOrderButton: document.getElementById("profit-split-save-order-button"),
   profitSplitDetachOrderButton: document.getElementById("profit-split-detach-order-button"),
   profitSplitOpenOrderButton: document.getElementById("profit-split-open-order-button"),
-  profitSplitOpenInstallationsButton: document.getElementById("profit-split-open-installations-button"),
-  profitSplitCoverageMount: document.getElementById("profit-split-coverage-mount"),
   profitSplitForm: document.getElementById("profit-split-form"),
   profitSplitCrewOptions: document.getElementById("profit-split-crew-options"),
   profitSplitExpenseLines: document.getElementById("profit-split-expense-lines"),
@@ -1997,9 +1996,7 @@ const ui = {
   dashboardSubtitle: document.getElementById("dashboard-subtitle"),
 };
 
-if (ui.coveragePanel && ui.profitSplitCoverageMount && ui.coveragePanel.parentElement !== ui.profitSplitCoverageMount) {
-  ui.profitSplitCoverageMount.appendChild(ui.coveragePanel);
-}
+
 
 function t(key) {
   return translations[state.lang]?.[key] || translations.it[key] || key;
@@ -3850,7 +3847,7 @@ function renderProfitSplitPartnerBalances() {
   const balances = getProfitSplitPartnerBalances();
   if (!balances.length) {
     ui.profitSplitPartnerBalances.innerHTML = `<div class="info-card profit-split-empty">${state.lang === "it"
-      ? "Nessun saldo ancora: salva un conto su una commessa e comparirà qui."
+      ? "Nessun conto ancora: salva un conto su una commessa e comparirà qui."
       : "No balances yet: save a split on a job and it will show up here."}</div>`;
     return;
   }
@@ -3871,17 +3868,42 @@ function renderProfitSplitPartnerBalances() {
         </div>
         <div class="profit-split-partner-amount">${escapeHtml(formatCurrency(item.partnerDue))}</div>
         <div class="profit-split-partner-bar"><span style="width:${pct}%"></span></div>
+        <button type="button" class="ghost-button small-button" data-profit-history-partner="${escapeHtml(item.partnerName)}">Apri storico</button>
         <button type="button" class="ghost-button small-button profit-split-partner-pdf" data-profit-split-statement-partner="${escapeHtml(item.partnerName)}">${state.lang === "it" ? "Estratto PDF" : "PDF statement"}</button>
       </article>`;
   }).join("");
 }
 
+function readProfitHistoryFilters() {
+  const form = document.getElementById("profit-history-filters");
+  return form ? Object.fromEntries(new FormData(form)) : {};
+}
+
 function renderProfitSplitHistory() {
   if (!ui.profitSplitHistory) return;
-  const entries = getSavedProfitSplits();
+  const allEntries = getSavedProfitSplits();
+  const filters = readProfitHistoryFilters();
+  const select = document.querySelector('#profit-history-filters [name="partner"]');
+  if (select) {
+    const names = [...new Set(allEntries.map(e => e.partnerName))].sort((a,b) => a.localeCompare(b));
+    select.innerHTML = '<option value="">Tutti i posatori</option>' + names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+    select.value = names.includes(filters.partner) ? filters.partner : "";
+    filters.partner = select.value;
+  }
+  const entries = filterProfitHistory(allEntries, filters);
+  const sum = key => entries.reduce((total, entry) => total + Math.round((entry.result[key] || 0) * 100), 0) / 100;
+  document.getElementById("profit-history-summary").innerHTML = [
+    ["Conti nel periodo", entries.length],
+    ["Spese anticipate dal posatore", formatCurrency(sum("partnerPaidExpenses"))],
+    ["Recuperi aggiuntivi", formatCurrency(sum("partnerRecovery"))],
+    ["Compenso fisso", formatCurrency(sum("partnerFixedTotal"))],
+    ["Quota utile", formatCurrency(sum("partnerProfitShare"))],
+    ["Totale spettante", formatCurrency(sum("partnerDue"))]
+  ].map(([label,value]) => `<div><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+  document.getElementById("profit-history-export").disabled = !filters.partner || !entries.length;
   if (!entries.length) {
     ui.profitSplitHistory.innerHTML = `<div class="info-card profit-split-empty">${state.lang === "it"
-      ? "Ancora nessun conto salvato su commessa."
+      ? "Nessun conto corrisponde ai filtri selezionati."
       : "No splits saved on a job yet."}</div>`;
     return;
   }
@@ -3897,8 +3919,8 @@ function renderProfitSplitHistory() {
             <span class="profit-split-history-sub">${subline}</span>
           </span>
           <span class="profit-split-history-figures">
-            <span class="profit-split-history-due">${escapeHtml(formatCurrency(entry.result.partnerDue))}</span>
-            <span class="profit-split-history-rev">${state.lang === "it" ? "su" : "of"} ${escapeHtml(formatCurrency(entry.result.revenue))}</span>
+            <span class="profit-split-history-due">Spettante ${escapeHtml(formatCurrency(entry.result.partnerDue))}</span>
+            <span class="profit-split-history-rev">Ricavo commessa ${escapeHtml(formatCurrency(entry.result.revenue))}</span>
           </span>
         </button>
         <button type="button" class="profit-split-history-pdf ghost-button small-button" data-profit-split-pdf-order="${escapeHtml(entry.orderId)}" aria-label="${state.lang === "it" ? "Scarica PDF conto" : "Download conto PDF"}">PDF</button>
@@ -3982,9 +4004,9 @@ function downloadProfitSplitContoCurrent() {
   downloadProfitSplitPdf("/api/profit-split/conto-pdf", payload, `conto-posa-${num}.pdf`);
 }
 
-function downloadProfitSplitStatement(partnerName) {
+function downloadProfitSplitStatement(partnerName, filters = {}) {
   const name = String(partnerName || "").trim();
-  const conti = getSavedProfitSplits()
+  const conti = filterProfitHistory(getSavedProfitSplits(), filters)
     .filter((entry) => entry.partnerName === name)
     .map((entry) => ({
       ...entry.draft,
@@ -8174,6 +8196,7 @@ function scheduleCoverageRender() {
 }
 
 function renderInstallationsCoverage() {
+  if (!ui.coveragePanel) return;
   const crewNames = getCoverageManagedCrewNames();
   if (ui.coverageTeamList) {
     ui.coverageTeamList.innerHTML = crewNames.length
@@ -37745,12 +37768,6 @@ bindEvent(ui.profitSplitOpenOrderButton, "click", () => {
   state.selectedOrderId = order.id;
   setView("orders");
 });
-bindEvent(ui.profitSplitOpenInstallationsButton, "click", () => {
-  setView("profit-split");
-  requestAnimationFrame(() => {
-    ui.coveragePanel?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-});
 bindEvent(ui.profitSplitForm, "click", (event) => {
   const addButton = event.target.closest("[data-profit-split-add-expense]");
   const presetButton = event.target.closest("[data-profit-split-expense-preset]");
@@ -37801,7 +37818,23 @@ bindEvent(ui.profitSplitHistory, "click", (event) => {
   renderProfitSplitCalculator();
   ui.profitSplitForm?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
+bindEvent(document.getElementById("profit-history-filters"), "submit", event => event.preventDefault());
+bindEvent(document.getElementById("profit-history-filters"), "input", () => renderProfitSplitHistory());
+bindEvent(document.getElementById("profit-history-filters"), "reset", () => requestAnimationFrame(renderProfitSplitHistory));
+bindEvent(document.getElementById("profit-history-export"), "click", () => {
+  const filters = readProfitHistoryFilters();
+  if (filters.partner) downloadProfitSplitStatement(filters.partner, filters);
+});
 bindEvent(ui.profitSplitPartnerBalances, "click", (event) => {
+  const history = event.target.closest("[data-profit-history-partner]");
+  if (history) {
+    const form = document.getElementById("profit-history-filters");
+    form.reset();
+    form.elements.partner.value = history.dataset.profitHistoryPartner;
+    renderProfitSplitHistory();
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   const btn = event.target.closest("[data-profit-split-statement-partner]");
   if (!btn) return;
   event.preventDefault();

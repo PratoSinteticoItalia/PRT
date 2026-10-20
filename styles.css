@@ -29764,3 +29764,35 @@ html[data-palette="chiaro"] .sidebar .nav-count-badge { background: #eceeeb !imp
 html[data-palette="chiaro"] .sidebar .nav-link.is-active .nav-count-badge { background: var(--pal-brand) !important; color: #fff !important; }
 html[data-palette="chiaro"] .sidebar :is(.eyebrow, .sidebar-section-title, .sidebar-section-toggle, .sidebar-section-chevron, .sidebar-section-label, .sidebar-section-head) { color: #6b746d !important; }
 html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line) { border-color: #e3e6e2 !important; }
+
+/* Storico conti posa: consultazione per collaboratore e periodo. */
+.profit-history-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
+.profit-history-filters .field { flex: 1 1 150px; min-width: 0; }
+.profit-history-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 20px 0; }
+.profit-history-summary > div { padding: 14px; background: var(--ui-soft, #edf3ef); border-radius: 8px; }
+.profit-history-summary span { display: block; font-size: 12px; margin-bottom: 8px; }
+.profit-history-summary strong { font-size: 19px; }
+.profit-split-history-row { padding-block: 12px; }
+
+/* DDT emessi: intestazioni protette dai bordi arrotondati dell'elenco. */
+#ddt-list .shp-archive-groups { min-width: 0; padding: 8px 0; }
+#ddt-list .shp-archive-day { min-width: 0; }
+#ddt-list .shp-group-label {
+  margin: 0;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--ui-line, #dce3dd);
+  background: var(--ui-soft, #edf3ef);
+  flex-wrap: wrap;
+}
+#ddt-list .shp-group-label h3 { line-height: 1.5; color: var(--ui-muted, #536859); overflow-wrap: anywhere; }
+#ddt-list .shp-gc { flex-shrink: 0; }
+#ddt-list .shp-archive { gap: 0; }
+#ddt-list .shp-row { padding: 14px 16px; }
+#ddt-list .shp-name-line { flex-wrap: wrap; gap: 3px 8px; }
+#ddt-list .shp-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+#ddt-list .shp-meta { overflow-wrap: anywhere; line-height: 1.45; }
+@media (max-width: 600px) {
+  #ddt-list .shp-row { flex-wrap: wrap; gap: 8px; }
+  #ddt-list .shp-main { flex-basis: calc(100% - 20px); }
+  #ddt-list .shp-aside { margin-left: 15px; flex-wrap: wrap; }
+}
