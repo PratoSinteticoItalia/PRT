@@ -29459,6 +29459,9 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.panel, .detail-panel) .info-card { background: var(--ui-soft); border-color: transparent; border-radius: 8px; color: #4a554d; }
 :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.panel, .detail-panel) :is(.panel, .action-card) { border-color: var(--ui-line); background: #fff; }
 
+/* Via la barretta sfumata decorativa in cima ai pannelli. */
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .panel::before { content: none; display: none; }
+
 /* Sezioni interne: separate da una linea, non da un riquadro */
 :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .panel-subsection { background: transparent; border: 0; border-top: 1px solid var(--ui-line); border-radius: 0; box-shadow: none; }
 :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .panel-subsection::before { content: none; }
@@ -29686,6 +29689,25 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 #sales-generator .native-form .nf-legend-hint { color: var(--ui-faint); font-weight: 500; }
 #sales-generator .native-form .field > span { color: #4a554d; font-size: 12px; }
 #sales-generator .native-form .nf-output { border-color: var(--ui-line-strong); border-radius: 7px; background: var(--ui-soft); color: var(--ui-text); font-weight: 650; }
+
+/* ── Fase 5: Impostazioni, Fornitori (ottobre 2026) ──────────────────────── */
+/* Impostazioni: i moduli account e le righe prodotto non sono più riquadri
+   dentro il pannello, ma blocchi separati da una linea. */
+#settings .panel .detail-box.account-edit-form { margin: 0; padding: 14px 0 4px; border: 0; border-top: 1px solid var(--ui-line); border-radius: 0; background: none; box-shadow: none; }
+#settings .panel .native-product-row { margin: 0; padding: 12px 0; border: 0; border-bottom: 1px solid var(--ui-line); border-radius: 0; background: none; box-shadow: none; }
+#settings .panel .native-product-row:last-child { border-bottom: 0; }
+/* Fornitori: schede come i filtri delle altre pagine (verde tenue, non pieno). */
+#supplier-prices .sp-tabs { gap: 4px; }
+#supplier-prices .sp-tab { min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #536859; font-size: 12.5px; font-weight: 600; box-shadow: none; }
+#supplier-prices .sp-tab:hover { background: var(--ui-hover); }
+#supplier-prices .sp-tab.is-active { border-color: transparent; background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); box-shadow: inset 0 -2px var(--brand, #2f7a55); }
+
+/* Dashboard: indicatori senza barra colorata a lato né ombra marcata, filtri
+   attivi in verde tenue come nel resto dell'app. */
+#dashboard .dashboard-command-metric { border: 1px solid var(--ui-line); border-left: 1px solid var(--ui-line) !important; border-radius: 10px; background: #fff; box-shadow: none; }
+#dashboard .dashboard-command-metric:hover { border-color: #c4ccc3; box-shadow: none; transform: none; }
+#dashboard :is(.dash-date-chip, .dashboard-command-filter).is-active,
+#dashboard .btn.primary.dashboard-command-filter.is-active { border-color: transparent; background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); box-shadow: inset 0 -2px var(--brand, #2f7a55); }
 
 /* ── Palette dell'app (ottobre 2026) ────────────────────────────────────────
    Scelta: "grafite" (attributo data-palette su <html> in index.html). Le altre
