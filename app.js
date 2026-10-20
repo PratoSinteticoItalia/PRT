@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-palette-grafite";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-palette-grafite";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-stile-comune";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-stile-comune";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-palette-grafite";
+} from "./lib/order-money.js?v=20261020-stile-comune";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-palette-grafite";
+import { regionForCity } from "./lib/geo.js?v=20261020-stile-comune";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-palette-grafite";
+} from "./lib/shipping-eligibility.js?v=20261020-stile-comune";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-palette-grafite";
+} from "./lib/profit-split.js?v=20261020-stile-comune";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-palette-grafite";
+} from "./lib/preventivo-pricing.js?v=20261020-stile-comune";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-palette-grafite";
+} from "./lib/sales-assignment.js?v=20261020-stile-comune";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-palette-grafite";
+} from "./lib/surveys.js?v=20261020-stile-comune";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-palette-grafite";
+const APP_SHELL_VERSION = "20261020-stile-comune";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1278,6 +1278,8 @@ const state = {
   inventory: [],
   surveys: [],
   selectedSurveyId: "",
+  // Inventario master-detail: prodotto aperto nel pannello di destra.
+  selectedInventoryProduct: "",
   surveyFilter: "all",
   // Picker "collega richiesta CRM" nel form sopralluogo — mirror di
   // communicationsPendingOrderRef/communicationsOrderPickerOpen.
@@ -2669,9 +2671,15 @@ function computeMobileDrillHeader(module, itemId) {
       subtitle: meta,
     };
   }
+  if (module === "warehouse" && itemId && itemId !== INVENTORY_ADD_DRILL_ID && !(state.orders || []).some((o) => o.id === itemId)) {
+    return {
+      title: itemId,
+      subtitle: state.lang === "it" ? "Giacenza e pezzi" : "Stock and pieces",
+    };
+  }
   if (module === "warehouse" && (!itemId || itemId === INVENTORY_ADD_DRILL_ID)) {
     return {
-      title: state.lang === "it" ? "Aggiungi giacenza" : "Add stock",
+      title: state.lang === "it" ? "Carica giacenza" : "Load stock",
       subtitle: state.lang === "it" ? "Carica rotoli, residui o accessori" : "Load rolls, offcuts or accessories",
     };
   }
@@ -18350,7 +18358,7 @@ function renderInventoryCard(group) {
   const singlesOpen = inventorySinglesOpen.has(group.product);
   const singlesHtml = singlePieces.length
     ? `<details class="inv-singles" data-inv-singles="${escapeHtml(group.product)}"${singlesOpen ? " open" : ""}>
-        <summary>${state.lang === "it" ? `Mostra i ${totalPieces} pezzi singoli` : `Show ${totalPieces} single pieces`}</summary>
+        <summary>${state.lang === "it" ? `Mostra i pezzi singoli (${totalPieces})` : `Show single pieces (${totalPieces})`}</summary>
         <div class="inv-singles-list">
           ${singlePieces.map((item) => {
             const ps = getInventoryPieceState(item);
@@ -18436,6 +18444,72 @@ function renderInventoryCard(group) {
       </div>
     </article>
   `;
+}
+
+// Riga dell'elenco Inventario (stesso schema delle righe di Inbox Ordini):
+// nome e disponibile, poi stato con punto colorato e composizione dei pezzi,
+// avviso solo se il fabbisogno non è coperto. Il dettaglio (rotoli, tagli,
+// residui, pezzi singoli, azioni) sta nel pannello di destra.
+function getInventoryGroupHealth(group) {
+  const isMeasured = Boolean(group.isMeasured || group.isModel);
+  const stockValue = isMeasured ? group.availableSqm : group.availableUnits;
+  const committed = isMeasured ? group.committedSqm || 0 : group.committedUnits || 0;
+  const demand = isMeasured ? group.demandSqm || 0 : group.demandUnits || 0;
+  const pending = Math.max(0, demand - committed);
+  const total = isMeasured ? group.totalSqm : group.totalUnits;
+  const hasStock = total > 0;
+  const hasDemand = demand > 0 || committed > 0;
+  const it = state.lang === "it";
+  if (pending > stockValue || (!hasStock && hasDemand)) {
+    return { tone: "red", label: hasStock ? (it ? "Fabbisogno non coperto" : "Unmet demand") : (it ? "Nessuna giacenza" : "No stock"), pending, stockValue, isMeasured };
+  }
+  if (!hasStock) return { tone: "slate", label: it ? "Da caricare" : "To load", pending, stockValue, isMeasured };
+  if (hasDemand && stockValue < total * 0.3) return { tone: "amber", label: it ? "Sotto scorta" : "Low stock", pending, stockValue, isMeasured };
+  return { tone: "green", label: it ? "Disponibile" : "Available", pending, stockValue, isMeasured };
+}
+
+function renderInventoryRow(group, selected) {
+  const it = state.lang === "it";
+  const health = getInventoryGroupHealth(group);
+  const isMeasured = health.isMeasured;
+  const unit = isMeasured ? "mq" : (it ? "u" : "u");
+  const available = Math.max(0, isMeasured ? group.availableSqm : group.availableUnits);
+  const committed = isMeasured ? group.committedSqm || 0 : group.committedUnits || 0;
+  const pieces = group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso");
+  const countBy = (type) => pieces.filter((item) => getInventoryPieceDisplayType(item) === type).length;
+  const composition = isMeasured
+    ? [
+        [countBy("intero"), it ? "rotoli" : "rolls", it ? "rotolo" : "roll"],
+        [countBy("taglio"), it ? "tagli" : "cuts", it ? "taglio" : "cut"],
+        [countBy("residuo"), it ? "residui" : "offcuts", it ? "residuo" : "offcut"],
+      ].filter(([n]) => n > 0).map(([n, many, one]) => `${n} ${n === 1 ? one : many}`)
+    : [`${group.totalUnits} ${inferCatalogEntry(group.product)?.unitLabel || (it ? "unità" : "units")}`];
+  if (committed > 0) composition.push(`${it ? "impegnati" : "committed"} ${formatInventoryNumber(committed)} ${unit}`);
+  const demandUnit = isMeasured ? "mq" : "u";
+  const alert = health.tone === "red" && group.demandOrders.length
+    ? (it
+      ? `${formatCountLabel(group.demandOrders.length, "ordine richiede", "ordini richiedono")} ${formatInventoryNumber(health.pending)} ${demandUnit}${available > 0 ? ` — disponibili ${formatInventoryNumber(available)}` : ""}`
+      : `${group.demandOrders.length} order(s) need ${formatInventoryNumber(health.pending)} ${demandUnit}${available > 0 ? ` — ${formatInventoryNumber(available)} available` : ""}`)
+    : "";
+  return `
+    <article class="iv-row ${selected ? "selected" : ""}" data-action="select-inventory-product" data-product="${escapeHtml(group.product)}" role="button" tabindex="0"${selected ? ' aria-current="true"' : ""}>
+      <div class="iv-row-line iv-row-head">
+        <span class="iv-row-name">${escapeHtml(group.product)}</span>
+        <span class="iv-row-qty">${formatInventoryNumber(available)} <small>${unit}</small></span>
+      </div>
+      <div class="iv-row-line iv-row-sub">
+        <span class="oi-row-state tone-${health.tone}">${escapeHtml(health.label)}</span>
+        <span class="iv-row-composition">${escapeHtml(composition.join(" · ") || (it ? "Nessun pezzo" : "No pieces"))}</span>
+      </div>
+      ${alert ? `<div class="iv-row-line iv-row-alert">${escapeHtml(alert)}</div>` : ""}
+    </article>
+  `;
+}
+
+function selectInventoryProduct(product) {
+  state.selectedInventoryProduct = String(product || "");
+  renderWarehouse();
+  if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) openMobileDrillDetail("warehouse", state.selectedInventoryProduct);
 }
 
 function matchesWarehouseInventoryFilter(group, filter = state.filters.warehouse) {
@@ -18866,15 +18940,49 @@ function renderWarehouse() {
           <span class="inv-missing-model-links">${missingModelOrders.slice(0, 6).map((order) => `<button type="button" class="inv-missing-model-link" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="orders">${escapeHtml(getOrderNumber(order))} ${escapeHtml(composeClientName(order))}</button>`).join("")}</span>
         </div>`
       : "";
+    if (!groups.some((group) => group.product === state.selectedInventoryProduct)) {
+      state.selectedInventoryProduct = groups[0]?.product || "";
+    }
     ui.inventorySummary.innerHTML = missingModelNotice + (groups.length
-      ? groups.map(renderInventoryCard).join("")
+      ? `<div class="iv-list">${groups.map((group) => renderInventoryRow(group, group.product === state.selectedInventoryProduct)).join("")}</div>`
       : `<div class="info-card">${emptyMessage}</div>`);
+    renderInventoryProductDetail(groups.find((group) => group.product === state.selectedInventoryProduct) || null);
   }
 
   if (ui.inventoryForm && document.activeElement !== ui.inventoryForm.product) {
     ui.inventoryForm.quantity.value = ui.inventoryForm.quantity.value || "1";
   }
   updateInventoryFormUI();
+}
+
+function renderInventoryProductDetail(group) {
+  const it = state.lang === "it";
+  const container = document.getElementById("warehouse-product-detail");
+  const title = document.getElementById("warehouse-detail-title");
+  const meta = document.getElementById("warehouse-detail-meta");
+  const badge = document.getElementById("warehouse-detail-badge");
+  if (!container) return;
+  if (!group) {
+    container.innerHTML = "";
+    container.hidden = true;
+    if (title) title.textContent = it ? "Carica giacenza" : "Load stock";
+    if (meta) meta.textContent = it ? "Rotoli, residui o accessori" : "Rolls, offcuts or accessories";
+    if (badge) badge.innerHTML = "";
+    return;
+  }
+  const health = getInventoryGroupHealth(group);
+  const pieces = group.pieces.filter((item) => getInventoryPieceState(item) !== "evaso").length;
+  container.hidden = false;
+  if (title) title.textContent = group.product;
+  if (meta) {
+    meta.textContent = [
+      group.isModel ? (it ? "Prato" : "Turf") : (it ? "Accessorio" : "Accessory"),
+      health.isMeasured ? `${pieces} ${it ? "pezzi" : "pieces"}` : "",
+      group.demandOrders.length ? formatCountLabel(group.demandOrders.length, it ? "ordine in attesa" : "order waiting", it ? "ordini in attesa" : "orders waiting") : "",
+    ].filter(Boolean).join(" · ");
+  }
+  if (badge) badge.innerHTML = `<span class="oi-status tone-${health.tone}">${escapeHtml(health.label)}</span>`;
+  container.innerHTML = renderInventoryCard(group);
 }
 
 function updateInventoryFormUI() {
@@ -33787,6 +33895,10 @@ function handleGlobalClick(event) {
         "error",
       );
     });
+    return;
+  }
+  if (action === "select-inventory-product") {
+    selectInventoryProduct(button.dataset.product || "");
     return;
   }
   if (action === "prefill-inventory") {
