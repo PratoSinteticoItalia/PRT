@@ -28893,7 +28893,7 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
    Elenco a righe compatte (3 righe di testo, un solo indicatore di stato,
    avvisi solo quando serve agire) e dettaglio a sezioni separate da spazio e
    linee sottili, senza riquadri dentro riquadri. Tutto circoscritto a #orders. */
-:is(#orders, #warehouse) {
+:is(#orders, #warehouse, #shipping-standard-detail-panel) {
   --oi-text: #1f2a22;
   --oi-muted: #69736b;
   --oi-faint: #8d968e;
@@ -29053,9 +29053,9 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
 :is(#orders, #warehouse) .oi-detail-badge .oi-status { font-size: 12px; padding: 3px 10px 3px 9px; }
 #orders #order-detail-summary { display: block; padding: 0; }
 #orders .oi-overview { display: grid; gap: 12px; padding: 16px 22px 18px; border-bottom: 1px solid var(--oi-line); }
-#orders .oi-next { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font-size: 14px; }
-#orders .oi-next span { color: var(--oi-muted); font-size: 12px; }
-#orders .oi-next strong { color: var(--oi-brand); font-weight: 650; }
+:is(#orders, #shipping-standard-detail-panel) .oi-next { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font-size: 14px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-next span { color: var(--oi-muted); font-size: 12px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-next strong { color: var(--oi-brand); font-weight: 650; }
 #orders .oi-flags { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 
 /* Avanzamento: sottile, in linea, senza riquadro */
@@ -29178,15 +29178,15 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
 #orders .oi-flow .flow-autosave-note[data-save-state="failed"] { padding: 9px 11px; border: 1px solid #f1c7c1; border-radius: 8px; background: var(--oi-red-soft); }
 
 /* Cliente e pagamento: coppie etichetta/valore, niente riquadri */
-#orders .oi-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; margin: 0; }
-#orders .oi-kv > div { display: grid; gap: 2px; min-width: 0; }
-#orders .oi-kv-wide { grid-column: 1 / -1; }
-#orders .oi-kv-span2 { grid-column: span 2; }
-#orders .oi-kv dt { color: var(--oi-muted); font-size: 11.5px; }
-#orders .oi-kv dd { margin: 0; overflow-wrap: anywhere; color: var(--oi-text); font-size: 13.5px; font-weight: 550; font-variant-numeric: tabular-nums; }
-#orders .oi-kv dd.is-warn,
-#orders .oi-kv .is-warn { color: var(--oi-amber); font-weight: 650; }
-#orders .oi-kv dd.is-ok { color: var(--oi-brand); }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; margin: 0; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv > div { display: grid; gap: 2px; min-width: 0; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv-wide { grid-column: 1 / -1; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv-span2 { grid-column: span 2; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv dt { color: var(--oi-muted); font-size: 11.5px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv dd { margin: 0; overflow-wrap: anywhere; color: var(--oi-text); font-size: 13.5px; font-weight: 550; font-variant-numeric: tabular-nums; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv dd.is-warn,
+:is(#orders, #shipping-standard-detail-panel) .oi-kv .is-warn { color: var(--oi-amber); font-weight: 650; }
+:is(#orders, #shipping-standard-detail-panel) .oi-kv dd.is-ok { color: var(--oi-brand); }
 #orders .oi-actions,
 #orders .order-job-hub-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; border: 0; background: none; }
 #orders .order-job-hub-actions { margin-top: 2px; }
@@ -29205,12 +29205,12 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
 #orders .detail-note-chip { padding: 10px 12px; border-radius: 8px; background: #f7f9f6; color: var(--oi-text); font-size: 13px; white-space: pre-wrap; }
 
 /* Materiali da preparare: righe compatte */
-#orders .oi-prep-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 8px; font-size: 13px; }
-#orders .oi-prep-summary strong { color: var(--oi-text); }
-#orders .oi-prep-summary span { color: var(--oi-muted); }
-#orders .oi-prep-summary .oi-prep-count { margin-left: auto; color: var(--oi-faint); font-size: 12px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 8px; font-size: 13px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-summary strong { color: var(--oi-text); }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-summary span { color: var(--oi-muted); }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-summary .oi-prep-count { margin-left: auto; color: var(--oi-faint); font-size: 12px; }
 #orders .prep-list { display: block; }
-#orders .oi-prep-row {
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
@@ -29223,19 +29223,19 @@ body[data-drill-module="accounting"] #accounting .acl-panel > *:not(:has(.accoun
   background: none;
   box-shadow: none;
 }
-#orders .oi-prep-check { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; cursor: pointer; }
-#orders .oi-prep-check input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--oi-brand); }
-#orders .oi-prep-name { display: grid; min-width: 0; }
-#orders .oi-prep-name strong { overflow: hidden; color: var(--oi-text); font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-#orders .oi-prep-name small { color: var(--oi-muted); font-size: 12px; }
-#orders .oi-prep-qty { color: var(--oi-text); font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
-#orders .oi-prep-row.is-excluded .oi-prep-name strong,
-#orders .oi-prep-row.is-excluded .oi-prep-qty { color: var(--oi-faint); text-decoration: line-through; }
-#orders .oi-prep-note { display: contents; }
-#orders .oi-prep-note summary { grid-column: 3; color: var(--oi-brand); font-size: 12px; font-weight: 600; list-style: none; cursor: pointer; white-space: nowrap; }
-#orders .oi-prep-note summary::-webkit-details-marker { display: none; }
-#orders .oi-prep-note.has-note summary { color: var(--oi-amber); }
-#orders .oi-prep-note textarea { grid-column: 1 / -1; width: 100%; min-height: 0; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--oi-line-strong); border-radius: 7px; font-size: 13px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-check { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; cursor: pointer; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-check input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--oi-brand); }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-name { display: grid; min-width: 0; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-name strong { overflow: hidden; color: var(--oi-text); font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-name small { color: var(--oi-muted); font-size: 12px; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-qty { color: var(--oi-text); font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-row.is-excluded .oi-prep-name strong,
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-row.is-excluded .oi-prep-qty { color: var(--oi-faint); text-decoration: line-through; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-note { display: contents; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-note summary { grid-column: 3; color: var(--oi-brand); font-size: 12px; font-weight: 600; list-style: none; cursor: pointer; white-space: nowrap; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-note summary::-webkit-details-marker { display: none; }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-note.has-note summary { color: var(--oi-amber); }
+:is(#orders, #shipping-standard-detail-panel) .oi-prep-note textarea { grid-column: 1 / -1; width: 100%; min-height: 0; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--oi-line-strong); border-radius: 7px; font-size: 13px; }
 #orders .prep-service-lines { margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px dashed var(--oi-line-strong); background: none; }
 #orders .prep-service-lines-label { color: var(--oi-faint); font-size: 11.5px; }
 #orders .prep-service-line { display: flex; justify-content: space-between; padding: 4px 0; color: var(--oi-muted); font-size: 12.5px; }
@@ -29405,7 +29405,8 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
    Lo stesso linguaggio di Inbox Ordini e Inventario applicato ai mattoni
    condivisi: intestazioni, barre filtri, campi, pulsanti, pannelli, sezioni,
    etichette e stati. Superfici bianche con bordo sottile, niente ombre né
-   riquadri dentro riquadri, testo neutro e colore solo dove serve. */
+   riquadri dentro riquadri, testo neutro e colore solo dove serve. Vale anche
+   per i pannelli di Spedizioni agganciati a <body> (fuori da .view). */
 :root {
   --ui-text: #1f2a22;
   --ui-muted: #69736b;
@@ -29422,60 +29423,190 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 #app-shell .view > .page-header :is(.page-header-sub, p) { color: var(--ui-muted); font-size: 13px; }
 
 /* Barra ricerca + filtri */
-#app-shell .view .view-toolbar { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; padding: 12px; gap: 12px; margin-bottom: 20px; }
-#app-shell .view .view-search-input { background: var(--ui-soft); }
-#app-shell .view .filter-bar { background: transparent !important; border: 0; box-shadow: none; gap: 4px !important; padding: 0 !important; flex-wrap: wrap; }
-#app-shell .view .filter-btn { background: transparent; color: #536859 !important; border: 1px solid transparent; border-radius: 7px !important; box-shadow: none; padding: 8px 11px; font-size: 12.5px; font-weight: 600; }
-#app-shell .view .filter-btn:hover { background: var(--ui-hover); }
-#app-shell .view .filter-btn.is-active { background: var(--brand-soft, #e8f2ec) !important; border-color: transparent; color: var(--brand-strong, #276647) !important; box-shadow: inset 0 -2px var(--brand, #2f7a55) !important; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .view-toolbar { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; padding: 12px; gap: 12px; margin-bottom: 20px; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .view-search-input { background: var(--ui-soft); }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .filter-bar { background: transparent !important; border: 0; box-shadow: none; gap: 4px !important; padding: 0 !important; flex-wrap: wrap; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .filter-btn { background: transparent; color: #536859 !important; border: 1px solid transparent; border-radius: 7px !important; box-shadow: none; padding: 8px 11px; font-size: 12.5px; font-weight: 600; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .filter-btn:hover { background: var(--ui-hover); }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .filter-btn.is-active { background: var(--brand-soft, #e8f2ec) !important; border-color: transparent; color: var(--brand-strong, #276647) !important; box-shadow: inset 0 -2px var(--brand, #2f7a55) !important; }
 
 /* Campi */
-#app-shell .view :is(.text-input, .field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), .field select, .field textarea, .search-field input, .sales-filter-select) {
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.text-input, .field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), .field select, .field textarea, .search-field input, .sales-filter-select) {
   background: #fff;
   color: var(--ui-text);
   border: 1px solid var(--ui-line-strong);
   border-radius: 7px;
   box-shadow: none;
 }
-#app-shell .view :is(.text-input, .field input, .field select, .field textarea, .search-field input, .sales-filter-select)::placeholder { color: #8b958c; }
-#app-shell .view :is(.text-input, .field input, .field select, .field textarea, .search-field input, .sales-filter-select):focus { border-color: var(--brand, #2f7a55); box-shadow: 0 0 0 3px rgb(47 122 85 / 14%); outline: none; }
-#app-shell .view :is(.text-input, .field input, .field select, .field textarea):disabled { background: var(--ui-soft); color: var(--ui-muted); }
-#app-shell .view .field > span { color: #4a554d; font-size: 12px; font-weight: 600; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.text-input, .field input, .field select, .field textarea, .search-field input, .sales-filter-select)::placeholder { color: #8b958c; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.text-input, .field input, .field select, .field textarea, .search-field input, .sales-filter-select):focus { border-color: var(--brand, #2f7a55); box-shadow: 0 0 0 3px rgb(47 122 85 / 14%); outline: none; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.text-input, .field input, .field select, .field textarea):disabled { background: var(--ui-soft); color: var(--ui-muted); }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .field > span { color: #4a554d; font-size: 12px; font-weight: 600; }
 
 /* Pulsanti */
-#app-shell .view :is(.btn, .ghost-button, .primary-button) { border-radius: 7px; box-shadow: none; background-image: none; font-weight: 600; }
-#app-shell .view :is(.btn:not(.primary):not(.danger), .ghost-button:not(.danger):not(.action-primary)) { background: #fff; border: 1px solid var(--ui-line-strong); color: var(--ui-text); }
-#app-shell .view :is(.btn:not(.primary):not(.danger), .ghost-button:not(.danger):not(.action-primary)):hover:not(:disabled) { background: var(--ui-hover); border-color: #b9c4b9; }
-#app-shell .view :is(.btn.primary, .primary-button, .ghost-button.action-primary) { background: var(--brand, #2f7a55); border: 1px solid var(--brand, #2f7a55); color: #fff; }
-#app-shell .view :is(.btn.primary, .primary-button, .ghost-button.action-primary):hover:not(:disabled) { background: var(--brand-strong, #276647); border-color: var(--brand-strong, #276647); }
-#app-shell .view :is(.btn, .ghost-button, .primary-button):disabled { opacity: .55; }
-#app-shell .view :is(button, a, summary):focus-visible { outline: 2px solid var(--brand, #2f7a55); outline-offset: 2px; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn, .ghost-button, .primary-button) { border-radius: 7px; box-shadow: none; background-image: none; font-weight: 600; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn:not(.primary):not(.danger), .ghost-button:not(.danger):not(.action-primary)) { background: #fff; border: 1px solid var(--ui-line-strong); color: var(--ui-text); }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn:not(.primary):not(.danger), .ghost-button:not(.danger):not(.action-primary)):hover:not(:disabled) { background: var(--ui-hover); border-color: #b9c4b9; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn.primary, .primary-button, .ghost-button.action-primary) { background: var(--brand, #2f7a55); border: 1px solid var(--brand, #2f7a55); color: #fff; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn.primary, .primary-button, .ghost-button.action-primary):hover:not(:disabled) { background: var(--brand-strong, #276647); border-color: var(--brand-strong, #276647); }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn, .ghost-button, .primary-button):disabled { opacity: .55; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(button, a, summary):focus-visible { outline: 2px solid var(--brand, #2f7a55); outline-offset: 2px; }
 
 /* Pannelli e schede: bianco, bordo sottile, nessuna ombra */
-#app-shell .view :is(.panel, .detail-panel, .action-card) { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; backdrop-filter: none; }
-#app-shell .view .info-card { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; color: var(--ui-text); }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.panel, .detail-panel, .action-card) { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; backdrop-filter: none; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .info-card { background: #fff; border: 1px solid var(--ui-line); border-radius: 10px; box-shadow: none; color: var(--ui-text); }
 /* Dentro un pannello niente secondo riquadro: le note diventano un blocco tenue. */
-#app-shell .view :is(.panel, .detail-panel) .info-card { background: var(--ui-soft); border-color: transparent; border-radius: 8px; color: #4a554d; }
-#app-shell .view :is(.panel, .detail-panel) :is(.panel, .action-card) { border-color: var(--ui-line); background: #fff; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.panel, .detail-panel) .info-card { background: var(--ui-soft); border-color: transparent; border-radius: 8px; color: #4a554d; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.panel, .detail-panel) :is(.panel, .action-card) { border-color: var(--ui-line); background: #fff; }
 
 /* Sezioni interne: separate da una linea, non da un riquadro */
-#app-shell .view .panel-subsection { background: transparent; border: 0; border-top: 1px solid var(--ui-line); border-radius: 0; box-shadow: none; }
-#app-shell .view .panel-subsection::before { content: none; }
-#app-shell .view .subsection-head h4 { color: var(--ui-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-#app-shell .view .subsection-copy { color: var(--ui-muted); font-size: 12.5px; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .panel-subsection { background: transparent; border: 0; border-top: 1px solid var(--ui-line); border-radius: 0; box-shadow: none; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .panel-subsection::before { content: none; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .subsection-head h4 { color: var(--ui-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .subsection-copy { color: var(--ui-muted); font-size: 12.5px; }
 
 /* Etichette sopra i titoli */
-#app-shell .view :is(.panel-eyebrow, .eyebrow) { color: var(--ui-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.panel-eyebrow, .eyebrow) { color: var(--ui-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 
 /* Stati e pillole: forma unica, colori tenui */
-#app-shell .view :is(.status-chip, .action-badge) { border: 0; border-radius: 999px; box-shadow: none; background-image: none; font-size: 11.5px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+:is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.status-chip, .action-badge) { border: 0; border-radius: 999px; box-shadow: none; background-image: none; font-size: 11.5px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 
 @media (max-width: 980px) {
   #app-shell .view > .page-header h1 { font-size: 23px; }
-  #app-shell .view :is(.btn, .ghost-button, .primary-button, .filter-btn) { min-height: 44px; }
-  #app-shell .view .filter-btn { height: auto !important; line-height: 1.3 !important; padding: 10px 12px !important; }
-  #app-shell .view :is(.text-input, .field input, .field select, .field textarea) { font-size: 16px; }
+  :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.btn, .ghost-button, .primary-button, .filter-btn) { min-height: 44px; }
+  :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) .filter-btn { height: auto !important; line-height: 1.3 !important; padding: 10px 12px !important; }
+  :is(#app-shell .view, #shipping-standard-detail-panel, #sample-detail-panel) :is(.text-input, .field input, .field select, .field textarea) { font-size: 16px; }
 }
+
+/* ── Spedizioni v2 (ottobre 2026): schede come le righe di Inbox Ordini ────
+   La colonna dice la fase: niente pillola di stato né barra colorata sulla
+   scheda; colore solo sulla data (scaduta/oggi) e su ciò che manca. */
+#shipping .shp-kpi-strip { display: flex; flex-wrap: wrap; gap: 24px; margin: 0 0 20px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+#shipping .shp-kpi { display: grid; gap: 2px; padding: 0 0 0 24px; border: 0; border-left: 1px solid var(--ui-line-strong); background: none; box-shadow: none; }
+#shipping .shp-kpi:first-child { padding-left: 0; border-left: 0; }
+#shipping .shp-kpi-value { color: var(--ui-text); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+#shipping .shp-kpi.warn .shp-kpi-value { color: #9a6410; }
+#shipping .shp-kpi-label { color: var(--ui-muted); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+#shipping .shp-group-label { gap: 8px; margin: 0 0 10px; padding: 0 2px 8px; border-bottom: 1px solid var(--ui-line-strong); }
+#shipping .shp-group-label h3 { display: inline-flex; align-items: center; gap: 7px; margin: 0; color: var(--ui-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+#shipping .shp-group-label h3::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #d08a1e; }
+#shipping .shp-lane-ready .shp-group-label h3::before { background: #4a78c9; }
+#shipping .shp-lane-done .shp-group-label h3::before { background: var(--brand, #2f7a55); }
+#shipping .shp-lane-prepare .shp-group-label,
+#shipping .shp-lane-ready .shp-group-label,
+#shipping .shp-lane-done .shp-group-label { border-bottom-color: var(--ui-line-strong); }
+#shipping .shp-gc { padding: 1px 7px; border-radius: 999px; background: #eceeeb; color: #4d5650; font-size: 11px; font-weight: 600; }
+#shipping .shp-group-list { gap: 8px; }
+
+#shipping .shp-row.sv2-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  padding: 11px 14px 12px;
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: none;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+#shipping .shp-row.sv2-card::before { content: none; }
+#shipping .shp-row.sv2-card:hover { border-color: #c4ccc3; transform: none; box-shadow: none; }
+#shipping .shp-row.sv2-card.selected { border-color: var(--brand, #2f7a55); background: var(--brand-soft, #e8f2ec); box-shadow: inset 0 0 0 1px var(--brand, #2f7a55); }
+#shipping .sv2-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-right: 22px; }
+#shipping .sv2-name { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+#shipping .sv2-num { flex: none; color: var(--ui-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+#shipping .sv2-date { flex: none; margin-left: auto; color: var(--ui-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+#shipping .sv2-date.is-today { color: #9a6410; }
+#shipping .sv2-date.is-overdue { color: #a3352c; }
+#shipping .sv2-line { min-width: 0; overflow: hidden; color: var(--ui-muted); font-size: 12.5px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+#shipping .sv2-material { color: var(--ui-text); font-weight: 550; }
+#shipping .sv2-line.is-warn { color: #9a6410; font-weight: 600; }
+#shipping .sv2-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; color: var(--ui-faint); font-size: 12px; white-space: normal; }
+#shipping .sv2-meta .is-warn { color: #9a6410; font-weight: 600; }
+#shipping .sv2-sep { color: #c3c9c3; }
+#shipping .sv2-action {
+  justify-self: start;
+  width: auto;
+  min-height: 30px;
+  margin-top: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ui-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: none;
+}
+#shipping .sv2-action:hover { border-color: #b9c4b9; background: var(--ui-hover); }
+#shipping .sv2-action.green { border-color: var(--brand, #2f7a55); background: var(--brand, #2f7a55); color: #fff; }
+#shipping .sv2-action.green:hover { background: var(--brand-strong, #276647); }
+#shipping .sv2-foot { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
+#shipping .sv2-foot .sv2-meta { flex: 1 1 auto; }
+#shipping .sv2-done { flex: none; color: var(--brand, #2f7a55); font-size: 12px; font-weight: 600; white-space: nowrap; }
+#shipping .sv2-card.is-done .sv2-name { color: var(--ui-muted); }
+#shipping .sv2-card .shp-grip { position: absolute; top: 10px; right: 8px; }
+/* Le regole storiche delle schede (flex, bottone a tutta larghezza con
+   margini) sono più specifiche: qui si riallineano alla scheda nuova. */
+#shipping .shp-groups .shp-row.shp-ticket.sv2-card { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; grid-template-areas: none !important; grid-template-rows: auto !important; align-items: start; padding: 11px 14px 12px; }
+#shipping .shp-groups .shp-row.shp-ticket.sv2-card > :not(.shp-grip) { grid-area: auto !important; grid-column: 1 / -1 !important; }
+#shipping .shp-groups .shp-row.shp-ticket.sv2-card .sv2-action { flex: none; grid-column: auto; align-self: center; width: auto; margin: 0; white-space: nowrap; }
+
+@media (max-width: 768px) {
+  #shipping .shp-kpi-strip { gap: 12px; }
+  #shipping .shp-kpi { padding-left: 12px; }
+  #shipping .shp-kpi-value { font-size: 22px; }
+  #shipping .sv2-action { min-height: 40px; }
+}
+
+/* Pannello di preparazione Spedizioni (agganciato a <body>): stesse sezioni
+   del dettaglio di Inbox Ordini. */
+#shipping-standard-detail-panel .panel-subsection { padding: 18px 22px 20px; }
+#shipping-standard-detail-panel .panel-subsection:first-of-type { border-top: 0; }
+#shipping-standard-detail-panel .oi-next { margin: 4px 0 14px; }
+#shipping-standard-detail-panel .oi-next.is-done strong { color: var(--oi-muted); }
+#shipping-standard-detail-panel .oi-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 14px; }
+#shipping-standard-detail-panel .oi-kv dd small { display: block; margin-top: 1px; color: var(--oi-faint); font-size: 11.5px; font-weight: 500; }
+#shipping-standard-detail-panel .oi-prep-summary.is-warn strong { color: var(--oi-amber); }
+#shipping-standard-detail-panel .oi-prep-row { grid-template-columns: minmax(0, 1fr) auto; }
+#shipping-standard-detail-panel #shipping-detail-fields { display: block; }
+#shipping-standard-detail-panel .inv-alloc-primary { width: auto; min-height: 36px; padding: 7px 16px; border: 1px solid var(--brand, #2f7a55); border-radius: 7px; background: var(--brand, #2f7a55); box-shadow: none; color: #fff; font-size: 13px; font-weight: 600; }
+#shipping-standard-detail-panel .inv-alloc-primary:hover { background: var(--brand-strong, #276647); }
+
+/* DDT e Sopralluoghi: elenco unico a righe come Inbox Ordini (prima ogni
+   voce era una scheda separata con pillola). */
+:is(#ddt-list, #survey-list) { display: block; gap: 0; padding: 0; overflow: hidden; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; }
+:is(#ddt-list, #survey-list) > .info-card { margin: 0; border: 0; border-radius: 0; }
+:is(#ddt-list, #survey-list) .shp-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 11px 14px 11px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-line);
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  cursor: pointer;
+}
+:is(#ddt-list, #survey-list) .shp-row:last-child { border-bottom: 0; }
+:is(#ddt-list, #survey-list) .shp-row:hover { background: var(--ui-hover); transform: none; }
+:is(#ddt-list, #survey-list) .shp-row.selected { background: var(--brand-soft, #e8f2ec); box-shadow: inset 3px 0 var(--brand, #2f7a55); }
+:is(#ddt-list, #survey-list) .shp-dot { flex: none; width: 7px; height: 7px; box-shadow: none; }
+:is(#ddt-list, #survey-list) .shp-main { min-width: 0; flex: 1 1 auto; }
+:is(#ddt-list, #survey-list) .shp-name-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+:is(#ddt-list, #survey-list) .shp-name { overflow: hidden; color: var(--ui-text); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+:is(#ddt-list, #survey-list) .shp-num { flex: none; color: var(--ui-faint); font-size: 12px; }
+:is(#ddt-list, #survey-list) .shp-meta { margin-top: 2px; color: var(--ui-muted); font-size: 12.5px; }
+:is(#ddt-list, #survey-list) .shp-aside { display: flex; flex: none; align-items: center; gap: 6px; }
+:is(#ddt-list, #survey-list) .shp-badge { padding: 2px 8px; border: 0; border-radius: 999px; background: var(--ui-soft); color: var(--ui-muted); font-size: 11.5px; font-weight: 600; }
+:is(#ddt-list, #survey-list) .shp-badge.ok { background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); }
+:is(#ddt-list, #survey-list) .shp-badge.tone-red { background: #fcebe9; color: #a3352c; }
 
 /* ── Palette dell'app (ottobre 2026) ────────────────────────────────────────
    Scelta: "grafite" (attributo data-palette su <html> in index.html). Le altre

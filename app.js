@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-stile-comune";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-stile-comune";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-fase2-ddt-sopralluoghi-b";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-fase2-ddt-sopralluoghi-b";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-stile-comune";
+} from "./lib/order-money.js?v=20261020-fase2-ddt-sopralluoghi-b";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-stile-comune";
+import { regionForCity } from "./lib/geo.js?v=20261020-fase2-ddt-sopralluoghi-b";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-stile-comune";
+} from "./lib/shipping-eligibility.js?v=20261020-fase2-ddt-sopralluoghi-b";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-stile-comune";
+} from "./lib/profit-split.js?v=20261020-fase2-ddt-sopralluoghi-b";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-stile-comune";
+} from "./lib/preventivo-pricing.js?v=20261020-fase2-ddt-sopralluoghi-b";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-stile-comune";
+} from "./lib/sales-assignment.js?v=20261020-fase2-ddt-sopralluoghi-b";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-stile-comune";
+} from "./lib/surveys.js?v=20261020-fase2-ddt-sopralluoghi-b";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-stile-comune";
+const APP_SHELL_VERSION = "20261020-fase2-ddt-sopralluoghi-b";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -19168,50 +19168,16 @@ function renderShippingMaterialPreview(order) {
     ui.shippingMaterialPreview.innerHTML = `<div class="info-card">${state.lang === "it" ? "Seleziona un ordine per vedere subito cosa deve partire, in che formato e con quale priorità di preparazione." : "Select an order to immediately see what has to leave, in which format, and with what prep priority."}</div>`;
     return;
   }
-  const preparedLines = getWarehousePreparedLines(order);
-  const physicalLines = preparedLines.filter((item) => !isServiceLine(item.title));
-  const routeLabel = getShippingTargetLabel(order);
-  const urgencyTone = order.operations?.warehouse?.readyToShip ? "is-ready" : "is-pending";
+  const physicalLines = getWarehousePreparedLines(order).filter((item) => !isServiceLine(item.title));
   const material = getShippingMaterialCardSummary(order);
-  const materialSummary = physicalLines.length
-    ? physicalLines.map((item) => {
-      const split = splitShippingMaterialTitle(item.title);
-      const dimension = formatShippingMaterialDimension(item);
-      const sqm = parseSquareMetersFromTitle(item.title, item.quantity);
-      const meta = [
-        dimension,
-        sqm ? `${formatInventoryNumber(sqm)} mq` : "",
-        item.note ? `${state.lang === "it" ? "Nota" : "Note"}: ${item.note}` : "",
-      ].filter(Boolean).join(" · ");
-      return `
-      <li class="shipping-material-line">
-        <span class="shipping-material-check" aria-hidden="true">✓</span>
-        <div>
-          <span>${escapeHtml(split.name || item.title)}</span>
-          <small>${escapeHtml(meta || (state.lang === "it" ? "Riga da preparare" : "Line to prepare"))}</small>
-        </div>
-        <strong>x${escapeHtml(formatInventoryNumber(item.quantity))}</strong>
-      </li>
-    `;
-    }).join("")
-    : `<li class="shipping-material-line is-empty"><span class="shipping-material-check" aria-hidden="true">!</span><div><span>${state.lang === "it" ? "Nessuna riga materiale pronta" : "No prepared material lines"}</span><small>${state.lang === "it" ? "Compila la preparazione ufficio prima di creare il bancale." : "Complete office prep before building the pallet."}</small></div><strong>—</strong></li>`;
-
-  ui.shippingMaterialPreview.innerHTML = `
-    <div class="shipping-material-hero shipping-material-command ${urgencyTone}">
-      <div>
-        <span class="panel-eyebrow">${state.lang === "it" ? "Materiale ordine" : "Order material"}</span>
-        <strong>${escapeHtml(material.metric)}</strong>
-        <p>${escapeHtml(material.lineLabel)} · ${escapeHtml(routeLabel)}</p>
-      </div>
-      <div class="shipping-material-badges">
-        <span class="search-pill compact-pill">${escapeHtml(material.name)}</span>
-        ${material.detail ? `<span class="search-pill compact-pill">${escapeHtml(material.detail)}</span>` : ""}
-      </div>
-    </div>
-    <ul class="material-list compact-list shipping-material-list">
-      ${materialSummary}
-    </ul>
-  `;
+  // Solo il riepilogo: l'elenco riga per riga è la checklist "Cosa evadere"
+  // subito sotto (prima le righe comparivano due volte nello stesso pannello).
+  ui.shippingMaterialPreview.innerHTML = physicalLines.length
+    ? `<p class="oi-prep-summary">
+        <strong>${escapeHtml(material.name)}</strong>
+        <span>${escapeHtml([material.metric, material.lineLabel].filter(Boolean).join(" · "))}</span>
+      </p>`
+    : `<p class="oi-prep-summary is-warn"><strong>${state.lang === "it" ? "Nessuna riga materiale pronta" : "No prepared material lines"}</strong><span>${state.lang === "it" ? "Compila la preparazione in Inbox Ordini prima di creare il bancale." : "Complete the prep in Inbox Orders before building the pallet."}</span></p>`;
 }
 
 // Checklist "cosa evadere" sulla pagina Spedizioni: stessa spunta included su
@@ -19236,21 +19202,18 @@ function renderShippingPrepList(order) {
     const dims = extractDimensions(item.title);
     const split = splitShippingMaterialTitle(item.title);
     const dimsLabel = split.detail || (dims ? `${String(dims.width).replace(".", ",")} × ${String(dims.length).replace(".", ",")} m` : "");
-    const metaParts = [dimsLabel, `${t("prepQty")}: ${item.quantity}`].filter(Boolean).join(" · ");
+    const metaParts = [dimsLabel, item.note ? `${state.lang === "it" ? "Nota" : "Note"}: ${item.note}` : ""].filter(Boolean).join(" · ");
+    // Riga compatta come in Inbox Ordini: la spunta è lo stato.
     return `
-      <article class="prep-item${item.included === false ? " is-excluded" : ""}">
-        <label class="prep-item-toggle">
+      <article class="prep-item oi-prep-row${item.included === false ? " is-excluded" : ""}">
+        <label class="oi-prep-check">
           <input type="checkbox" data-ship-prep-field="included" data-index="${index}" ${item.included === false ? "" : "checked"} />
+          <span class="oi-prep-name">
+            <strong>${escapeHtml(split.name || item.title)}</strong>
+            ${metaParts ? `<small>${escapeHtml(metaParts)}</small>` : ""}
+          </span>
         </label>
-        <div class="prep-item-body">
-          <div class="prep-item-head">
-            <div>
-              <strong>${escapeHtml(split.name || item.title)}</strong>
-              <div class="prep-item-meta">${escapeHtml(metaParts)}</div>
-            </div>
-            ${statusChip(item.included === false ? t("excluded") : t("included"), item.included === false ? "slate" : "green")}
-          </div>
-        </div>
+        <span class="oi-prep-qty" title="${escapeHtml(t("prepQty"))}">× ${escapeHtml(item.quantity)}</span>
       </article>
     `;
   }).join("");
@@ -24581,13 +24544,6 @@ function getShippingNextAction(order) {
 }
 
 // Pallino stadio per la riga Logistica (mappa il tone dello stage al colore).
-function getShippingDotClass(stage) {
-  if (stage.tone === "green") return "ready";
-  if (stage.tone === "red") return "block";
-  if (stage.tone === "blue") return "work";
-  return "prep"; // amber / default
-}
-
 // Azione contestuale sulla riga in base a modalità + stato magazzino.
 function getShippingRowAction(order) {
   const wh = order.operations?.warehouse || {};
@@ -24655,70 +24611,52 @@ function renderShippingQueueCard(order) {
   const destination = composeAddress(order) || addressIncompleteText();
   const ddtNumber = order.operations?.warehouse?.ddt?.number || "";
   const material = getShippingMaterialCardSummary(order);
-  const ddtBadge = sampleOrder
-    ? (hasSampleLdvAttachment(order)
-      ? `<span class="shp-badge ok">${state.lang === "it" ? "LDV ok" : "Waybill ok"}</span>`
-      : `<span class="shp-badge">${state.lang === "it" ? "LDV da caricare" : "Upload waybill"}</span>`)
-    : (ddtNumber
-      ? `<span class="shp-badge ok">DDT ${escapeHtml(ddtNumber)}</span>`
-      : `<span class="shp-badge">${state.lang === "it" ? "DDT da creare" : "DDT to create"}</span>`);
-  // Un ordine "done" (Usciti/Ritirati) ha quasi sempre stage.tone "green",
-  // esattamente come un ordine "ready" (Pronti per uscita/ritiro) — le due
-  // corsie finivano con la stessa barra/chip verde, indistinguibili a colpo
-  // d'occhio. Qui si forza un tono grigio dedicato, coerente con l'intestazione
-  // già grigia di quella corsia (vedi getShippingLaneMeta), quando la card è
-  // effettivamente nella corsia "done" — a prescindere dal tono dello stage.
   const lane = getShippingStageLane(order);
-  const dotClass = lane === "done" ? "done" : getShippingDotClass(stage);
+  // Tono della scheda: grigio dedicato nella corsia "done" (altrimenti uguale
+  // ai "pronti", entrambi verdi).
   const chipClass = lane === "done" ? "done" : (stage.tone === "green" ? "ready" : stage.tone === "blue" ? "work" : stage.tone === "red" ? "block" : "prep");
-  const modeTagClass = mode === "corriere" ? "courier" : mode === "ritiro" ? "pickup" : "van";
   // Icona modalità (read-only): la modalità la imposta l'ufficio, qui è solo informativa.
   const modeIcon = getShippingQueueGroupMeta(["corriere", "ritiro", "furgone"].includes(mode) ? mode : "altro").icon || "";
   const action = getShippingRowAction(order);
   const targetUrgency = getShippingTargetUrgency(order);
-  // Stessa pillola/palette di .shipping-urgency-badge già usata per i Box
-  // campioni (getSampleUrgencyMeta): "oggi"/"scaduto" ora sono badge colorati
-  // riconoscibili invece di solo testo grigio più scuro — la differenza
-  // precedente era troppo sottile per essere notata a colpo d'occhio.
-  const targetBadgeClass = targetUrgency === "overdue" ? "overdue" : targetUrgency === "today" ? "imminent" : targetUrgency === "scheduled" ? "scheduled" : "";
-  const targetIcon = targetUrgency === "overdue" ? "⚠ " : targetUrgency === "today" ? "⏰ " : "";
-  // Sopra una manciata di caratteri il dettaglio materiale è quasi sempre il
-  // dump di TUTTE le righe fisiche (fallback in getShippingMaterialCardSummary
-  // quando non si estraggono dimensioni pulite) — a colpo d'occhio occupa metà
-  // card. Clampato a una riga con "Mostra tutto" per chi vuole lo spacchettato.
-  const materialDetailIsLong = material.detail.length > 42;
+  const it = state.lang === "it";
   const hasPhotoAttachment = Array.isArray(order.attachments) && order.attachments.some(isImageAttachment);
+  // Scheda allineata alle righe di Inbox Ordini: la colonna dice già la fase,
+  // quindi niente pillola di stato né barra colorata; colore solo sulla data
+  // (scaduta/oggi) e su ciò che manca (indirizzo, DDT).
+  const targetDate = String(getShippingTargetDate(order) || "").trim();
+  const dateLabel = lane === "done" || !targetDate
+    ? ""
+    : targetUrgency === "today"
+      ? (it ? "Oggi" : "Today")
+      : `${it ? "Entro" : "By"} ${formatDate(targetDate)}`;
+  const addressMissing = !order.address || !order.city;
+  const place = addressMissing ? addressIncompleteText() : String(order.city || "").trim();
+  const docMissing = sampleOrder ? !hasSampleLdvAttachment(order) : !ddtNumber;
+  const docLabel = sampleOrder
+    ? (docMissing ? (it ? "LDV da caricare" : "Upload waybill") : (it ? "LDV ok" : "Waybill ok"))
+    : (docMissing ? (it ? "DDT da creare" : "DDT to create") : `DDT ${ddtNumber}`);
+  const metaParts = [
+    `<span class="sv2-mode">${modeIcon} ${escapeHtml(routeLabel)}</span>`,
+    `<span class="${docMissing && lane !== "done" ? "is-warn" : ""}">${escapeHtml(docLabel)}</span>`,
+    material.lineCount ? `<span>${escapeHtml(material.lineLabel)}</span>` : "",
+    hasPhotoAttachment ? `<span title="${it ? "Ha una foto allegata" : "Has a photo attached"}">📎</span>` : "",
+  ].filter(Boolean);
   return `
-    <article class="shp-row shp-ticket tone-${chipClass} ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
-      <span class="shp-status-rail ${dotClass}" aria-hidden="true"></span>
-      <div class="shp-main">
-        <div class="shp-name-line">
-          <span class="shp-name">${escapeHtml(composeClientName(order))}</span>
-          <span class="shp-num">${escapeHtml(getOrderNumber(order))}</span>
-        </div>
-        <div class="shp-material-focus">
-          <div>
-            <span class="shp-material-name">${escapeHtml(material.name)}</span>
-            <span class="shp-material-detail${materialDetailIsLong ? " is-clamped" : ""}">${escapeHtml(material.detail)}</span>
-            ${materialDetailIsLong ? `<button type="button" class="shp-material-more" data-action="shp-toggle-material-detail">${state.lang === "it" ? "Mostra tutto" : "Show all"}</button>` : ""}
-          </div>
-          <strong class="shp-material-metric">${escapeHtml(material.metric)}</strong>
-        </div>
-        <div class="shp-meta shp-ticket-address">
-          <span>${escapeHtml(destination)}</span>
-        </div>
-        <div class="shp-meta shp-ticket-chips">
-          <span class="shp-mode-tag ${modeTagClass}">${modeIcon} ${escapeHtml(routeLabel)}</span>
-          ${ddtBadge}
-          <span class="shp-badge">${escapeHtml(material.lineLabel)}</span>
-          ${hasPhotoAttachment ? `<span class="shp-badge shp-photo-badge" title="${state.lang === "it" ? "Ha una foto allegata" : "Has a photo attached"}">📎</span>` : ""}
-        </div>
+    <article class="shp-row shp-ticket sv2-card tone-${chipClass} ${selected ? "selected" : ""} ${sampleOrder ? "is-sample" : ""} ${lane === "done" ? "is-done" : ""}" data-action="select-order" data-id="${order.id}" data-view="shipping" draggable="true" data-shipping-drag-id="${escapeAttr(order.id)}">
+      <div class="sv2-head">
+        <span class="sv2-name">${escapeHtml(composeClientName(order))}</span>
+        <span class="sv2-num">${escapeHtml(getOrderNumber(order))}</span>
+        ${dateLabel ? `<span class="sv2-date is-${escapeAttr(targetUrgency || "none")}" title="${escapeHtml(targetLabel)}">${escapeHtml(dateLabel)}</span>` : ""}
       </div>
-      <div class="shp-aside">
-        <span class="shp-date${targetBadgeClass ? ` shipping-urgency-badge urgency-${targetBadgeClass}` : ""}">${targetIcon}${escapeHtml(targetLabel)}</span>
-        <span class="shp-chip ${chipClass}">${escapeHtml(stage.label)}</span>
+      <div class="sv2-line sv2-material">${escapeHtml([material.name, material.metric].filter(Boolean).join(" · "))}</div>
+      <div class="sv2-line sv2-place${addressMissing ? " is-warn" : ""}" title="${escapeHtml(destination)}">${escapeHtml(place)}</div>
+      <div class="sv2-foot">
+        <div class="sv2-line sv2-meta">${metaParts.join('<span class="sv2-sep" aria-hidden="true">·</span>')}</div>
+        ${lane === "done"
+          ? `<span class="sv2-done">✓ ${escapeHtml(action.label)}</span>`
+          : `<button class="shp-action sv2-action ${action.tone}" type="button" data-action="select-order" data-id="${order.id}" data-view="shipping">${escapeHtml(action.label)}</button>`}
       </div>
-      <button class="shp-action ${action.tone}" type="button" data-action="select-order" data-id="${order.id}" data-view="shipping">${escapeHtml(action.label)}</button>
       ${kanbanGripHandle(order.id, "shipping")}
     </article>
   `;
@@ -25115,7 +25053,7 @@ function renderShipping() {
             ${groupedOrders.map((group) => `
               <section class="shp-group shp-lane-${group.key}" data-shp-lane-drop="${group.key}">
                 <div class="shp-group-label">
-                  <h3>${escapeHtml(group.icon || "")} ${escapeHtml(group.title)}</h3>
+                  <h3>${escapeHtml(group.title)}</h3>
                   <span class="shp-gc">${group.count}</span>
                 </div>
                 <div class="shp-group-list">
@@ -25205,12 +25143,13 @@ function renderShipping() {
       },
     ];
     const noAction = isOrderFulfilledOrClosed(order) || isLogisticsOrderCompleted(order);
-    ui.shippingDetailFields.innerHTML =
-      `<article class="shp-next-action shp-tone-${stage.tone}${noAction ? " is-done" : ""}">
-        <span class="panel-eyebrow">${state.lang === "it" ? "Cosa fare ora" : "Next action"}</span>
-        <strong>${nextAction}</strong>
-      </article>` +
-      essentials.map(renderDetailBox).join("");
+    // Stesso schema del dettaglio di Inbox Ordini: prossimo passo in una riga,
+    // poi coppie etichetta/valore invece di tre riquadri affiancati.
+    ui.shippingDetailFields.innerHTML = `
+      <p class="oi-next${noAction ? " is-done" : ""}"><span>${state.lang === "it" ? "Cosa fare ora" : "Next action"}</span><strong>${nextAction}</strong></p>
+      <dl class="oi-kv">
+        ${essentials.map((item, index) => `<div class="${index === 0 ? "oi-kv-wide" : ""}"><dt>${escapeHtml(item.label)}</dt><dd>${escapeHtml(item.value)}<small>${escapeHtml(item.meta || "")}</small></dd></div>`).join("")}
+      </dl>`;
   }
   renderShippingMaterialPreview(order);
   renderShippingPrepList(order);
@@ -33594,21 +33533,7 @@ function handleGlobalClick(event) {
     renderDashboardCommandCenter();
     return;
   }
-  if (action === "shp-toggle-material-detail") {
-    // Solo un toggle visivo (clamp CSS su una riga -> testo intero), niente
-    // stato/re-render: eviterebbe di riapparire clampato al primo giro di
-    // sync Shopify. Ferma la bubble altrimenti l'articolo genitore
-    // (data-action="select-order") aprirebbe comunque il drawer dell'ordine.
-    event.stopPropagation();
-    const detail = button.previousElementSibling;
-    if (detail?.classList.contains("shp-material-detail")) {
-      const collapsed = detail.classList.toggle("is-clamped");
-      button.textContent = collapsed
-        ? (state.lang === "it" ? "Mostra tutto" : "Show all")
-        : (state.lang === "it" ? "Mostra meno" : "Show less");
-    }
-    return;
-  }
+
   if (action === "orders-prev-page") {
     state.orderPage = Math.max(1, (state.orderPage || 1) - 1);
     state.selectedOrderId = null;
