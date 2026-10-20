@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261020-palette-grafite" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261020-palette-grafite" />
+    <link rel="preload" href="./styles.css?v=20261020-stile-comune" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261020-stile-comune" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1127,25 +1127,26 @@
           <div class="two-col">
             <section>
 
-              <details class="info-card inventory-guide-card">
-                <summary>Come caricare le giacenze iniziali</summary>
-                <p>Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.</p>
-              </details>
-
               <div id="inventory-summary" class="inventory-catalog"></div>
             </section>
 
             <section class="detail-panel">
-              <div class="detail-header">
+              <div class="detail-header iv-detail-header">
                 <div>
-                  <div class="detail-title" id="warehouse-detail-title">Aggiungi giacenza</div>
-                  <div class="detail-id">L'assegnazione dei materiali agli ordini si fa da Spedizioni.</div>
+                  <div class="detail-title" id="warehouse-detail-title">Carica giacenza</div>
+                  <div class="detail-id" id="warehouse-detail-meta"></div>
                 </div>
+                <span id="warehouse-detail-badge" class="oi-detail-badge"></span>
               </div>
 
-              <div class="panel-subsection">
+              <div id="warehouse-product-detail" class="iv-detail" hidden></div>
+
+              <div class="panel-subsection iv-load-section">
                 <div class="subsection-head inventory-section-head">
-                  <h4>Aggiungi giacenza</h4>
+                  <div>
+                    <h4>Carica giacenza</h4>
+                    <p class="subsection-copy">Rotoli, residui o accessori arrivati in magazzino. L'assegnazione agli ordini si fa da Spedizioni.</p>
+                  </div>
                   <button type="button" id="inventory-submit-button" class="primary-button small-button">Aggiungi a magazzino</button>
                 </div>
                 <form id="inventory-form" class="inline-form-grid">
@@ -2760,7 +2761,7 @@
     </div>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261020-palette-grafite" defer></script>
-    <script src="./app.js?v=20261020-palette-grafite" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261020-stile-comune" defer></script>
+    <script src="./app.js?v=20261020-stile-comune" type="module"></script>
   </body>
 </html>
