@@ -1,5 +1,5 @@
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-inbox-ordini-v2";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-inbox-ordini-v2";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-palette-grafite";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-palette-grafite";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -15,9 +15,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-inbox-ordini-v2";
+} from "./lib/order-money.js?v=20261020-palette-grafite";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-inbox-ordini-v2";
+import { regionForCity } from "./lib/geo.js?v=20261020-palette-grafite";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -36,7 +36,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-inbox-ordini-v2";
+} from "./lib/shipping-eligibility.js?v=20261020-palette-grafite";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -47,7 +47,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-inbox-ordini-v2";
+} from "./lib/profit-split.js?v=20261020-palette-grafite";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -62,7 +62,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-inbox-ordini-v2";
+} from "./lib/preventivo-pricing.js?v=20261020-palette-grafite";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -70,13 +70,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-inbox-ordini-v2";
+} from "./lib/sales-assignment.js?v=20261020-palette-grafite";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-inbox-ordini-v2";
+} from "./lib/surveys.js?v=20261020-palette-grafite";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -90,7 +90,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-inbox-ordini-v2";
+const APP_SHELL_VERSION = "20261020-palette-grafite";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13460,10 +13460,25 @@ function getOrderUrgencyBadges(order) {
   return badges;
 }
 
-// Riga dell'Inbox Ordini: tre righe di testo, un solo indicatore di stato e
-// solo gli avvisi che chiedono un'azione (l'assenza di avvisi vuol dire "a
-// posto"). Prima ogni ordine era un riquadro alto con 4-5 pillole sempre
-// presenti ("Materiale OK", "Data mancante", "Saldato"…) e ne stavano 3 a schermo.
+// Riga dell'Inbox Ordini: due righe neutre (chi e cosa) e una terza solo se
+// c'è un problema da risolvere. Colore solo sul punto di stato e sull'avviso:
+// importo, prossimo passo e data restano nel dettaglio (in elenco, presenti su
+// quasi ogni ordine, diventavano rumore — feedback utente 20 ott 2026).
+function getOrderRowAlerts(order, closed) {
+  if (closed) return [];
+  const alerts = [];
+  if (!order.address || !order.city) alerts.push({ tone: "warn", label: addressIncompleteText() });
+  if (!isLogisticsOrderCompleted(order)) {
+    const availability = getOrderMaterialAvailability(order);
+    if (availability?.tone === "is-warn") alerts.push({ tone: "warn", label: availability.label });
+  }
+  getOrderUrgencyBadges(order).forEach((badge) => {
+    alerts.push({ tone: "alert", label: String(badge.label || "").replace(/^⚠\s*/, ""), title: badge.title });
+  });
+  // Prima i rossi (urgenze), poi gli arancioni.
+  return alerts.sort((a, b) => (a.tone === b.tone ? 0 : a.tone === "alert" ? -1 : 1));
+}
+
 function renderOrderRow(order, view = "orders") {
   const it = state.lang === "it";
   const selected = order.id === state.selectedOrderId;
@@ -13471,42 +13486,31 @@ function renderOrderRow(order, view = "orders") {
   const closed = isOrderClosed(order) || stage.key === "closed";
   const orderType = getInboxCommercialType(order);
   const material = getShippingMaterialCardSummary(order);
-  const relativeDate = formatOrderRelativeDate(order.createdAt);
-  const nextAction = getNextOrderAction(order);
-  const addressMissing = !order.address || !order.city;
-  const flags = [];
-  if (!closed && !isLogisticsOrderCompleted(order)) {
-    const availability = getOrderMaterialAvailability(order);
-    if (availability?.tone === "is-warn") flags.push({ tone: "warn", label: availability.label });
-  }
-  getOrderUrgencyBadges(order).forEach((badge) => {
-    flags.push({ tone: "alert", label: String(badge.label || "").replace(/^⚠\s*/, ""), title: badge.title });
-  });
-  const openBalance = getOpenBalance(order);
+  const alerts = getOrderRowAlerts(order, closed);
   const productLine = [
     material.name || order.operations?.product || undefinedText(),
     material.metric,
     orderType.label,
   ].filter(Boolean).join(" · ");
-  const place = addressMissing ? "" : String(order.city || "").trim();
+  const place = String(order.city || "").trim();
+  const firstAlert = alerts[0];
+  const moreAlerts = alerts.length - 1;
   return `
-    <article class="oi-row tone-${escapeHtml(stage.tone)} ${selected ? "selected" : ""} ${closed ? "is-closed" : ""}" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(view)}" role="button" tabindex="0"${selected ? ' aria-current="true"' : ""}>
+    <article class="oi-row ${selected ? "selected" : ""} ${closed ? "is-closed" : ""}" data-action="select-order" data-id="${escapeHtml(order.id)}" data-view="${escapeHtml(view)}" role="button" tabindex="0"${selected ? ' aria-current="true"' : ""}>
       <div class="oi-row-line oi-row-head">
         <span class="oi-row-name">${escapeHtml(composeClientName(order))}</span>
-        <span class="oi-row-number">${escapeHtml(getOrderNumber(order))}</span>
-        ${relativeDate.label ? `<span class="oi-row-date ${relativeDate.tone}" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(relativeDate.label)}</span>` : ""}
-        <span class="oi-status tone-${escapeHtml(stage.tone)}">${escapeHtml(stage.label)}</span>
+        <span class="oi-row-number" title="${escapeHtml(formatDate(order.createdAt))}">${escapeHtml(getOrderNumber(order))}</span>
+        <span class="oi-row-state tone-${escapeHtml(stage.tone)}">${escapeHtml(stage.label)}</span>
       </div>
       <div class="oi-row-line oi-row-sub">
         <span class="oi-row-product">${escapeHtml(productLine)}</span>
         ${place ? `<span class="oi-row-place">${escapeHtml(place)}</span>` : ""}
       </div>
-      ${closed && !flags.length && openBalance <= 0 ? "" : `
-      <div class="oi-row-line oi-row-foot">
-        ${closed ? "" : `<span class="oi-row-next${addressMissing ? " is-warn" : ""}">${escapeHtml(nextAction)}</span>`}
-        ${flags.map((flag) => `<span class="oi-flag is-${flag.tone}"${flag.title ? ` title="${escapeHtml(flag.title)}"` : ""}>${escapeHtml(flag.label)}</span>`).join("")}
-        ${openBalance > 0 ? `<span class="oi-row-balance">${it ? "Da incassare" : "Due"} ${escapeHtml(formatCurrency(openBalance))}</span>` : ""}
-      </div>`}
+      ${firstAlert ? `
+      <div class="oi-row-line oi-row-alert is-${firstAlert.tone}"${firstAlert.title ? ` title="${escapeHtml(firstAlert.title)}"` : ""}>
+        <span>${escapeHtml(firstAlert.label)}</span>
+        ${moreAlerts > 0 ? `<span class="oi-row-alert-more">${it ? `+${moreAlerts} altro` : `+${moreAlerts} more`}</span>` : ""}
+      </div>` : ""}
     </article>
   `;
 }
