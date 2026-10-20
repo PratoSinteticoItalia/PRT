@@ -1,6 +1,7 @@
+import { validateAbsenceInput } from "./lib/timesheet-absence.js";
 import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261020-conti-riepilogo-compatto";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261020-conti-riepilogo-compatto";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261021-presenze-assenze-documenti";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261021-presenze-assenze-documenti";
 import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
@@ -16,9 +17,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261020-conti-riepilogo-compatto";
+} from "./lib/order-money.js?v=20261021-presenze-assenze-documenti";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261020-conti-riepilogo-compatto";
+import { regionForCity } from "./lib/geo.js?v=20261021-presenze-assenze-documenti";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -37,7 +38,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261020-conti-riepilogo-compatto";
+} from "./lib/shipping-eligibility.js?v=20261021-presenze-assenze-documenti";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -48,7 +49,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261020-conti-riepilogo-compatto";
+} from "./lib/profit-split.js?v=20261021-presenze-assenze-documenti";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -63,7 +64,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261020-conti-riepilogo-compatto";
+} from "./lib/preventivo-pricing.js?v=20261021-presenze-assenze-documenti";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -71,13 +72,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261020-conti-riepilogo-compatto";
+} from "./lib/sales-assignment.js?v=20261021-presenze-assenze-documenti";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261020-conti-riepilogo-compatto";
+} from "./lib/surveys.js?v=20261021-presenze-assenze-documenti";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -91,7 +92,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261020-conti-riepilogo-compatto";
+const APP_SHELL_VERSION = "20261021-presenze-assenze-documenti";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -23621,14 +23622,7 @@ function renderTimesheetOfficeDetailMarkup({
               <button type="button" class="${(absence?.type || "none") === type ? "is-active" : ""}" data-ts-absence-type="${type}">${label}</button>
             `).join("")}
           </div>
-          <!-- Sempre visibili (non solo quando il tipo attivo è già "Permesso"):
-               altrimenti selezionare Permesso per la prima volta da un altro
-               stato non lascerebbe mai il tempo di compilarle PRIMA del click
-               che salva — stesso problema che avrebbe una visibilità condizionale
-               qui, dato che ogni bottone tipo salva immediatamente al click
-               (stesso pattern già usato per il campo Nota qui sotto). Rilevanti
-               solo per il Permesso, ma innocue per Ferie/Malattia (il server le
-               ignora silenziosamente per quei tipi). -->
+          <!-- Gli orari sono abilitati solo per i permessi; il salvataggio è esplicito. -->
           <div class="ts-absence-time-fields">
             <label class="ts-detail-field">
               <span>Dalle</span>
@@ -23643,6 +23637,13 @@ function renderTimesheetOfficeDetailMarkup({
             <span>Nota</span>
             <input type="text" data-ts-absence-note maxlength="500" value="${escapeAttr(absence?.note || "")}" placeholder="Motivo o riferimento interno">
           </label>
+          <p class="panel-note" data-ts-absence-status aria-live="polite">Seleziona il tipo, compila i campi e salva.</p>
+          <button type="button" class="primary-button" data-ts-absence-save>Salva assenza</button>
+          <details class="ts-certificate-panel"><summary>Documenti giustificativi · accesso ufficio</summary>
+            <p class="panel-note">PDF, JPG o PNG, massimo 5 MB. Allega il giustificativo necessario, evitando informazioni cliniche non necessarie.</p>
+            <input type="file" data-ts-certificate accept="application/pdf,image/jpeg,image/png" aria-label="Allega giustificativo">
+            <div data-ts-certificates></div>
+          </details>
         </div>
       </div>
       <form class="ts-payroll-form" data-ts-profile-form data-user-id="${escapeAttr(user.id || "")}">
@@ -23735,6 +23736,11 @@ async function renderTimesheetOffice() {
           <button type="button" class="ts-week-btn" data-action="ts-week-next" aria-label="Settimana successiva">${chevron("right")}</button>
           ${!isCurrentWeek ? `<button type="button" class="ts-week-today" data-action="ts-week-today">Oggi</button>` : ""}
         </div>
+        <form data-ts-export-range class="ts-export-range">
+          <label>Dal <input type="date" name="from" value="${fromStr}" required></label>
+          <label>Al <input type="date" name="to" value="${toStr}" required></label>
+          <button type="submit" class="ghost-button">Esporta presenze e assenze CSV</button>
+        </form>
       </div>`;
     const requestQueue = renderTimesheetOfficeRequestQueue(pendingAbsenceRequests, userMap);
 
@@ -23915,6 +23921,12 @@ function classifyTimesheetShift(s = {}) {
 }
 
 function bindTimesheetOfficeNav(root, weekOffset) {
+  root.querySelector("[data-ts-export-range]")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const fields = new FormData(event.target);
+    if (fields.get("from") > fields.get("to")) { showToast("Controlla l’intervallo delle date.", "error"); return; }
+    window.open(`/api/timesheet/export?${new URLSearchParams(fields)}`, "_blank");
+  });
   root.querySelector('[data-action="ts-week-prev"]')?.addEventListener("click", () => {
     state.timesheetOfficeWeekOffset = weekOffset - 1;
     renderTimesheetOffice();
@@ -24025,7 +24037,9 @@ function bindTimesheetOfficeDetail(root, context = {}) {
 
 function bindTimesheetOfficeEditors(root, context = {}) {
   const profileForm = root.querySelector("[data-ts-profile-form]");
-  profileForm?.addEventListener("submit", async (event) => {
+  if (profileForm && !profileForm.dataset.editorBound) {
+  profileForm.dataset.editorBound = "1";
+  profileForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const submitButton = profileForm.querySelector('[type="submit"]');
     const form = new FormData(profileForm);
@@ -24052,51 +24066,75 @@ function bindTimesheetOfficeEditors(root, context = {}) {
     }
   });
 
-  const saveAbsence = async (type) => {
-    const selection = state.timesheetOfficeSelection;
-    if (!selection?.userId || !selection?.date) return;
-    root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = true; });
-    try {
-      const result = await apiFetch("/api/timesheet/absences", {
-        method: "POST",
-        body: JSON.stringify({
-          userId: selection.userId,
-          date: selection.date,
-          type: type || "none",
-          startTime: root.querySelector("[data-ts-absence-start]")?.value || "",
-          endTime: root.querySelector("[data-ts-absence-end]")?.value || "",
-          note: root.querySelector("[data-ts-absence-note]")?.value || "",
-        }),
-      });
-      const key = `${selection.userId}:${selection.date}`;
-      if (result?.absence) context.absenceByUserDate?.set(key, result.absence);
-      else context.absenceByUserDate?.delete(key);
-      if (result?.request) context.requestByUserDate?.set(key, result.request);
-      showToast(type === "none" ? "Assenza rimossa." : "Assenza registrata.", "success");
-      refreshTimesheetOfficeDetail(root, context);
-    } catch (error) {
-      showToast(`Impossibile aggiornare l’assenza: ${error?.message || error}`, "error");
-      root.querySelectorAll("[data-ts-absence-type]").forEach((item) => { item.disabled = false; });
-    }
+  }
+  const selectedDay = { ...state.timesheetOfficeSelection };
+  const absenceKey = `${selectedDay.userId}:${selectedDay.date}`;
+  const originalAbsence = context.absenceByUserDate?.get(absenceKey);
+  const detail = root.querySelector("#timesheet-office-detail");
+  if (detail && !detail.dataset.absenceBound) {
+  detail.dataset.absenceBound = "1";
+  const buttons = [...detail.querySelectorAll("[data-ts-absence-type]")];
+  const selectedType = () => buttons.find(b => b.classList.contains("is-active"))?.dataset.tsAbsenceType || "none";
+  const status = detail.querySelector("[data-ts-absence-status]");
+  const updateFields = () => {
+    detail.querySelectorAll("[data-ts-absence-start], [data-ts-absence-end]").forEach(el => { el.disabled = selectedType() !== "permit"; });
   };
-
-  root.querySelectorAll("[data-ts-absence-type]").forEach((button) => {
-    button.addEventListener("click", () => saveAbsence(button.dataset.tsAbsenceType || "none"));
+  buttons.forEach(button => button.addEventListener("click", () => {
+    buttons.forEach(b => { b.classList.toggle("is-active", b === button); b.setAttribute("aria-pressed", String(b === button)); });
+    status.textContent = "Modifica non salvata. Premi Salva assenza.";
+    updateFields();
+  }));
+  updateFields();
+  detail.querySelector("[data-ts-absence-save]")?.addEventListener("click", async event => {
+    const payload = {
+      ...selectedDay, type: selectedType(),
+      startTime: detail.querySelector("[data-ts-absence-start]")?.value || "",
+      endTime: detail.querySelector("[data-ts-absence-end]")?.value || "",
+      note: detail.querySelector("[data-ts-absence-note]")?.value || "",
+      expectedUpdatedAt: originalAbsence?.updatedAt || "",
+    };
+    const error = validateAbsenceInput(payload);
+    if (error) { status.textContent = error; return; }
+    const controls = [...detail.querySelectorAll("input, button")];
+    controls.forEach(el => { el.disabled = true; });
+    status.textContent = "Salvataggio…";
+    try {
+      const result = await apiFetch("/api/timesheet/absences", {method: "POST", body: JSON.stringify(payload)});
+      if (result?.absence) context.absenceByUserDate.set(absenceKey, result.absence);
+      else context.absenceByUserDate.delete(absenceKey);
+      if (result?.request) context.requestByUserDate?.set(absenceKey, result.request);
+      showToast("Assenza aggiornata.", "success");
+      if (root.isConnected) {
+        updateTimesheetOfficeCell(root, context, selectedDay);
+        if (state.timesheetOfficeSelection?.userId === selectedDay.userId && state.timesheetOfficeSelection?.date === selectedDay.date) refreshTimesheetOfficeDetail(root, context);
+      }
+    } catch (error) {
+      status.textContent = error.message || "Salvataggio non riuscito.";
+      controls.forEach(el => { el.disabled = false; }); updateFields();
+    }
+  });
+  const documentsUrl = `/api/timesheet/certificates?userId=${encodeURIComponent(selectedDay.userId)}&date=${encodeURIComponent(selectedDay.date)}`;
+  const documentList = detail.querySelector("[data-ts-certificates]");
+  const loadDocuments = async () => {
+    try {
+      const result = await apiFetch(documentsUrl);
+      documentList.innerHTML = result.documents.map(doc => `<p><a href="/api/timesheet/certificates/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">${escapeHtml(doc.name)}</a> · ${escapeHtml(formatDate(doc.createdAt))}</p>`).join("") || "Nessun documento allegato.";
+    } catch { documentList.textContent = "Impossibile caricare i documenti."; }
+  };
+  detail.querySelector(".ts-certificate-panel")?.addEventListener("toggle", event => { if (event.target.open) void loadDocuments(); });
+  detail.querySelector("[data-ts-certificate]")?.addEventListener("change", async event => {
+    const input = event.target; const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024 || !["application/pdf","image/jpeg","image/png"].includes(file.type)) { showToast("Usa PDF, JPG o PNG fino a 5 MB.", "error"); return; }
+    input.disabled = true;
+    try {
+      await apiFetch(documentsUrl, {method:"POST",body:JSON.stringify({name:file.name,dataUrl:await readFileAsDataUrl(file)})});
+      await loadDocuments(); input.value = "";
+    } catch (error) { showToast(error.message || "Caricamento non riuscito.", "error"); }
+    finally { input.disabled = false; }
   });
 
-  // Dalle/Alle/Nota non hanno un pulsante "Salva" proprio — prima venivano
-  // persistite SOLO come effetto collaterale di un click su un bottone tipo
-  // (Nessuna/Ferie/Permesso/Malattia). Se il tipo era già quello giusto (es.
-  // "Permesso" già attivo) non c'era alcun motivo per l'utente di ricliccarlo,
-  // quindi compilare questi campi e basta non salvava nulla — segnalato
-  // dall'utente il 24 ago 2026. Ora ogni campo salva al cambiamento, usando
-  // il tipo attualmente attivo (o "none" se nessuno lo è, caso che non
-  // dovrebbe verificarsi perché "Nessuna" è sempre attivo di default).
-  const getActiveAbsenceType = () => root.querySelector("[data-ts-absence-type].is-active")?.dataset.tsAbsenceType || "none";
-  root.querySelectorAll("[data-ts-absence-start], [data-ts-absence-end], [data-ts-absence-note]").forEach((field) => {
-    field.addEventListener("change", () => saveAbsence(getActiveAbsenceType()));
-  });
-
+  }
   root.querySelectorAll("[data-ts-request-review]").forEach((button) => {
     if (button.dataset.tsRequestReviewBound === "1") return;
     button.dataset.tsRequestReviewBound = "1";

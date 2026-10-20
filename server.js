@@ -1,3 +1,5 @@
+import { buildTimesheetCsv } from "./lib/timesheet-export.js";
+import { validateAbsenceInput } from "./lib/timesheet-absence.js";
 import { profitPaymentBalance } from "./lib/profit-history.js";
 import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
@@ -5619,6 +5621,7 @@ function buildDefaultStore() {
     supplierProfiles: [],
     supplierPriceEntries: [],
     timesheetAbsences: [],
+    timesheetCertificates: [],
     timesheetAbsenceRequests: [],
     marketingPublicAssets: [],
     marketingScheduled: [],
@@ -10887,6 +10890,7 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
   const bucketPrefix = resource === "sales-content"
     ? "sales-content"
     : resource === "marketing-public" ? "marketing-public"
+    : resource === "timesheet-private" ? "timesheet-private"
     : resource === "work-reports" ? "work-reports"
     : resource === "communications" ? "communications"
     : resource === "showroom" ? "showroom"
@@ -11416,6 +11420,7 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
   const bucketPrefix = resource === "sales-content"
     ? "sales-content"
     : resource === "marketing-public" ? "marketing-public"
+    : resource === "timesheet-private" ? "timesheet-private"
     : resource === "work-reports" ? "work-reports"
     : resource === "communications" ? "communications"
     : resource === "showroom" ? "showroom"
@@ -16222,8 +16227,12 @@ async function handleApi(req, res, url) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return sendJson(res, 400, { error: "invalid_absence_date" });
     }
+    const validationError = validateAbsenceInput({date, type: type || "none", startTime: body.startTime, endTime: body.endTime});
+    if (validationError) return sendJson(res, 400, {error: validationError});
     const list = Array.isArray(store.timesheetAbsences) ? store.timesheetAbsences : [];
     const existingIndex = list.findIndex((record) => record.userId === userId && record.date === date);
+    if (Object.hasOwn(body, "expectedUpdatedAt") && body.expectedUpdatedAt !== (list[existingIndex]?.updatedAt || "")) return sendJson(res, 409, {error: "Presenza modificata da un altro utente. Ricarica prima di salvare."});
+
     const requestList = Array.isArray(store.timesheetAbsenceRequests) ? store.timesheetAbsenceRequests : [];
     const matchingRequestIndex = requestList.findIndex((record) => (
       String(record.userId) === userId
@@ -16317,6 +16326,37 @@ async function handleApi(req, res, url) {
     }
   }
 
+  if (url.pathname === "/api/timesheet/certificates" && ["GET", "POST"].includes(req.method)) {
+    if (!currentUser) return sendJson(res, 401, {error:"unauthorized"});
+    if (currentUser.role !== "office") return sendJson(res, 403, {error:"forbidden"});
+    const userId = url.searchParams.get("userId") || "";
+    const date = url.searchParams.get("date") || "";
+    if (!(store.users || []).some(u => u.id === userId && userIsEmployee(u)) || validateAbsenceInput({date,type:"none"})) return sendJson(res,400,{error:"invalid_employee_or_date"});
+    const documents = store.timesheetCertificates || [];
+    if (req.method === "GET") return sendJson(res,200,{documents:documents.filter(d => d.userId === userId && d.date === date).map(d => ({id:d.id,name:d.name,createdAt:d.createdAt}))});
+    const body = await readBody(req, {maxBytes: 7 * 1024 * 1024});
+    const parsed = parseDataUrl(body.dataUrl || "");
+    const buffer = parsed?.buffer;
+    const type = buffer?.subarray(0,5).toString() === "%PDF-" ? "application/pdf"
+      : buffer?.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? "image/png"
+      : buffer?.[0] === 255 && buffer?.[1] === 216 && buffer?.[2] === 255 ? "image/jpeg" : "";
+    if (!type || !buffer?.length || buffer.length > 5 * 1024 * 1024) return sendJson(res,400,{error:"Documento non valido: PDF, JPG o PNG fino a 5 MB."});
+    const id = randomUUID();
+    const asset = await storeAttachmentBuffer(`certificate-${id}`, {id,name:String(body.name || "Giustificativo").slice(0,180),type}, buffer, "timesheet-private");
+    const record = {id,userId,date,name:asset.name || "Giustificativo",createdAt:new Date().toISOString(),createdBy:currentUser.id,asset};
+    store.timesheetCertificates = [...(store.timesheetCertificates || []),record];
+    await writeJson(STORE_PATH,store);
+    writeAuditLog("timesheet_certificate",id,"upload",{userId,date},currentUser.email || null).catch(() => {});
+    return sendJson(res,200,{ok:true});
+  }
+  if (/^\/api\/timesheet\/certificates\/[^/]+\/file$/.test(url.pathname) && req.method === "GET") {
+    if (!currentUser) return sendJson(res,401,{error:"unauthorized"});
+    if (currentUser.role !== "office") return sendJson(res,403,{error:"forbidden"});
+    const document = (store.timesheetCertificates || []).find(d => d.id === url.pathname.split("/")[4]);
+    if (!document) return sendJson(res,404,{error:"not_found"});
+    return streamAttachmentAsset(req,res,document.asset,{cacheControl:"private, no-store",forceDownload:true});
+  }
+
   // GET /api/timesheet/export?from=X&to=Y → CSV office
   if (url.pathname === "/api/timesheet/export" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
@@ -16324,43 +16364,17 @@ async function handleApi(req, res, url) {
     try {
       const from = url.searchParams.get("from") || null;
       const to = url.searchParams.get("to") || null;
-      const shifts = await listShiftsAll({ from, to });
-      // Mappa user_id → nome per output friendly
-      const users = Array.isArray(store.users) ? store.users : [];
-      const userMap = new Map(users.map((u) => [u.id, u]));
-      const lines = ["Data,Dipendente,Email,Ruolo,Entrata,Uscita,Ore lavorate,Rete entrata,Anomalie,Note"];
-      for (const s of shifts) {
-        const user = userMap.get(s.userId) || {};
-        const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" }) : "";
-        const hh = Math.floor((s.workedMinutes || 0) / 60);
-        const mm = (s.workedMinutes || 0) % 60;
-        const hoursStr = s.workedMinutes != null ? `${hh}:${String(mm).padStart(2, "0")}` : "";
-        const networkStr = (s.anomalyFlags || []).includes("off_network_in") ? "off-network"
-                        : (s.anomalyFlags || []).includes("off_network_out") ? "mixed"
-                        : "in_office";
-        const anomalies = (s.anomalyFlags || []).join("|");
-        const csvEscape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-        lines.push([
-          s.shiftDate,
-          csvEscape(user.name || user.crewName || s.userId),
-          csvEscape(user.email || ""),
-          csvEscape(user.role || ""),
-          fmtTime(s.clockInAt),
-          fmtTime(s.clockOutAt),
-          hoursStr,
-          networkStr,
-          csvEscape(anomalies),
-          csvEscape(s.notes || ""),
-        ].join(","));
-      }
-      const csv = lines.join("\n");
+      if ((from && validateAbsenceInput({date:from,type:"none"})) || (to && validateAbsenceInput({date:to,type:"none"})) || (from && to && from > to)) return sendJson(res,400,{error:"invalid_date_range"});
+      const userId = url.searchParams.get("userId") || null;
+      const shifts = await listShiftsAll({ from, to, userId });
+      const csv = buildTimesheetCsv(shifts,listTimesheetAbsences(store,{from,to,userId}),store.users || []);
       const filename = `presenze_${from || "tutti"}_${to || "oggi"}.csv`;
       res.writeHead(200, {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
       });
-      res.end("﻿" + csv); // BOM per Excel italiano
+      res.end(csv); // BOM incluso dal generatore
       return;
     } catch (err) {
       console.error("[timesheet] export failed:", err?.message || err);

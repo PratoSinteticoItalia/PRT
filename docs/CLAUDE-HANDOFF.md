@@ -363,3 +363,12 @@ Richiesta utente: adeguare tutto lo stile a quello di Inbox Ordini. Piano concor
 - **Richieste (CRM v2)**: solo CSS + rimozione emoji 🕒 dal badge "gg senza contatto" (`renderCrmV2Row`). `#sales-requests-list` reso elenco unico a righe; nomi non più in maiuscolo, servizio come testo, badge giorni in testo arancione/rosso, "Apri" generico nascosto (restano `is-green` Apri ordine / `is-ghost` Riapri). **Verificato solo con righe finte iniettate nel DOM** (in locale manca il DB del CRM): controllare in produzione con dati reali.
 - **Generatore** (`.native-form`): intestazioni sezione piatte (niente fascia verde sfumata né bordo sinistro), numero piccolo su fondo tenue, titolo come le altre sezioni.
 - Contenuti e Marketing: già allineati dallo stile comune. `npm run check` verde (288).
+
+## Presenze: assenze con salvataggio esplicito, giustificativi, export per intervallo — 21 ottobre (lavoro di Codex, pubblicato da Claude)
+
+Nota: il commit "Restyling fase 5" (14f1a89 / main 3fd3cb5) l'ha registrato Codex nella stessa cartella insieme alle modifiche di Claude, poi ha aggiunto i suoi commit su Conti posa e DDT. Questo giro (modifiche di Codex non ancora committate) l'ha pubblicato Claude dopo revisione e prova.
+
+- Ufficio → Presenze: Ferie/Permesso/Malattia si scelgono e si salvano con "Salva assenza" (prima ogni click salvava subito); orari abilitati solo per il permesso; `validateAbsenceInput` (lib/timesheet-absence.js) usato da client e server; blocco modifiche concorrenti con `expectedUpdatedAt` (409).
+- Giustificativi: `GET/POST /api/timesheet/certificates` e `GET /api/timesheet/certificates/:id/file`, solo ufficio; tipo verificato sui byte (PDF/PNG/JPEG), massimo 5 MB, bucket `timesheet-private`, download `private, no-store`; record in `store.timesheetCertificates`.
+- Export: `/api/timesheet/export?from&to[&userId]` con validazione intervallo; `lib/timesheet-export.js` (separatore `;`, BOM, una riga per turno e una per assenza, minuti permesso, protezione formule CSV). Test `test/timesheet-controls.test.js`.
+- Verificato da Claude in locale: errore orari, salvataggio permesso 09–11, CSV con 120 minuti, upload PNG ok e PDF finto rifiutato, download con header privati. `npm run check` verde (294).
