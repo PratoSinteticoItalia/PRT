@@ -95,7 +95,7 @@ const DEFAULT_TRAVEL_SETTINGS = {
 const ESTIMATED_TOLL_RATE_CLASS_B = 0.088;
 const GARDEN_PLANNER_PREFILL_STORAGE_KEY = "garden-planner-quote-bridge-v1";
 const GARDEN_PLANNER_REQUEST_PREFILL_STORAGE_KEY = "garden-planner-request-prefill-v1";
-const APP_SHELL_VERSION = "20261021-presenze-giustificativi-b";
+const APP_SHELL_VERSION = "20261021-inglese-integrale";
 
 const DECO_CATALOG = [
   { id: "detergente_prato", name: "Detergente prato sintetico", unit: "pz", pricePerUnit: 12.9, defaultQty: 0, cat: "Cura del prato", note: "Flacone pronto uso" },
@@ -2159,7 +2159,7 @@ function FreeDrawCanvas({
         <button type="button" aria-pressed={drawMode==='rectangle'&&!panMode} onClick={()=>chooseTool('rectangle')}>Rettangolo</button>
         <button type="button" aria-pressed={drawMode==='circle'&&!panMode} onClick={()=>chooseTool('circle')}>Cerchio</button>
         <select aria-label="Tipo elemento" value={rectangleType} onChange={e=>{setRectangleType(e.target.value);chooseTool(drawMode==='circle'?'circle':'rectangle');}}>
-          {['Prato','Casetta','Abitazione','Piscina','Patio esistente','Aiuola','Albero','Pavimentazione'].map(t=><option key={t}>{t}</option>)}
+          {['Prato','Casetta','Abitazione','Piscina','Patio esistente','Aiuola','Albero','Pavimentazione'].map(t=><option key={t} value={t}>{t}</option>)}
         </select>
         <button type="button" aria-pressed={drawMode==='border'&&!panMode} onClick={()=>chooseTool('border')}>Bordura A–B</button>
       </div>
@@ -3417,7 +3417,7 @@ function MaterialsReport({ area, perimeter, turfArea, turfPerimeter, shape, dims
 function ReportShell({ id, variant = "technical", area, perimeter, turfArea, turfPerimeter, shape, dims, customPts, customClosed, customAreas = [], borderSegments = [], borderMeters, borderType, substrate, decoItems, projectInfo, travel, viewerRole, regionalPricing, manualRolls, pavingNeedsByArea = [], previewMode = false }) {
   const isClientVariant = variant === "client";
   return (
-    <div id={id} style={{fontFamily:"Arial, Helvetica, sans-serif"}}>
+    <div id={id} data-no-i18n="" style={{fontFamily:"Arial, Helvetica, sans-serif"}}>
       {isClientVariant ? (
         <div className="print-no-break" style={{display:'flex',justifyContent:'space-between',gap:20,alignItems:'center',borderTop:'3px solid #284b36',borderBottom:'1px solid #b8c5d0',padding:'14px 0',marginBottom:14,fontFamily:'Arial, Helvetica, sans-serif',color:'#243547'}}>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -4574,7 +4574,7 @@ function GardenPlanner() {
                   {activeAreaKind === "exclusion" && <div style={{ marginBottom: 12 }}>
                     <label style={lbl} htmlFor="gp-exclusion-label">Elemento escluso dal prato</label>
                     <select id="gp-exclusion-label" value={activeArea.label || "Casa / ostacolo"} onChange={e => updateActiveArea(a => ({ ...a, label: e.target.value }))} style={fieldInp}>
-                      {["Casa / ostacolo", "Abitazione", "Casetta", "Patio esistente", "Piscina", "Aiuola", "Albero"].map(label => <option key={label}>{label}</option>)}
+                      {["Casa / ostacolo", "Abitazione", "Casetta", "Patio esistente", "Piscina", "Aiuola", "Albero"].map(label => <option key={label} value={label}>{label}</option>)}
                     </select>
                     <p style={{ fontSize: 12 }}>Disegna il contorno dell'elemento. Solo la parte che interseca il giardino viene sottratta; qui non si conteggiano prato, pavimentazione o fondo.</p>
                   </div>}

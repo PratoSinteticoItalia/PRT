@@ -69,20 +69,36 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="garden-print-sheet" aria-hidden="true"></div>
+    <div id="garden-print-sheet" aria-hidden="true" data-no-i18n></div>
     <noscript>Abilita JavaScript per usare il Garden Planner.</noscript>
 
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <!-- Bundle già compilato da esbuild (garden-planner-page.min.js): script classico, niente Babel a runtime -->
-    <script src="./garden-planner-page.js?v=20261021-presenze-giustificativi-b"></script>
+    <script src="./garden-planner-page.js?v=20261021-inglese-integrale"></script>
+    <script type="module">
+      // Interfaccia in inglese se scelta nel portale (stesso catalogo dell'app).
+      // I report per il cliente hanno data-no-i18n e restano in italiano.
+      import { translateItToEn } from "./lib/i18n-en.js?v=20261021-inglese-integrale";
+      import { createDomTranslator } from "./lib/i18n-dom.js?v=20261021-inglese-integrale";
+      const translator = createDomTranslator(translateItToEn);
+      const readLang = () => { try { return window.localStorage.getItem("psi-lang") === "en" ? "en" : "it"; } catch { return "it"; } };
+      const applyLang = () => {
+        const lang = readLang();
+        document.documentElement.lang = lang;
+        if (lang === "en") translator.start(document.body);
+        else translator.stop();
+      };
+      applyLang();
+      window.addEventListener("storage", (event) => { if (event.key === "psi-lang") applyLang(); });
+    </script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           // Register without update logic — the main app SW handles version updates.
           // Avoid registration.waiting checks and controllerchange reloads here to
           // prevent the garden planner iframe from reloading every time it opens.
-          navigator.serviceWorker.register("./sw.js?v=20261021-presenze-giustificativi-b").catch(() => {});
+          navigator.serviceWorker.register("./sw.js?v=20261021-inglese-integrale").catch(() => {});
         });
       }
     </script>

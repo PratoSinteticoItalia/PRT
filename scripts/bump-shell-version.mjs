@@ -13,6 +13,7 @@
  *   - garden-planner.html    (script garden-planner-page.js, sw.js)
  *   - garden-planner-page.js (APP_SHELL_VERSION, deve combaciare con app.js
  *     — vedi verify-shell-version.mjs, che lo valida esplicitamente)
+ *   - lib/i18n-en.js         (import versionato del catalogo inglese)
  *
  * Esegue poi `npm run check` per validare allineamento.
  *
@@ -35,6 +36,7 @@ const FILES_TO_BUMP = [
   "index.html",
   "garden-planner.html",
   "garden-planner-page.js",
+  "lib/i18n-en.js",
 ];
 
 function todayStampRome() {
