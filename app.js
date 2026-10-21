@@ -1,8 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261021-presenze-giustificativi-b";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261021-presenze-giustificativi-b";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261021-inglese-integrale";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261021-inglese-integrale";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261021-inglese-integrale";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261021-inglese-integrale";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261021-inglese-integrale";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261021-inglese-integrale";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261021-inglese-integrale';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -17,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261021-presenze-giustificativi-b";
+} from "./lib/order-money.js?v=20261021-inglese-integrale";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261021-presenze-giustificativi-b";
+import { regionForCity } from "./lib/geo.js?v=20261021-inglese-integrale";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -38,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261021-presenze-giustificativi-b";
+} from "./lib/shipping-eligibility.js?v=20261021-inglese-integrale";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -49,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261021-presenze-giustificativi-b";
+} from "./lib/profit-split.js?v=20261021-inglese-integrale";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -64,7 +66,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261021-presenze-giustificativi-b";
+} from "./lib/preventivo-pricing.js?v=20261021-inglese-integrale";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -72,13 +74,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261021-presenze-giustificativi-b";
+} from "./lib/sales-assignment.js?v=20261021-inglese-integrale";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261021-presenze-giustificativi-b";
+} from "./lib/surveys.js?v=20261021-inglese-integrale";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -92,7 +94,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261021-presenze-giustificativi-b";
+const APP_SHELL_VERSION = "20261021-inglese-integrale";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1274,6 +1276,16 @@ function clearHandledLaunchParams() {
   }
 }
 
+// Lingua scelta dall'utente: ricordata su questo dispositivo (prima ripartiva
+// sempre in italiano a ogni apertura).
+function readSavedLanguage() {
+  try {
+    return window.localStorage.getItem("psi-lang") === "en" ? "en" : "it";
+  } catch {
+    return "it";
+  }
+}
+
 const state = {
   currentUser: null,
   orders: [],
@@ -1362,7 +1374,7 @@ const state = {
   lastAccountsManagerSignature: "",
   catalogCrews: [],
   catalogSalesAssignments: [],
-  lang: "it",
+  lang: readSavedLanguage(),
   filters: {
     order: "all",
     warehouse: "all",
@@ -3036,14 +3048,53 @@ function ensureMobilePillShell() {
   ui.langButtons = Array.from(document.querySelectorAll(".lang-btn"));
   ui.langButtons.forEach((button) => {
     if (button.dataset.boundLang === "true") return;
-    button.addEventListener("click", () => {
-      state.lang = button.dataset.lang;
-      ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
-      renderCurrentViewOnly(state.currentView);
-    });
+    button.addEventListener("click", () => setAppLanguage(button.dataset.lang));
     button.dataset.boundLang = "true";
   });
 }
+
+// ── Lingua inglese: traduzione dell'interfaccia sullo schermo ────────────────
+// Le frasi italiane scritte nei template e in index.html vengono sostituite con
+// il catalogo di lib/i18n-en.js mentre compaiono (lib/i18n-dom.js): pagine,
+// finestre, messaggi, segnaposto, title e aria-label. I dati non sono nel
+// catalogo e restano invariati. Tornando a IT si ripristinano i testi fissi e
+// si ridisegna l'app (i template generano di nuovo l'italiano).
+const domTranslator = createDomTranslator(translateItToEn);
+
+function syncLanguageLayer() {
+  document.documentElement.lang = state.lang === "en" ? "en" : "it";
+  if (state.lang === "en") domTranslator.start(document.body);
+  else domTranslator.stop();
+}
+
+function setAppLanguage(lang) {
+  state.lang = lang === "en" ? "en" : "it";
+  try { window.localStorage.setItem("psi-lang", state.lang); } catch {}
+  ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
+  syncLanguageLayer();
+  render();
+}
+
+// Finestre di sistema (conferme, avvisi): stessa traduzione del catalogo,
+// riga per riga per non perdere gli a capo dei messaggi lunghi.
+function translateDialogMessage(message) {
+  if (!message.includes("\n")) return translateItToEn(message) ?? message;
+  const byLine = message.split("\n").map((line) => {
+    if (!line.trim()) return line;
+    const translated = translateItToEn(line);
+    return translated == null ? line : line.replace(line.trim(), translated);
+  }).join("\n");
+  return byLine !== message ? byLine : (translateItToEn(message) ?? message);
+}
+
+["confirm", "alert", "prompt"].forEach((name) => {
+  const original = window[name]?.bind(window);
+  if (!original) return;
+  window[name] = (message, ...rest) => original(
+    state.lang === "en" && typeof message === "string" ? translateDialogMessage(message) : message,
+    ...rest,
+  );
+});
 
 function ensureMobilePillNav() {
   ensureMobilePillShell();
@@ -11841,7 +11892,7 @@ function buildDashboardCommandModel() {
   return {
     dashboard: {
       nav: "Oggi",
-      icon: "OG",
+      icon: state.lang === "it" ? "OG" : "TO",
       title: state.lang === "it" ? "Cabina di regia" : "Command center",
       subtitle: state.lang === "it" ? "Priorita operative, blocchi e prossime azioni della giornata." : "Operational priorities, blockers and next actions.",
       queueKicker: state.lang === "it" ? "Coda operativa" : "Operational queue",
@@ -11856,7 +11907,7 @@ function buildDashboardCommandModel() {
     },
     sales: {
       nav: state.lang === "it" ? "Vendite" : "Sales",
-      icon: "VE",
+      icon: state.lang === "it" ? "VE" : "SA",
       title: state.lang === "it" ? "Vendite da seguire" : "Sales to follow",
       subtitle: state.lang === "it" ? "Nuovi contatti entro 30 giorni e follow-up tra 7 e 45 giorni; lo storico resta in Richieste." : "New contacts within 30 days and follow-ups between 7 and 45 days; history stays in Requests.",
       queueKicker: state.lang === "it" ? "Coda commerciale" : "Sales queue",
@@ -11905,7 +11956,7 @@ function buildDashboardCommandModel() {
     },
     installations: {
       nav: state.lang === "it" ? "Pose" : "Installations",
-      icon: "PO",
+      icon: state.lang === "it" ? "PO" : "IN",
       title: state.lang === "it" ? "Pose prossime" : "Upcoming installs",
       subtitle: state.lang === "it" ? "Cantieri in arrivo con materiali, squadra, foto e criticita operative." : "Upcoming jobs with materials, crews, photos and critical points.",
       queueKicker: state.lang === "it" ? "Cantieri da blindare" : "Jobs to lock",
@@ -11920,7 +11971,7 @@ function buildDashboardCommandModel() {
     },
     money: {
       nav: state.lang === "it" ? "Soldi" : "Money",
-      icon: "SO",
+      icon: state.lang === "it" ? "SO" : "MO",
       title: state.lang === "it" ? "Soldi da chiudere" : "Money to close",
       subtitle: state.lang === "it" ? "Saldi, Shopify, fatture e DDT che bloccano la chiusura economica." : "Balances, Shopify, invoices and DDT blocking financial closure.",
       queueKicker: state.lang === "it" ? "Coda contabilita" : "Accounting queue",
@@ -23464,7 +23515,7 @@ async function renderTimesheetMe({ preserveScroll = false } = {}) {
           </div>
         </div>
         <div class="ts-calendar-dow">
-          <span>L</span><span>M</span><span>M</span><span>G</span><span>V</span><span>S</span><span>D</span>
+          ${(state.lang === "en" ? ["M", "T", "W", "T", "F", "S", "S"] : ["L", "M", "M", "G", "V", "S", "D"]).map((d) => `<span>${d}</span>`).join("")}
         </div>
         <div class="ts-calendar-grid">
           ${cells.map((c) => {
@@ -29707,7 +29758,7 @@ function renderMarketing() {
           <button type="button" class="ghost-button small-button" data-action="marketing-cal-next" aria-label="Mese successivo">→</button>
         </div>
         <div class="marketing-cal-dow-grid" aria-hidden="true">
-          ${["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((d) => `<div class="marketing-cal-dow">${d}</div>`).join("")}
+          ${(state.lang === "en" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]).map((d) => `<div class="marketing-cal-dow">${d}</div>`).join("")}
         </div>
         <div class="marketing-cal-weeks">
           ${calendarWeeksHtml}
@@ -33821,7 +33872,7 @@ function handleGlobalClick(event) {
     // Comportamento contestuale in base al label del bottone
     const actionLabel = String(button?.textContent || "").trim().toLowerCase();
     window.setTimeout(() => {
-      if (actionLabel.includes("assegna")) {
+      if (actionLabel.includes("assegna") || actionLabel.includes("assign")) {
         // Focus + apre la select assignment
         const sel = document.querySelector("#sales-request-form select[name='assignment']");
         if (sel) { sel.focus(); try { sel.click(); } catch {} }
@@ -35598,11 +35649,7 @@ ui.navLinks.forEach((button) => button.addEventListener("click", () => {
 }));
 ui.langButtons.forEach((button) => {
   if (button.dataset.boundLang === "true") return;
-  button.addEventListener("click", () => {
-    state.lang = button.dataset.lang;
-    ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
-    renderCurrentViewOnly(state.currentView);
-  });
+  button.addEventListener("click", () => setAppLanguage(button.dataset.lang));
   button.dataset.boundLang = "true";
 });
 ui.quickViewButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.quickView)));
@@ -38140,6 +38187,9 @@ document.addEventListener("click", handleGlobalClick);
 document.addEventListener("keydown", handleGlobalActionKeydown);
 
 registerServiceWorker();
+// Lingua ricordata: se l'utente aveva scelto EN, l'interfaccia riparte in inglese.
+ui.langButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.lang === state.lang));
+if (state.lang === "en") syncLanguageLayer();
 if (ui.appShell) ui.appShell.classList.add("hidden");
 if (ui.authScreen) ui.authScreen.classList.add("hidden");
 setShellPending(true);
