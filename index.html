@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261022-richieste-cartella-5" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261022-richieste-cartella-5" />
+    <link rel="preload" href="./styles.css?v=20261023-barra-utile-finale" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261023-barra-utile-finale" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -967,6 +967,7 @@
                 </details>
 
                 <div class="nf-summary" id="nf-summary"></div>
+                <div class="nf-margin" id="nf-margin" hidden></div>
                 <div class="nf-actions">
                   <button type="button" id="nf-generate" class="primary-button">Genera preventivo →</button>
                 </div>
@@ -2163,6 +2164,17 @@
                 </form>
                 <div id="preventivo-texts-status" class="panel-note hidden"></div>
               </section>
+              <section class="panel" id="quote-costs-panel">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Preventivi</p>
+                    <h3>Costi per la barra dell'utile</h3>
+                  </div>
+                </div>
+                <p class="panel-note">Per ogni modello e materiale scegli la voce di Fornitori da cui prendere il costo: vale sempre l'ultima fattura registrata. La barra dell'utile nel generatore la vede solo l'ufficio e non va mai nel PDF.</p>
+                <div id="quote-costs-editor"></div>
+                <div id="quote-costs-status" class="panel-note hidden"></div>
+              </section>
               <section class="panel">
                 <div class="panel-head">
                   <div>
@@ -2710,7 +2722,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261022-richieste-cartella-5" defer></script>
-    <script src="./app.js?v=20261022-richieste-cartella-5" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261023-barra-utile-finale" defer></script>
+    <script src="./app.js?v=20261023-barra-utile-finale" type="module"></script>
   </body>
 </html>

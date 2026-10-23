@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261022-richieste-cartella-5";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261022-richieste-cartella-5";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261022-richieste-cartella-5";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261022-richieste-cartella-5";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261022-richieste-cartella-5";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261022-richieste-cartella-5";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261022-richieste-cartella-5';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-barra-utile-finale";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261023-barra-utile-finale";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-barra-utile-finale";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-barra-utile-finale";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-barra-utile-finale";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-barra-utile-finale";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-barra-utile-finale';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261022-richieste-cartella-5";
+} from "./lib/order-money.js?v=20261023-barra-utile-finale";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261022-richieste-cartella-5";
+import { regionForCity } from "./lib/geo.js?v=20261023-barra-utile-finale";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261022-richieste-cartella-5";
+} from "./lib/shipping-eligibility.js?v=20261023-barra-utile-finale";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261022-richieste-cartella-5";
+} from "./lib/profit-split.js?v=20261023-barra-utile-finale";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,7 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261022-richieste-cartella-5";
+} from "./lib/preventivo-pricing.js?v=20261023-barra-utile-finale";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-barra-utile-finale";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -74,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261022-richieste-cartella-5";
+} from "./lib/sales-assignment.js?v=20261023-barra-utile-finale";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261022-richieste-cartella-5";
+} from "./lib/surveys.js?v=20261023-barra-utile-finale";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -94,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261022-richieste-cartella-5";
+const APP_SHELL_VERSION = "20261023-barra-utile-finale";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15169,6 +15170,13 @@ function renderQuoteVisibilityBadge(quote = {}) {
   return `<span class="srq-badge is-owner">${it ? `Privato di ${escapeHtml(quote.authorName || "un collega")}` : `Private (${escapeHtml(quote.authorName || "colleague")})`}</span>`;
 }
 
+// Utile salvato con il preventivo (opzione consigliata o la prima), se i costi erano completi.
+function renderQuoteMarginBadge(quote = {}) {
+  if (quote.marginPct == null) return "";
+  const tone = marginTone(Number(quote.marginPct), quoteCostConfig());
+  return `<span class="srq-badge is-margin-${tone}" title="${state.lang === "it" ? "Utile stimato al salvataggio" : "Estimated profit when saved"}">${state.lang === "it" ? "Utile" : "Profit"} ${escapeHtml(String(quote.marginPct).replace(".", ","))}%</span>`;
+}
+
 function renderQuoteStatusBadge(status = "sent") {
   return `<span class="srq-badge is-status-${escapeAttr(status)}">${escapeHtml(quoteStatusLabel(status))}</span>`;
 }
@@ -15194,7 +15202,7 @@ function renderFolderQuote(quote = {}, canSeeAll = false) {
       </div>
       <strong class="srq-quote-total">${quote.total ? escapeHtml(formatCurrency(quote.total)) : "—"}</strong>
     </div>
-    <div class="srq-quote-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)}</div>
+    <div class="srq-quote-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)} ${renderQuoteMarginBadge(quote)}</div>
     <div class="srq-quote-actions">
       ${quote.hasPdf ? `<a class="ghost-button small-button" href="/api/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">${it ? "Apri PDF" : "Open PDF"}</a>` : ""}
       <button type="button" class="ghost-button small-button" data-action="quote-reopen" data-id="${escapeAttr(quote.id)}">${quote.mine ? (it ? "Riapri nel generatore" : "Reopen in generator") : (it ? "Riapri come copia" : "Reopen as copy")}</button>
@@ -15670,8 +15678,17 @@ function buildQuoteArchiveSummary() {
     .filter(Boolean);
   const suggested = options.find((option, index) => f.options[index]?.slug === previewSuggestedSlug) || options[0] || null;
   const names = options.map((option) => option.name);
+  let marginPct = null;
+  if (state.currentUser?.role === "office" && state.quoteCosts?.data) {
+    const suggestedIndex = f.options.findIndex((option) => nfOptionHasProduct(option) && option.slug === previewSuggestedSlug);
+    const index = suggestedIndex >= 0 ? suggestedIndex : f.options.findIndex((option, i) => nfOptionHasProduct(option) && cq.options[i]);
+    if (index >= 0) {
+      const { margin } = computeNfOptionMargin(cq, index);
+      marginPct = margin.missing.length ? null : margin.marginPct;
+    }
+  }
   const summary = `${names.length > 1 ? `${names.length} ${state.lang === "it" ? "opzioni" : "options"}: ${names.join(", ")}` : names[0] || ""}${Number(f.sqm) ? ` · ${f.sqm} mq` : ""}`;
-  return { summary, total: suggested ? Math.round(suggested.total * 100) / 100 : 0, options };
+  return { summary, total: suggested ? Math.round(suggested.total * 100) / 100 : 0, options, marginPct };
 }
 
 async function confirmQuoteSave({ archive = true } = {}) {
@@ -15717,6 +15734,7 @@ async function confirmQuoteSave({ archive = true } = {}) {
           includeP2: getIncludeP2(),
           includePlanner: getIncludeGardenPlanner(),
           options: archiveSummary.options,
+          marginPct: archiveSummary.marginPct,
         },
       }),
     });
@@ -15807,7 +15825,7 @@ async function renderSavedQuotesDialog() {
       <span class="srq-ql-number"><strong>${escapeHtml(quoteNumberLabel(quote))}</strong><small>${folderDateLabel(quote.createdAt)}${filter === "office" ? ` · ${escapeHtml(quote.authorName)}` : ""}</small></span>
       <span class="srq-ql-customer"><strong>${escapeHtml(quote.customerName || "—")}</strong><small>${escapeHtml(quote.summary || "")}</small></span>
       <span class="srq-ql-total">${quote.total ? escapeHtml(formatCurrency(quote.total)) : "—"}</span>
-      <span class="srq-ql-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)}</span>
+      <span class="srq-ql-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)} ${renderQuoteMarginBadge(quote)}</span>
       <span class="srq-ql-actions">
         ${quote.hasPdf ? `<a class="ghost-button small-button" href="/api/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>` : ""}
         <button type="button" class="ghost-button small-button" data-action="quote-list-open-folder" data-id="${escapeAttr(quote.requestId)}">${it ? "Apri cartella" : "Open folder"}</button>
@@ -27404,6 +27422,7 @@ async function deleteFreeDdt() {
 }
 
 function renderSettings() {
+  renderQuoteCostsEditor();
   ui.settingsForm.storeDomain.value = state.settings.storeDomain || "";
   ui.settingsForm.clientId.value = state.settings.clientId || "";
   ui.settingsForm.clientSecret.value = "";
@@ -28007,6 +28026,7 @@ function applySessionPayload(session = {}) {
     state.usageEventSessionKeys = new Set();
     // Cartelle e preventivi salvati dipendono da chi è collegato (privati).
     state.salesRequestFolders = {};
+    state.quoteCosts = null;
     state.quoteEditing = null;
     state.quoteSave = null;
     state.salesRequestPendingTab = null;
@@ -36697,6 +36717,8 @@ bindEvent(document.getElementById("quote-save-search"), "input", (event) => {
   quoteSaveSearchTimer = window.setTimeout(() => { void searchQuoteSaveRequests(value); }, 250);
 });
 bindEvent(document.getElementById("quote-list-dialog"), "click", handleSavedQuotesDialogClick);
+bindEvent(document.getElementById("nf-margin"), "input", handleNfMarginInput);
+bindEvent(document.getElementById("quote-costs-editor"), "submit", (event) => { void saveQuoteCostsConfig(event); });
 bindEvent(document.getElementById("sales-generator-saved-quotes-button"), "click", () => { void openSavedQuotesDialog(); });
 bindEvent(document.getElementById("sales-requests-saved-quotes-button"), "click", () => { void openSavedQuotesDialog(); });
 bindEvent(document.getElementById("sales-generator-quote-edit"), "click", (event) => {
@@ -37595,6 +37617,314 @@ function nfEffectiveMaterials() {
   return { items, total };
 }
 
+// ── Barra dell'utile del generatore (ottobre 2026) ─────────────────────────
+// Solo ufficio, mai nel PDF. Costi dall'ultima fattura fornitore collegata in
+// Impostazioni → "Costi per la barra dell'utile"; la posa segue il riparto
+// dell'utile con il posatore come in Conti posa. Calcolo in lib/preventivo-margin.js.
+async function loadQuoteCosts({ force = false } = {}) {
+  if (state.currentUser?.role !== "office") return null;
+  if (!force && (state.quoteCosts?.loading || state.quoteCosts?.data)) return state.quoteCosts?.data || null;
+  state.quoteCosts = { ...(state.quoteCosts || {}), loading: true };
+  try {
+    state.quoteCosts = { data: await apiFetch("/api/quote-costs"), loading: false };
+  } catch (error) {
+    state.quoteCosts = { data: null, loading: false, error: error?.message || "errore" };
+  }
+  if (ui.nativeForm && !ui.nativeForm.hidden) updateNativeFormTotals();
+  if (state.currentView === "settings") renderQuoteCostsEditor();
+  return state.quoteCosts.data;
+}
+
+function quoteCostConfig() {
+  return { ...DEFAULT_MARGIN_CONFIG, products: {}, materials: {}, ...(state.quoteCosts?.data?.config || {}) };
+}
+
+function findQuoteCostOption(ref = "") {
+  const key = String(ref || "").trim().toLowerCase();
+  if (!key) return null;
+  return (state.quoteCosts?.data?.supplierOptions || []).find((option) => option.ref.toLowerCase() === key) || null;
+}
+
+function isSqmUnit(unit = "") {
+  return ["mq", "m2", "m²", "metri quadri"].includes(String(unit || "").trim().toLowerCase());
+}
+
+// Costo €/m² del prato di un'opzione: quello scritto a mano per questo
+// preventivo, altrimenti l'ultima fattura della voce fornitore collegata.
+function resolveTurfCost(option = {}, index = 0) {
+  const manual = ensurePreventivoForm().marginTurfCosts?.[index];
+  if (manual !== undefined && manual !== null && manual !== "") return { cost: Number(manual), source: "manual" };
+  const ref = quoteCostConfig().products?.[option.slug];
+  const supplier = findQuoteCostOption(ref);
+  if (!supplier) return { cost: null, source: ref ? "missing-entry" : "unmapped" };
+  if (!isSqmUnit(supplier.unit)) return { cost: null, source: "unit", supplier };
+  return { cost: supplier.unitPrice, source: "supplier", supplier };
+}
+
+// Costo dei materiali inclusi, convertito nell'unità usata nel preventivo.
+function resolveMaterialCosts(items = []) {
+  const config = quoteCostConfig();
+  return items.map((item) => {
+    const mapping = config.materials?.[item.key];
+    const supplier = findQuoteCostOption(mapping?.ref);
+    const base = { key: item.key, label: item.label, excluded: Boolean(item.excluded), cost: null };
+    if (!supplier) return base;
+    const supplierUnit = String(supplier.unit || "").toLowerCase();
+    const quoteUnit = String(item.unit || "").toLowerCase();
+    let quantity = null;
+    if (mapping.factor > 0) quantity = Number(item.qty) * mapping.factor;
+    else if (item.key === "colla" && supplierUnit === "kg" && item.glueKg) quantity = Number(item.glueKg);
+    else if (supplierUnit === quoteUnit || (isSqmUnit(supplierUnit) && isSqmUnit(quoteUnit)) || (item.key === "bande" && ["rotolo", "pz"].includes(supplierUnit))) quantity = Number(item.qty);
+    return { ...base, cost: quantity == null ? null : Math.round(quantity * supplier.unitPrice * 100) / 100 };
+  });
+}
+
+// Costo vero della spedizione: scritto a mano, oppure la tariffa One Express
+// del bancale; senza nessuno dei due resta sconosciuto (spedizione a pareggio).
+function getQuoteShippingCost() {
+  const f = ensurePreventivoForm();
+  if (f.marginShippingCost !== undefined && f.marginShippingCost !== null && f.marginShippingCost !== "") return Number(f.marginShippingCost);
+  if (!(Number(f.shippingCost) > 0)) return 0;
+  if (typeof calculateOneExpressEstimate !== "function" || !f.palletLength) return null;
+  const estimate = calculateOneExpressEstimate({ city: f.citta || "" }, {
+    palletLength: f.palletLength,
+    palletWidth: f.palletWidth,
+    palletHeight: f.palletHeight,
+    palletWeight: f.palletWeight,
+  });
+  return estimate && !estimate.unsupported ? estimate.estimatedCost : null;
+}
+
+function formatMarginNumber(value, digits = 1) {
+  return Number(value || 0).toLocaleString(state.lang === "it" ? "it-IT" : "en-GB", { maximumFractionDigits: digits });
+}
+
+function computeNfOptionMargin(cq, index) {
+  const f = ensurePreventivoForm();
+  const config = quoteCostConfig();
+  const turf = resolveTurfCost(f.options[index], index);
+  const blankOrNumber = (value, fallback) => (value === undefined || value === null || value === "" ? fallback : Number(value));
+  const margin = computeQuoteMargin({
+    option: cq.options[index],
+    quote: cq,
+    sqm: Number(f.sqm) || 0,
+    turfCostPerSqm: turf.cost,
+    wastePct: config.wastePct,
+    materialCosts: cq.materials?.include === false ? [] : resolveMaterialCosts(nfEffectiveMaterials().items),
+    shippingCost: getQuoteShippingCost(),
+    accessoriesCost: blankOrNumber(f.marginAccessoriesCost, null),
+    posaExpenses: blankOrNumber(f.marginPosaExpenses, 0),
+    partnerSharePct: blankOrNumber(f.marginPartnerSharePct, config.partnerSharePct),
+  });
+  return { margin, turf };
+}
+
+function renderNfMarginControls(cq, validIndexes) {
+  const it = state.lang === "it";
+  const f = ensurePreventivoForm();
+  const config = quoteCostConfig();
+  const isPosa = f.quoteType === "posa";
+  const turfMissing = validIndexes.filter((index) => {
+    const turf = resolveTurfCost(f.options[index], index);
+    return turf.source !== "supplier";
+  });
+  const shippingUnknown = Number(f.shippingCost) > 0 && getQuoteShippingCost() == null || (f.marginShippingCost !== undefined && f.marginShippingCost !== "" && f.marginShippingCost != null);
+  const hasAccessories = (cq.accessoriesNet || 0) > 0;
+  const field = (key, label, value, placeholder = "", suffix = "€") => `<label class="nf-margin-field"><span>${escapeHtml(label)}</span>
+    <span class="nf-margin-input"><input type="number" step="0.01" min="0" data-margin-field="${escapeAttr(key)}" value="${value === undefined || value === null ? "" : escapeAttr(String(value))}" placeholder="${escapeAttr(placeholder)}" /><em>${suffix}</em></span></label>`;
+  const fields = [];
+  turfMissing.forEach((index) => {
+    fields.push(field(`turf:${index}`, it ? `Costo prato · ${nfOptionName(f.options[index])}` : `Turf cost · ${nfOptionName(f.options[index])}`, f.marginTurfCosts?.[index], "", "€/m²"));
+  });
+  if (isPosa) {
+    fields.push(field("marginPosaExpenses", it ? "Spese della posa (trasferta, vitto…)" : "Installation expenses (travel, meals…)", f.marginPosaExpenses, "0"));
+    fields.push(field("marginPartnerSharePct", it ? "Quota del posatore sull'utile posa" : "Installer share of installation profit", f.marginPartnerSharePct, String(config.partnerSharePct), "%"));
+  }
+  if (shippingUnknown) fields.push(field("marginShippingCost", it ? "Costo reale della spedizione" : "Real shipping cost", f.marginShippingCost, ""));
+  if (hasAccessories) fields.push(field("marginAccessoriesCost", it ? "Costo degli accessori" : "Accessories cost", f.marginAccessoriesCost, ""));
+  return { signature: `${turfMissing.join(",")}|${isPosa}|${shippingUnknown}|${hasAccessories}`, html: fields.join("") };
+}
+
+function renderNfMargin(cq) {
+  const box = document.getElementById("nf-margin");
+  if (!box) return;
+  if (state.currentUser?.role !== "office") {
+    box.hidden = true;
+    return;
+  }
+  if (!state.quoteCosts) void loadQuoteCosts();
+  const it = state.lang === "it";
+  const f = ensurePreventivoForm();
+  const config = quoteCostConfig();
+  const validIndexes = f.options.map((option, index) => (nfOptionHasProduct(option) && cq.options[index] ? index : -1)).filter((index) => index >= 0);
+  if (!Number(f.sqm) || !validIndexes.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  if (!box.querySelector(".nf-margin-cards")) {
+    box.innerHTML = `<div class="nf-margin-head"><strong>${it ? "Utile stimato" : "Estimated profit"}</strong>
+        <span>${it ? "Solo per l'ufficio · non va nel PDF · imponibile senza IVA" : "Office only · not in the PDF · net of VAT"}</span></div>
+      <div class="nf-margin-cards"></div>
+      <div class="nf-margin-controls"></div>`;
+  }
+  const controls = box.querySelector(".nf-margin-controls");
+  const nextControls = renderNfMarginControls(cq, validIndexes);
+  if (controls.dataset.signature !== nextControls.signature && !controls.contains(document.activeElement)) {
+    controls.dataset.signature = nextControls.signature;
+    controls.innerHTML = nextControls.html;
+  }
+  const missingLabels = {
+    prato: it ? "prato" : "turf",
+    accessori: it ? "accessori" : "accessories",
+    pietrisco: it ? "pietrisco" : "gravel",
+    telo: it ? "telo" : "sheet",
+    bande: it ? "bande" : "seaming tape",
+    colla: it ? "colla" : "glue",
+    picchetti: it ? "picchetti" : "pegs",
+  };
+  box.querySelector(".nf-margin-cards").innerHTML = validIndexes.map((index) => {
+    const { margin, turf } = computeNfOptionMargin(cq, index);
+    const option = f.options[index];
+    // Senza il costo del prato il numero non è affidabile: barra grigia, "parziale".
+    const incomplete = margin.missing.includes("prato");
+    const tone = incomplete ? "partial" : margin.profit < 0 ? "low" : marginTone(margin.marginPct, config);
+    const costShare = margin.revenueNet > 0 ? Math.min(100, Math.max(0, ((margin.revenueNet - Math.max(0, margin.profit)) / margin.revenueNet) * 100)) : 100;
+    const maxDiscount = incomplete || (option.slug === "__custom__" && !(Number(option.customPrice) > 0)) ? null : maxTurfDiscountForMargin(margin, {
+      pricePerSqm: nfOptionPrice(option, f.customerType),
+      sqm: Number(f.sqm) || 0,
+      currentDiscount: Number(option.discount) || 0,
+      targetPct: config.lowPct,
+    });
+    const turfNote = turf.source === "supplier"
+      ? `${formatCurrency(turf.cost)}/m² · ${turf.supplier.supplierName}${turf.supplier.invoiceDate ? ` · ${formatDate(turf.supplier.invoiceDate)}` : ""}`
+      : turf.source === "manual" ? (it ? "costo scritto a mano" : "manual cost")
+        : turf.source === "unit" ? (it ? `la voce fornitore è in ${turf.supplier.unit}, non in m²` : `supplier entry is in ${turf.supplier.unit}, not m²`)
+          : (it ? "costo non collegato" : "cost not linked");
+    const lines = [
+      `${it ? "Prato" : "Turf"} ${margin.supply.turfCost == null ? "—" : formatCurrency(margin.supply.turfCost)} <small>(${formatMarginNumber(margin.supply.turfQty)} m² ${it ? "con" : "incl."} ${formatMarginNumber(config.wastePct)}% ${it ? "scarto" : "waste"} · ${escapeHtml(turfNote)})</small>`,
+      margin.supply.materialsCost ? `${it ? "Materiali" : "Materials"} ${formatCurrency(margin.supply.materialsCost)}` : "",
+      margin.supply.shippingCost ? `${it ? "Spedizione" : "Shipping"} ${formatCurrency(margin.supply.shippingCost)}${margin.supply.shippingEstimated ? "" : ` <small>(${it ? "a pareggio" : "break-even"})</small>`}` : "",
+      margin.supply.accessoriesCost ? `${it ? "Accessori" : "Accessories"} ${formatCurrency(margin.supply.accessoriesCost)}` : "",
+      margin.posa.revenue > 0 ? `${it ? "Posa: utile" : "Installation: profit"} ${formatCurrency(margin.posa.profit)}, ${it ? "al posatore" : "to installer"} ${formatCurrency(margin.posa.partnerShare)} (${formatMarginNumber(margin.posa.partnerPct)}%)` : "",
+    ].filter(Boolean);
+    const missing = [...new Set(margin.missing)].map((key) => missingLabels[key] || key);
+    return `<div class="nf-margin-card tone-${tone}">
+      <div class="nf-margin-row"><strong>${escapeHtml(nfOptionName(option))}</strong><span>${it ? "Ricavo netto" : "Net revenue"} ${formatCurrency(margin.revenueNet)}</span></div>
+      <div class="nf-margin-bar" role="img" aria-label="${escapeAttr(`${it ? "Utile" : "Profit"} ${formatMarginNumber(margin.marginPct)}%`)}">
+        <span class="nf-margin-bar-cost" style="width:${costShare.toFixed(1)}%"></span>
+        <span class="nf-margin-bar-profit" style="width:${(100 - costShare).toFixed(1)}%"></span>
+      </div>
+      <div class="nf-margin-row"><strong class="nf-margin-profit">${incomplete ? (it ? "Utile parziale, senza il prato" : "Partial profit, without turf") : margin.profit < 0 ? (it ? "In perdita" : "Loss") : (it ? "Utile" : "Profit")} ${formatCurrency(margin.profit)} · ${formatMarginNumber(margin.marginPct)}%</strong>
+        ${incomplete ? "" : maxDiscount == null && margin.marginPct >= config.lowPct && !margin.missing.length
+          ? `<span>${it ? `Resti sopra il ${formatMarginNumber(config.lowPct)}% con qualunque sconto sul prato` : `You stay above ${formatMarginNumber(config.lowPct)}% with any turf discount`}</span>`
+          : maxDiscount != null && maxDiscount < 95
+            ? `<span>${it ? `Sconto massimo sul prato per restare sopra il ${formatMarginNumber(config.lowPct)}%: ${formatMarginNumber(maxDiscount)}%` : `Max turf discount to stay above ${formatMarginNumber(config.lowPct)}%: ${formatMarginNumber(maxDiscount)}%`}</span>`
+            : maxDiscount != null
+              ? `<span>${it ? `Resti sopra il ${formatMarginNumber(config.lowPct)}% con qualunque sconto sul prato` : `You stay above ${formatMarginNumber(config.lowPct)}% with any turf discount`}</span>`
+              : ""}</div>
+      <p class="nf-margin-lines">${lines.join(" · ")}</p>
+      ${missing.length ? `<p class="nf-margin-warn">${it ? "Margine parziale: manca il costo di" : "Partial margin: missing cost for"} ${escapeHtml(missing.join(", "))}. ${it ? "Collegalo in Impostazioni → Costi per la barra dell'utile o scrivilo qui sotto." : "Link it in Settings → Costs for the profit bar or type it below."}</p>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function handleNfMarginInput(event) {
+  const input = event.target.closest("[data-margin-field]");
+  if (!input) return;
+  const f = ensurePreventivoForm();
+  const key = input.dataset.marginField;
+  const value = input.value === "" ? "" : Number(input.value);
+  if (key.startsWith("turf:")) {
+    f.marginTurfCosts = { ...(f.marginTurfCosts || {}), [key.slice(5)]: value };
+  } else {
+    f[key] = value;
+  }
+  updateNativeFormTotals();
+}
+
+// ── Impostazioni: da quale voce fornitore prendere i costi ────────────────
+const QUOTE_COST_MATERIALS = [
+  { key: "pietrisco", label: "Pietrisco", unit: "mc" },
+  { key: "telo", label: "Telo isolante", unit: "mq" },
+  { key: "bande", label: "Bande di giunzione", unit: "pz" },
+  { key: "colla", label: "Colla bicomponente", unit: "secchi" },
+  { key: "picchetti", label: "Picchetti a U", unit: "pz" },
+];
+
+function renderQuoteCostsEditor() {
+  const container = document.getElementById("quote-costs-editor");
+  const panel = document.getElementById("quote-costs-panel");
+  if (!container) return;
+  const isOffice = state.currentUser?.role === "office";
+  if (panel) panel.hidden = !isOffice;
+  if (!isOffice) return;
+  if (!state.quoteCosts) {
+    container.innerHTML = `<p class="panel-note">${state.lang === "it" ? "Caricamento…" : "Loading…"}</p>`;
+    void loadQuoteCosts();
+    return;
+  }
+  if (container.contains(document.activeElement)) return;
+  const it = state.lang === "it";
+  const data = state.quoteCosts.data;
+  if (!data) {
+    container.innerHTML = `<p class="panel-note">${escapeHtml(state.quoteCosts.error || (it ? "Costi non disponibili." : "Costs unavailable."))}</p>`;
+    return;
+  }
+  const config = quoteCostConfig();
+  const options = data.supplierOptions || [];
+  const optionLabel = (option) => `${option.material} · ${option.supplierName} · ${formatCurrency(option.unitPrice)}/${option.unit || "?"}${option.invoiceDate ? ` · ${formatDate(option.invoiceDate)}` : ""}`;
+  const select = (name, selectedRef) => `<select class="text-input" name="${escapeAttr(name)}">
+      <option value="">${it ? "— non collegato —" : "— not linked —"}</option>
+      ${options.map((option) => `<option value="${escapeAttr(option.ref)}" ${option.ref.toLowerCase() === String(selectedRef || "").toLowerCase() ? "selected" : ""}>${escapeHtml(optionLabel(option))}</option>`).join("")}
+    </select>`;
+  const products = getEffectivePreventivoProducts();
+  container.innerHTML = `<form id="quote-costs-form" class="qc-form">
+    ${options.length ? "" : `<p class="panel-note">${it ? "Non ci sono ancora fatture in Fornitori: registra le fatture d'acquisto per poter collegare i costi." : "No invoices in Suppliers yet: record purchase invoices to link costs."}</p>`}
+    <h4>${it ? "Prati (costo al m²)" : "Turf (cost per m²)"}</h4>
+    <div class="qc-rows">${products.map((product) => `<label class="qc-row"><span>${escapeHtml(product.name)}</span>${select(`product:${product.slug}`, config.products?.[product.slug])}</label>`).join("")}</div>
+    <h4>${it ? "Materiali" : "Materials"}</h4>
+    <div class="qc-rows">${QUOTE_COST_MATERIALS.map((material) => {
+      const mapping = config.materials?.[material.key] || {};
+      return `<div class="qc-row qc-row-material"><span>${escapeHtml(material.label)} <small>(${material.unit})</small></span>${select(`material:${material.key}`, mapping.ref)}
+        <label class="qc-factor"><small>${it ? `1 ${material.unit} =` : `1 ${material.unit} =`}</small><input class="text-input" type="number" step="0.001" min="0" name="factor:${escapeAttr(material.key)}" value="${mapping.factor ? escapeAttr(String(mapping.factor)) : ""}" placeholder="${it ? "auto" : "auto"}" /><small>${it ? "unità fornitore" : "supplier units"}</small></label></div>`;
+    }).join("")}</div>
+    <p class="panel-note">${it ? "Il fattore serve solo se l'unità della fattura è diversa (es. telo in metri lineari: 1 mq = 0,5 m con un rotolo largo 2 m). Bande, picchetti e colla in kg si convertono da soli." : "The factor is only needed when the invoice unit differs (e.g. sheet in linear metres: 1 m² = 0.5 m with a 2 m wide roll). Tape, pegs and glue in kg convert automatically."}</p>
+    <h4>${it ? "Regole" : "Rules"}</h4>
+    <div class="qc-rules">
+      <label class="field"><span>${it ? "Scarto di taglio del prato" : "Turf cutting waste"} (%)</span><input class="text-input" type="number" step="0.5" min="0" max="50" name="wastePct" value="${escapeAttr(String(config.wastePct))}" /></label>
+      <label class="field"><span>${it ? "Quota del posatore sull'utile posa" : "Installer share of installation profit"} (%)</span><input class="text-input" type="number" step="1" min="0" max="100" name="partnerSharePct" value="${escapeAttr(String(config.partnerSharePct))}" /></label>
+      <label class="field"><span>${it ? "Rossa sotto il" : "Red below"} (%)</span><input class="text-input" type="number" step="1" min="0" max="100" name="lowPct" value="${escapeAttr(String(config.lowPct))}" /></label>
+      <label class="field"><span>${it ? "Verde dal" : "Green from"} (%)</span><input class="text-input" type="number" step="1" min="0" max="100" name="goodPct" value="${escapeAttr(String(config.goodPct))}" /></label>
+    </div>
+    <div class="inline-actions"><button type="submit" class="primary-button small-button">${it ? "Salva i costi" : "Save costs"}</button>
+      ${config.updatedAt ? `<small class="qc-updated">${it ? "Ultima modifica" : "Last change"}: ${escapeHtml(formatDate(config.updatedAt))}${config.updatedBy ? ` · ${escapeHtml(config.updatedBy)}` : ""}</small>` : ""}</div>
+  </form>`;
+}
+
+async function saveQuoteCostsConfig(event) {
+  event.preventDefault();
+  const it = state.lang === "it";
+  const form = event.target.closest("form");
+  const data = new FormData(form);
+  const payload = { products: {}, materials: {} };
+  for (const [name, value] of data.entries()) {
+    if (name.startsWith("product:") && value) payload.products[name.slice(8)] = value;
+    if (name.startsWith("material:") && value) payload.materials[name.slice(9)] = { ref: value, factor: Number(data.get(`factor:${name.slice(9)}`)) || null };
+  }
+  ["wastePct", "partnerSharePct", "lowPct", "goodPct"].forEach((key) => { payload[key] = data.get(key); });
+  const status = document.getElementById("quote-costs-status");
+  try {
+    const result = await apiFetch("/api/quote-costs", { method: "PUT", body: JSON.stringify(payload) });
+    state.quoteCosts = { data: result, loading: false };
+    if (status) setStatus(status, "success", it ? "Costi salvati: la barra dell'utile li usa subito." : "Costs saved: the profit bar uses them right away.");
+    document.activeElement?.blur?.();
+    renderQuoteCostsEditor();
+  } catch (error) {
+    if (status) setStatus(status, "error", error.message);
+  }
+}
+
 // Valore numerico per input type=number (punto decimale, mai virgola).
 function nfNumVal(n) { return String(Math.round(Number(n) * 100) / 100); }
 
@@ -38058,6 +38388,7 @@ function updateNativeFormTotals() {
       }).join("");
     }
   }
+  renderNfMargin(cq);
 }
 
 function renderNativePreventivoForm() {
