@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatQuotePageDate, renderQuoteLinkErrorPage, renderQuotePublicPage } from '../lib/quote-public-page.js';
+import { formatQuotePageDate, renderQuoteLinkErrorPage, renderQuotePublicPage, tidyQuotePageName } from '../lib/quote-public-page.js';
 
 const links = {
   page: 'https://preventivi.example.it/F-2026-1/abc',
@@ -42,4 +42,13 @@ test('date in italiano, valori vuoti o sbagliati senza errori', () => {
   assert.equal(formatQuotePageDate('2026-01-05'), '5 gen 2026');
   assert.equal(formatQuotePageDate(''), '');
   assert.equal(formatQuotePageDate('non una data'), '');
+});
+
+test('nomi in minuscolo con le iniziali maiuscole, m² non ripetuti nel riepilogo', () => {
+  assert.equal(tidyQuotePageName('gabriele todaro'), 'Gabriele Todaro');
+  assert.equal(tidyQuotePageName("d'angelo maria-rosa"), "D'Angelo Maria-Rosa");
+  assert.equal(tidyQuotePageName('Studio Verde srl'), 'Studio Verde srl');
+  const html = renderQuotePublicPage({ label: 'F-1', customerName: 'gabriele todaro', customerCity: 'napoli', sqm: 45, summary: 'Betulla 30 mm · 45 mq' }, links);
+  assert.match(html, /Per <strong>Gabriele Todaro<\/strong> · Napoli/);
+  assert.match(html, /<p class="summary">Betulla 30 mm<\/p>/);
 });
