@@ -1437,6 +1437,45 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS site_surveys_created_idx   ON site_surveys (created_at DESC);
 
       -- ─────────────────────────────────────────────────────────────────────
+      -- Cartella cliente (ottobre 2026): preventivi salvati dal generatore e
+      -- documenti caricati a mano, legati alla richiesta CRM. Un preventivo è
+      -- identificato da numero + revisione (F-2026-2301 rev.2); "shared" decide
+      -- se lo vede tutto l'ufficio o solo chi l'ha fatto (e chi ha il permesso
+      -- "vede tutti i preventivi"). payload = dati del modulo, per riaprirlo.
+      -- ─────────────────────────────────────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS sales_quotes (
+        id TEXT PRIMARY KEY,
+        number TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1,
+        request_id TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        author_name TEXT,
+        shared BOOLEAN NOT NULL DEFAULT FALSE,
+        status TEXT NOT NULL DEFAULT 'sent',
+        customer_name TEXT, customer_phone TEXT, customer_email TEXT, customer_city TEXT,
+        total NUMERIC, summary TEXT,
+        payload JSONB NOT NULL DEFAULT '{}',
+        pdf JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS sales_quotes_number_rev_idx ON sales_quotes (number, revision);
+      CREATE INDEX IF NOT EXISTS sales_quotes_request_idx ON sales_quotes (request_id);
+      CREATE INDEX IF NOT EXISTS sales_quotes_author_idx ON sales_quotes (author_id);
+      CREATE TABLE IF NOT EXISTS sales_request_documents (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL,
+        name TEXT,
+        type TEXT,
+        size INTEGER,
+        asset JSONB NOT NULL,
+        uploaded_by TEXT,
+        uploaded_by_name TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS sales_request_documents_request_idx ON sales_request_documents (request_id);
+
+      -- ─────────────────────────────────────────────────────────────────────
       -- Sistema Presenze (timesheet) — dipendenti aziendali (warehouse,
       -- office). Crew esclusi (sono subappaltatori, non dipendenti).
       --
@@ -5749,7 +5788,21 @@ function sanitizeUser(user) {
     resellerShippingAddress: normalizedRole === "rivenditore" ? String(user.resellerShippingAddress || "") : "",
     status: user.status === "suspended" ? "suspended" : "active",
     mustChangePassword: Boolean(user.mustChangePassword),
+    canSeeAllQuotes: normalizedRole === "office" && Boolean(user.canSeeAllQuotes),
   };
+}
+
+// Permesso "vede tutti i preventivi" (anche i privati dei colleghi): lo può
+// dare o togliere solo chi ce l'ha già, oppure chiunque dell'ufficio finché
+// nessuno ce l'ha (prima attivazione). Senza il campo nel body resta com'è.
+function resolveCanSeeAllQuotes(body = {}, current = null, nextRole = "", actor = null, users = []) {
+  if (nextRole !== "office") return false;
+  const previous = Boolean(current?.canSeeAllQuotes);
+  if (body.canSeeAllQuotes === undefined) return previous;
+  const requested = body.canSeeAllQuotes === true || body.canSeeAllQuotes === "true";
+  if (requested === previous) return previous;
+  const someoneHasIt = users.some((user) => user.role === "office" && user.canSeeAllQuotes);
+  return Boolean(actor?.canSeeAllQuotes) || !someoneHasIt ? requested : previous;
 }
 
 function getCommunicationUserLabel(user = {}) {
@@ -10895,6 +10948,8 @@ function buildLocalAttachmentRecord(ownerId = "", attachment = {}, parsed = null
     : resource === "communications" ? "communications"
     : resource === "showroom" ? "showroom"
     : resource === "showroom-product" ? "showroom-product"
+    : resource === "quotes" ? "quotes"
+    : resource === "sales-request-documents" ? "sales-request-documents"
     : "orders";
   const ownerSegment = String(ownerId || resource).replace(/[^\w.-]+/g, "_");
   const relativePath = normalizeAttachmentLocalPath(`${bucketPrefix}/${ownerSegment}/${attachmentId}-${safeName}`);
@@ -11425,6 +11480,8 @@ async function storeAttachmentBuffer(ownerId, attachment = {}, buffer = Buffer.a
     : resource === "communications" ? "communications"
     : resource === "showroom" ? "showroom"
     : resource === "showroom-product" ? "showroom-product"
+    : resource === "quotes" ? "quotes"
+    : resource === "sales-request-documents" ? "sales-request-documents"
     : "orders";
   const objectKey = `${bucketPrefix}/${String(ownerId || resource).replace(/[^\w.-]+/g, "_")}/${attachmentId}-${safeName}`;
 
@@ -11902,6 +11959,7 @@ function reconcileStoreData(store) {
           resellerShippingAddress: String(user.resellerShippingAddress || defaults.users[index]?.resellerShippingAddress || ""),
           status: String(user.status || defaults.users[index]?.status || "active").trim(),
           mustChangePassword: Boolean(user.mustChangePassword ?? defaults.users[index]?.mustChangePassword),
+          canSeeAllQuotes: Boolean(user.canSeeAllQuotes),
           sessionVersion: Number(user.sessionVersion || defaults.users[index]?.sessionVersion || 1),
           lastPasswordChangeAt: String(user.lastPasswordChangeAt || defaults.users[index]?.lastPasswordChangeAt || ""),
         });
@@ -17700,6 +17758,244 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // ── Preventivi salvati e cartella cliente (ottobre 2026) ────────────────
+  // Solo ufficio. Un preventivo privato lo vedono chi l'ha fatto e chi ha il
+  // permesso "vede tutti i preventivi"; ai colleghi la cartella mostra solo
+  // che esiste (numero, autore, data), senza importo né PDF.
+  if (url.pathname === "/api/quotes" || url.pathname.startsWith("/api/quotes/") || /^\/api\/sales\/requests\/[^/]+\/(folder|documents)(\/|$)/.test(url.pathname)) {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "La cartella cliente richiede il database." });
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const seeAll = Boolean(currentUser.canSeeAllQuotes);
+    const isVisible = (row) => Boolean(row.shared) || String(row.author_id) === String(currentUser.id) || seeAll;
+    const toQuote = (row, { full = false } = {}) => ({
+      id: row.id,
+      number: row.number,
+      revision: Number(row.revision || 1),
+      requestId: row.request_id,
+      authorId: row.author_id,
+      authorName: row.author_name || "",
+      shared: Boolean(row.shared),
+      status: row.status || "sent",
+      customerName: row.customer_name || "",
+      customerCity: row.customer_city || "",
+      total: Number(row.total || 0),
+      summary: row.summary || "",
+      hasPdf: Boolean(row.pdf),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      mine: String(row.author_id) === String(currentUser.id),
+      ...(full ? { payload: row.payload || {} } : {}),
+    });
+    const quoteLabel = (number, revision) => `${number}${Number(revision) > 1 ? ` rev.${revision}` : ""}`;
+
+    // Elenco: i miei (scope=mine) o tutti (scope=all, solo con il permesso);
+    // ?number= restituisce l'ultima revisione di quel numero, se visibile.
+    if (url.pathname === "/api/quotes" && req.method === "GET") {
+      const number = String(url.searchParams.get("number") || "").trim();
+      if (number) {
+        const { rows } = await pool.query("SELECT * FROM sales_quotes WHERE number = $1 ORDER BY revision DESC LIMIT 1", [number]);
+        const latest = rows[0];
+        return sendJson(res, 200, { quote: latest && isVisible(latest) ? toQuote(latest) : null, exists: Boolean(latest) });
+      }
+      const scope = url.searchParams.get("scope") === "all" && seeAll ? "all" : "mine";
+      const { rows } = await pool.query(
+        `SELECT * FROM (
+           SELECT DISTINCT ON (number) * FROM sales_quotes
+           ${scope === "mine" ? "WHERE author_id = $1" : ""}
+           ORDER BY number, revision DESC
+         ) latest ORDER BY created_at DESC LIMIT 300`,
+        scope === "mine" ? [String(currentUser.id)] : [],
+      );
+      return sendJson(res, 200, { scope, canSeeAll: seeAll, quotes: rows.map((row) => toQuote(row)) });
+    }
+
+    // Salvataggio: stesso numero di un preventivo già salvato = nuova revisione.
+    if (url.pathname === "/api/quotes" && req.method === "POST") {
+      const body = await readBody(req, { maxBytes: 14 * 1024 * 1024 });
+      const requestId = String(body.requestId || "").trim();
+      const number = String(body.number || "").trim().slice(0, 40);
+      if (!requestId) return sendJson(res, 400, { error: "Scegli il cliente a cui archiviare il preventivo." });
+      if (!/^[\w-]+$/.test(number)) return sendJson(res, 400, { error: "Numero di preventivo non valido." });
+      const parsed = parseDataUrl(body.pdfDataUrl || "");
+      const buffer = parsed?.buffer;
+      if (!buffer?.length || buffer.subarray(0, 5).toString() !== "%PDF-" || buffer.length > 10 * 1024 * 1024) {
+        return sendJson(res, 400, { error: "PDF del preventivo mancante o non valido." });
+      }
+      const requestRows = await pool.query("SELECT id, status, quoted_at FROM sales_requests WHERE id = $1", [requestId]);
+      const request = requestRows.rows[0];
+      if (!request) return sendJson(res, 404, { error: "Richiesta cliente non trovata." });
+      const previousRows = await pool.query("SELECT * FROM sales_quotes WHERE number = $1 ORDER BY revision DESC LIMIT 1", [number]);
+      const previous = previousRows.rows[0] || null;
+      if (previous && String(previous.author_id) !== String(currentUser.id) && !seeAll) {
+        return sendJson(res, 409, { error: "Questo numero è di un preventivo di un collega: usa Duplica per farne uno tuo." });
+      }
+      if (previous && previous.request_id !== requestId) {
+        return sendJson(res, 409, { error: "Questo numero è già archiviato per un altro cliente: usa Duplica per un preventivo nuovo." });
+      }
+      const revision = previous ? Number(previous.revision || 1) + 1 : 1;
+      const shared = body.shared === true;
+      const id = randomUUID();
+      const customer = body.customer && typeof body.customer === "object" ? body.customer : {};
+      const fileName = String(body.fileName || `Preventivo ${number}.pdf`).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 160);
+      const asset = await storeAttachmentBuffer(`quote-${id}`, { id, name: fileName, type: "application/pdf" }, buffer, "quotes");
+      const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
+      const { rows } = await pool.query(
+        `INSERT INTO sales_quotes (id, number, revision, request_id, author_id, author_name, shared, status,
+           customer_name, customer_phone, customer_email, customer_city, total, summary, payload, pdf)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'sent',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+        [
+          id, number, revision, requestId, String(currentUser.id), String(currentUser.name || currentUser.email || ""), shared,
+          String(customer.name || "").slice(0, 200), String(customer.phone || "").slice(0, 60),
+          String(customer.email || "").slice(0, 200), String(customer.city || "").slice(0, 120),
+          Number.isFinite(Number(body.total)) ? Number(body.total) : null, String(body.summary || "").slice(0, 300),
+          JSON.stringify(payload), JSON.stringify(asset),
+        ],
+      );
+      // La richiesta passa a "preventivo inviato" (se era ancora da lavorare)
+      // e prende la data del primo preventivo: la usa il follow-up in dashboard.
+      const statusCode = String(request.status || "").trim().toLowerCase();
+      const moveToQuoted = ["", "new", "followup"].includes(statusCode);
+      await pool.query(
+        `UPDATE sales_requests SET
+           status = CASE WHEN $2 THEN 'quoted' ELSE status END,
+           quoted_at = COALESCE(quoted_at, NOW()),
+           updated_at = NOW()
+         WHERE id = $1`,
+        [requestId, moveToQuoted],
+      );
+      const cached = (store.salesRequests || []).find((item) => item.id === requestId);
+      if (cached) {
+        if (moveToQuoted) cached.status = "quoted";
+        cached.quotedAt = cached.quotedAt || new Date().toISOString();
+      }
+      writeAuditLog("sales_request", requestId, "quote_saved", {
+        text: `Preventivo ${quoteLabel(number, revision)} salvato${shared ? " nella cartella comune" : " (privato)"}`,
+      }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, { ok: true, quote: toQuote(rows[0]), requestMovedToQuoted: moveToQuoted });
+    }
+
+    const quoteMatch = url.pathname.match(/^\/api\/quotes\/([^/]+)(\/pdf)?$/);
+    if (quoteMatch) {
+      const { rows } = await pool.query("SELECT * FROM sales_quotes WHERE id = $1", [decodeURIComponent(quoteMatch[1])]);
+      const row = rows[0];
+      if (!row || !isVisible(row)) return sendJson(res, 404, { error: "not_found" });
+      if (quoteMatch[2]) {
+        if (req.method !== "GET" || !row.pdf) return sendJson(res, 404, { error: "not_found" });
+        return streamAttachmentAsset(req, res, row.pdf, { cacheControl: "private, no-store", forceDownload: url.searchParams.get("download") === "1" });
+      }
+      if (req.method === "GET") return sendJson(res, 200, { quote: toQuote(row, { full: true }) });
+      if (req.method === "PATCH") {
+        const body = await readBody(req);
+        const mine = String(row.author_id) === String(currentUser.id);
+        if (body.shared !== undefined) {
+          if (!mine) return sendJson(res, 403, { error: "Solo chi ha fatto il preventivo può cambiarne la visibilità." });
+          // La visibilità vale per tutte le revisioni dello stesso numero.
+          await pool.query("UPDATE sales_quotes SET shared = $2, updated_at = NOW() WHERE number = $1", [row.number, body.shared === true]);
+          writeAuditLog("sales_request", row.request_id, "quote_visibility", {
+            text: `Preventivo ${row.number} ${body.shared === true ? "condiviso con l'ufficio" : "reso privato"}`,
+          }, currentUser.email || null).catch(() => {});
+        }
+        if (body.status !== undefined) {
+          const status = String(body.status || "");
+          if (!["sent", "accepted", "rejected", "expired"].includes(status)) return sendJson(res, 400, { error: "invalid_status" });
+          if (!mine && !seeAll) return sendJson(res, 403, { error: "Solo chi ha fatto il preventivo può cambiarne l'esito." });
+          await pool.query("UPDATE sales_quotes SET status = $2, updated_at = NOW() WHERE id = $1", [row.id, status]);
+          const labels = { sent: "inviato", accepted: "accettato", rejected: "rifiutato", expired: "scaduto" };
+          writeAuditLog("sales_request", row.request_id, "quote_status", {
+            text: `Preventivo ${quoteLabel(row.number, row.revision)}: ${labels[status]}`,
+          }, currentUser.email || null).catch(() => {});
+        }
+        const updated = await pool.query("SELECT * FROM sales_quotes WHERE id = $1", [row.id]);
+        return sendJson(res, 200, { ok: true, quote: toQuote(updated.rows[0]) });
+      }
+      return sendJson(res, 405, { error: "method_not_allowed" });
+    }
+
+    // Cartella della richiesta: preventivi (con revisioni), documenti,
+    // sopralluoghi collegati e ordine collegato.
+    const folderMatch = url.pathname.match(/^\/api\/sales\/requests\/([^/]+)\/folder$/);
+    if (folderMatch && req.method === "GET") {
+      const requestId = decodeURIComponent(folderMatch[1]);
+      const [quoteRows, documentRows, surveyRows, requestRows] = await Promise.all([
+        pool.query("SELECT * FROM sales_quotes WHERE request_id = $1 ORDER BY created_at DESC, revision DESC", [requestId]),
+        pool.query("SELECT id, name, type, size, uploaded_by_name, created_at FROM sales_request_documents WHERE request_id = $1 ORDER BY created_at DESC", [requestId]),
+        pool.query("SELECT id, status, crew_name, scheduled_date, measured_sqm, updated_at FROM site_surveys WHERE sales_request_id = $1 ORDER BY created_at DESC", [requestId]),
+        pool.query("SELECT linked_order_id FROM sales_requests WHERE id = $1", [requestId]),
+      ]);
+      const byNumber = new Map();
+      quoteRows.rows.forEach((row) => {
+        const list = byNumber.get(row.number) || [];
+        list.push(row);
+        byNumber.set(row.number, list);
+      });
+      const quotes = [...byNumber.values()].map((list) => {
+        list.sort((left, right) => Number(right.revision) - Number(left.revision));
+        const latest = list[0];
+        if (!isVisible(latest)) {
+          return { number: latest.number, revision: Number(latest.revision || 1), authorName: latest.author_name || "", createdAt: latest.created_at, visible: false };
+        }
+        return { ...toQuote(latest), visible: true, previous: list.slice(1).map((row) => toQuote(row)) };
+      });
+      const linkedOrderId = String(requestRows.rows[0]?.linked_order_id || "").trim();
+      const order = linkedOrderId ? (store.orders || []).find((item) => String(item.id) === linkedOrderId) : null;
+      return sendJson(res, 200, {
+        canSeeAll: seeAll,
+        quotes,
+        documents: documentRows.rows.map((row) => ({ id: row.id, name: row.name, type: row.type, size: Number(row.size || 0), uploadedByName: row.uploaded_by_name || "", createdAt: row.created_at })),
+        surveys: surveyRows.rows.map((row) => ({ id: row.id, status: row.status, crewName: row.crew_name || "", scheduledDate: row.scheduled_date, measuredSqm: row.measured_sqm == null ? null : Number(row.measured_sqm) })),
+        order: order ? { id: order.id, label: String(order.name || order.orderNumber || order.id), status: order.operations?.warehouse?.status || order.fulfillmentStatus || "" } : (linkedOrderId ? { id: linkedOrderId, label: linkedOrderId, status: "" } : null),
+      });
+    }
+
+    // Documenti della cartella (planimetrie, foto, contratti): visibili a tutto l'ufficio.
+    const documentsMatch = url.pathname.match(/^\/api\/sales\/requests\/([^/]+)\/documents(?:\/([^/]+)(\/file)?)?$/);
+    if (documentsMatch) {
+      const requestId = decodeURIComponent(documentsMatch[1]);
+      const documentId = documentsMatch[2] ? decodeURIComponent(documentsMatch[2]) : "";
+      if (!documentId && req.method === "POST") {
+        const exists = await pool.query("SELECT 1 FROM sales_requests WHERE id = $1", [requestId]);
+        if (!exists.rowCount) return sendJson(res, 404, { error: "Richiesta cliente non trovata." });
+        const body = await readBody(req, { maxBytes: 22 * 1024 * 1024 });
+        const parsed = parseDataUrl(body.dataUrl || "");
+        const buffer = parsed?.buffer;
+        if (!buffer?.length || buffer.length > 15 * 1024 * 1024) return sendJson(res, 400, { error: "File mancante o oltre 15 MB." });
+        // Il tipo lo decide il contenuto, non il nome: PDF e immagini si
+        // aprono nel browser, il resto si scarica e basta.
+        const type = buffer.subarray(0, 5).toString() === "%PDF-" ? "application/pdf"
+          : buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? "image/png"
+            : buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255 ? "image/jpeg"
+              : "application/octet-stream";
+        const id = randomUUID();
+        const name = String(body.name || "Documento").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 180);
+        const asset = await storeAttachmentBuffer(`request-doc-${id}`, { id, name, type }, buffer, "sales-request-documents");
+        await pool.query(
+          "INSERT INTO sales_request_documents (id, request_id, name, type, size, asset, uploaded_by, uploaded_by_name) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+          [id, requestId, name, type, buffer.length, JSON.stringify(asset), String(currentUser.id), String(currentUser.name || currentUser.email || "")],
+        );
+        writeAuditLog("sales_request", requestId, "document_added", { text: `Documento caricato: ${name}` }, currentUser.email || null).catch(() => {});
+        return sendJson(res, 200, { ok: true, document: { id, name, type, size: buffer.length, uploadedByName: currentUser.name || "", createdAt: new Date().toISOString() } });
+      }
+      if (documentId) {
+        const { rows } = await pool.query("SELECT * FROM sales_request_documents WHERE id = $1 AND request_id = $2", [documentId, requestId]);
+        const document = rows[0];
+        if (!document) return sendJson(res, 404, { error: "not_found" });
+        if (documentsMatch[3] && req.method === "GET") {
+          return streamAttachmentAsset(req, res, document.asset, { cacheControl: "private, no-store", forceDownload: document.type === "application/octet-stream" || url.searchParams.get("download") === "1" });
+        }
+        if (!documentsMatch[3] && req.method === "DELETE") {
+          await pool.query("DELETE FROM sales_request_documents WHERE id = $1", [documentId]);
+          writeAuditLog("sales_request", requestId, "document_removed", { text: `Documento eliminato: ${document.name}` }, currentUser.email || null).catch(() => {});
+          return sendJson(res, 200, { ok: true });
+        }
+      }
+      return sendJson(res, 405, { error: "method_not_allowed" });
+    }
+    return sendJson(res, 404, { error: "not_found" });
+  }
+
   if (url.pathname === "/api/sales/content-items" && req.method === "POST") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -18735,6 +19031,7 @@ async function handleApi(req, res, url) {
       resellerShippingAddress,
       status,
       mustChangePassword,
+      canSeeAllQuotes: resolveCanSeeAllQuotes(body, null, role, currentUser, store.users),
       sessionVersion: 1,
       lastPasswordChangeAt: new Date().toISOString(),
       passwordHash: hash,
@@ -18831,6 +19128,7 @@ async function handleApi(req, res, url) {
       resellerShippingAddress: nextResellerShippingAddress,
       status: nextStatus,
       mustChangePassword: mustChangePassword || current.mustChangePassword,
+      canSeeAllQuotes: resolveCanSeeAllQuotes(body, current, nextRole, currentUser, store.users),
     };
     if (newPassword) {
       const passwordError = validatePasswordStrength(newPassword);
