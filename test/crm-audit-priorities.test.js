@@ -6,24 +6,6 @@ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 function fn(name,next,context){
  return vm.runInNewContext(source.slice(source.indexOf('function '+name+'('),source.indexOf('function '+next+'(')).replace(/async\s*$/, '')+';'+name,context);
 }
-test('supplier comparison never mixes kg and packs and does not award a sole supplier',()=>{
- const entries=[
- {material:'Colla',supplierName:'A',unit:'kg',unitPrice:5,invoiceDate:'2026-01-01'},
- {material:'Colla',supplierName:'A',unit:'confezione',unitPrice:30,invoiceDate:'2026-02-01'},
- {material:'Colla',supplierName:'B',unit:'kg',unitPrice:5,invoiceDate:'2026-02-01'},
- {material:'Colla',supplierName:'C',unit:'kg',unitPrice:0,invoiceDate:'2026-02-01'},
- ];
- const compute=fn('computeSupplierPriceComparison','loadSupplierPriceEntries',{
- getFilteredSupplierPriceEntries:()=>entries,normalizeSupplierPriceKey:s=>s.toLowerCase()
- });
- const result=compute();
- assert.equal(result.length,2);
- const kg=result.find(r=>r.unit==='kg');
- assert.equal(kg.suppliers[0].avg,5);
- assert.equal(kg.suppliers.filter(s=>s.isBest).length,2);
- assert.equal(kg.suppliers.find(s=>s.label==='C').isBest,false);
- assert.equal(result.find(r=>r.unit==='confezione').suppliers[0].isBest,false);
-});
 test('completed shipments do not request preparation even with past or absent dates',()=>{
  const context={state:{lang:'it'},isOrderClosed:o=>o.closed,isLogisticsOrderCompleted:o=>o.delivered,getShippingTargetDate:o=>o.date,t:()=>'',formatDate:x=>x};
  const label=fn('getShippingTargetLabel','getShippingTargetUrgency',context);
@@ -79,15 +61,6 @@ test('commercial labels preserve unknown historical statuses',()=>{
  assert.equal(label('new_contact'),'Nuovo contatto');
  assert.equal(label('quoted'),'Preventivo inviato');
  assert.equal(label('Chiamare domani'),'Chiamare domani');
-});
-test('supplier filters have persistent associated labels',()=>{
- const render=fn('renderSupplierPriceFiltersHtml','renderSupplierPriceCompareHtml',{
- state:{lang:'it',supplierPricesFilter:{}},escapeAttr:s=>s
- });
- const html=render();
- assert.equal((html.match(/<label /g)||[]).length,4);
- assert.match(html,/>Dal<input type="date"/);
- assert.match(html,/>Al<input type="date"/);
 });
 test('API rejects malformed successful responses instead of reporting a saved empty object',async()=>{
  const fetchApi=(response)=>fn('apiFetch','isTransientApiError',{

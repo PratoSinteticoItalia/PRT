@@ -27,7 +27,9 @@ function batchHandler() {
  const context={currentUser:{role:'office',id:'office'},store:{supplierPriceEntries:[]},pendingSupplierInvoiceKeys:new Set(),
   supplierProfileKey:s=>s.toLowerCase().trim(),readBody:async req=>req.body,sendJson:(_r,status,data)=>({status,data}),
   randomUUID:()=>crypto.randomUUID(),storeAttachmentAsset:async()=>null,normalizeSupplierPriceEntry:e=>e,
-  writeJson:async()=>{},STORE_PATH:'unused',serializeSupplierPriceEntryForClient:e=>e};
+  writeJson:async()=>{},STORE_PATH:'unused',serializeSupplierPriceEntryForClient:e=>e,
+  hasSupplierInvoiceCosts:c=>Boolean(c&&(c.shippingCost||c.dutyValue||c.otherCost)),normalizeSupplierInvoiceCosts:c=>c,
+  serializeSupplierPriceEntriesWithCosts:(_store,entries)=>entries};
  const run=vm.runInNewContext(`(async function(req,res,url){${source.slice(a,b)}})`,context);
  return {context,run:body=>run({method:'POST',body},{},{pathname:'/api/supplier-prices/batch'})};
 }
@@ -42,4 +44,28 @@ test('invoice save rejects partial/invalid rows rather than silently dropping th
  const h=batchHandler();assert.equal((await h.run({...invoice,lines:[...invoice.lines,{material:'Other',unitPrice:0,unit:'kg'}]})).status,400);
  assert.equal((await h.run({...invoice,lines:[{material:'Other',unitPrice:10,unit:''}]})).status,400);
  assert.equal(h.context.store.supplierPriceEntries.length,0);
+});
+
+function costsHandler(entries) {
+ const a=source.indexOf('  if (url.pathname === "/api/supplier-invoice-costs"'),b=source.indexOf('\n  if (url.pathname === "/api/supplier-prices" && req.method === "GET"',a);
+ let n=0;
+ const context={currentUser:{role:'office',email:'office@test'},store:{supplierPriceEntries:entries,supplierInvoiceCosts:{}},
+  supplierProfileKey:s=>String(s).toLowerCase().trim(),readBody:async req=>req.body,sendJson:(_r,status,data)=>({status,data}),
+  randomUUID:()=>`inv-${++n}`,normalizeSupplierPriceEntry:e=>e,writeJson:async()=>{},STORE_PATH:'unused',
+  hasSupplierInvoiceCosts:c=>Boolean(c&&(c.shippingCost||c.dutyValue||c.otherCost)),normalizeSupplierInvoiceCosts:c=>({shippingCost:Number(c.shippingCost)||0,dutyValue:Number(c.dutyValue)||0,otherCost:Number(c.otherCost)||0})};
+ const run=vm.runInNewContext(`(async function(req,res,url){${source.slice(a,b)}})`,context);
+ return {context,run:body=>run({method:'PUT',body},{},{pathname:'/api/supplier-invoice-costs'})};
+}
+test('invoice costs: old entries without invoice get a shared one, other suppliers are refused',async()=>{
+ const h=costsHandler([{id:'a',supplierName:'Demo'},{id:'b',supplierName:'demo '},{id:'c',supplierName:'Altro'}]);
+ const saved=await h.run({entryIds:['a','b'],shippingCost:50});
+ assert.equal(saved.status,200);
+ assert.equal(saved.data.invoiceId,'inv-1');
+ assert.deepEqual(h.context.store.supplierPriceEntries.filter(e=>e.invoiceId==='inv-1').map(e=>e.id),['a','b']);
+ assert.equal(h.context.store.supplierInvoiceCosts['inv-1'].shippingCost,50);
+ assert.equal((await h.run({entryIds:['a','c'],shippingCost:5})).status,400);
+ assert.equal((await h.run({entryIds:['zz'],shippingCost:5})).status,404);
+ // Costi azzerati: la voce sparisce, la fattura resta raggruppata.
+ assert.equal((await h.run({entryIds:['a','b'],shippingCost:0})).data.costs,null);
+ assert.equal(h.context.store.supplierInvoiceCosts['inv-1'],undefined);
 });
