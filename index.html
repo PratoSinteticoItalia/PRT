@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261023-riapri-preventivo" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261023-riapri-preventivo" />
+    <link rel="preload" href="./styles.css?v=20261023-impostazioni-fornitori" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261023-impostazioni-fornitori" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1939,22 +1939,30 @@
         </section>
 
         <section class="view" id="settings">
+          <nav class="settings-sections" id="settings-sections" aria-label="Sezioni delle impostazioni">
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="account">Il mio account</button>
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="team">Utenti e squadre</button>
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="quotes">Preventivi</button>
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="catalog">Prodotti e listino</button>
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="integrations">Collegamenti</button>
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="security">Sicurezza</button>
+          </nav>
           <div class="settings-grid">
 
             <!-- COL SINISTRA: account e accesso -->
             <div class="settings-col">
-              <section class="panel panel-large">
+              <section class="panel panel-large" data-settings-section="team">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Utenti</p>
                     <h3>Gestione account e squadre</h3>
                   </div>
                 </div>
-                <div class="info-card" style="margin-bottom: 16px;">
-                  Per gli account squadra puoi definire nome squadra operativo e capacita giornaliera. La rinomina aggiorna anche le pose gia assegnate.
-                </div>
+                <p class="panel-note">Clicca su un account per modificarlo. Rinominare una squadra aggiorna anche le pose già assegnate.</p>
                 <div id="accounts-list" class="detail-stack settings-accounts-list"></div>
-                <form id="account-create-form" class="inline-form-grid" style="margin-top: 16px;" data-persisted-crew-logo="">
+                <details class="acct-new" id="account-create-details">
+                <summary>＋ Nuovo account</summary>
+                <form id="account-create-form" class="inline-form-grid" data-persisted-crew-logo="">
                   <label class="field">
                     <span>Nome utente</span>
                     <input class="text-input" name="name" placeholder="Mario Rossi" />
@@ -2027,10 +2035,11 @@
                     <button type="submit" class="primary-button small-button">Crea account</button>
                   </div>
                 </form>
+                </details>
                 <div id="accounts-status" class="panel-note hidden"></div>
               </section>
 
-              <section class="panel">
+              <section class="panel" data-settings-section="account">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Sicurezza</p>
@@ -2056,7 +2065,7 @@
                 </form>
                 <div id="security-status" class="panel-note hidden"></div>
               </section>
-              <section class="panel">
+              <section class="panel" data-settings-section="account">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Notifiche</p>
@@ -2070,95 +2079,90 @@
                   <button type="button" class="ghost-button small-button" data-action="settings-reset-push">Disattiva su tutti i dispositivi</button>
                 </div>
                 <div id="push-status" class="panel-note hidden"></div>
-                <p class="panel-note notif-ios-hint">Su iPhone le notifiche push arrivano <strong>solo se l'app è installata</strong> sulla schermata Home (limite di Apple, non del portale). Il centro notifiche con la campanella funziona comunque su qualsiasi dispositivo.</p>
+                <p class="panel-note notif-ios-hint">Su iPhone arrivano solo se l'app è installata sulla schermata Home. La campanella funziona sempre.</p>
                 <div class="notif-prefs-block">
-                  <p class="panel-eyebrow" style="margin-bottom:6px;">Cosa notificare</p>
-                  <p class="panel-note" style="margin:0 0 10px;">Disattivando una voce non ricevi più la push di sistema; la notifica resta comunque nella campanella.</p>
+                  <p class="settings-subhead">Cosa ti avvisa sul telefono</p>
+                  <p class="panel-note" style="margin:0 0 6px;">Le voci spente restano comunque nella campanella.</p>
                   <div id="notification-prefs" class="notif-prefs"></div>
                 </div>
               </section>
-              <section class="panel">
+              <section class="panel" data-settings-section="catalog">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Inventario</p>
                     <h3>Catalogo prodotti</h3>
                   </div>
                 </div>
-                <p class="panel-note">Aggiungi nuovi modelli di prato, rinomina i prodotti nativi o nascondi quelli che non usi. Le giacenze già caricate restano nello storico.</p>
-                <form id="product-catalog-form" class="inline-form-grid" style="margin-top:10px;">
-                  <label class="field">
-                    <span>Nome prodotto</span>
-                    <input class="text-input" name="label" type="text" placeholder="Es. Quercia 30 mm" required />
-                  </label>
-                  <label class="field">
-                    <span>Prezzo €/mq (lordo)</span>
-                    <input class="text-input" name="grossPricePerSqm" type="text" inputmode="decimal" placeholder="Es. 5,50" />
-                  </label>
-                  <div class="inline-actions field-full">
-                    <button type="submit" class="primary-button small-button">Aggiungi prodotto</button>
-                  </div>
+                <p class="panel-note">I prodotti che compaiono in Inventario. Le giacenze già caricate restano nello storico anche se rinomini o disattivi un prodotto.</p>
+                <form id="product-catalog-form" class="product-catalog-add">
+                  <input class="text-input" name="label" type="text" placeholder="Nuovo prodotto, es. Quercia 30 mm" aria-label="Nome prodotto" required />
+                  <input class="text-input" name="grossPricePerSqm" type="text" inputmode="decimal" placeholder="€/mq lordo" aria-label="Prezzo €/mq (lordo)" />
+                  <button type="submit" class="primary-button small-button">Aggiungi</button>
                 </form>
                 <div id="product-catalog-status" class="panel-note hidden"></div>
                 <div id="product-catalog-list" class="product-catalog-list" style="margin-top:10px;"></div>
                 <div class="native-product-settings">
                   <div class="native-product-settings-head">
                     <div>
-                      <strong>Prodotti nativi</strong>
-                      <span>Modifica il nome mostrato oppure disattiva quelli che non vuoi vedere in inventario e autocomplete.</span>
+                      <strong>Prodotti di base</strong>
+                      <span>Correggi il nome mostrato o disattiva quelli che non usi.</span>
                     </div>
                   </div>
                   <div id="native-product-catalog-list" class="native-product-catalog-list"></div>
                 </div>
               </section>
-              <section class="panel">
+              <section class="panel" data-settings-section="quotes">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Branding</p>
                     <h3>Testi preventivo</h3>
                   </div>
                 </div>
-                <p class="panel-note">Personalizza i testi che appaiono nel preventivo PDF. Sono validi per <em>tutti</em> i nuovi preventivi generati.</p>
+                <p class="panel-note">I testi del PDF, uguali per tutti i nuovi preventivi.</p>
                 <form id="preventivo-texts-form" class="inline-form-grid">
-                  <label class="field field-full">
-                    <span>Tagline aziendale (sotto il logo)</span>
+                  <p class="settings-subhead field-full">Intestazione</p>
+                  <label class="field">
+                    <span>Frase sotto il logo</span>
                     <input class="text-input" name="brandTagline" type="text" placeholder="Dal 2016 · Fornitura e Posa Professionale" />
                   </label>
-                  <label class="field field-full">
-                    <span>Ragione sociale / P.IVA (header in alto a destra)</span>
+                  <label class="field">
+                    <span>Ragione sociale / P.IVA (in alto a destra)</span>
                     <input class="text-input" name="brandCompany" type="text" placeholder="VERTEX SRLS · P.IVA 04863610616" />
                   </label>
+                  <p class="settings-subhead field-full">Descrizione del servizio</p>
                   <label class="field field-full">
-                    <span>Descrizione "Solo fornitura"</span>
+                    <span>Solo fornitura</span>
                     <textarea class="text-input" name="materialsDescFornitura" rows="2" placeholder="La fornitura viene preparata in rotoli da 2 metri di larghezza…"></textarea>
                   </label>
                   <label class="field field-full">
-                    <span>Descrizione "Fornitura + posa" — su terra</span>
+                    <span>Fornitura + posa su terra</span>
                     <textarea class="text-input" name="materialsDescPosa" rows="2" placeholder="La posa su terra prevede sistemazione del terreno, fondo drenante da 3 cm…"></textarea>
                   </label>
                   <label class="field field-full">
-                    <span>Descrizione "Fornitura + posa" — su pavimentazione</span>
+                    <span>Fornitura + posa su pavimentazione</span>
                     <textarea class="text-input" name="materialsDescPosaPavimentazione" rows="2" placeholder="La posa su pavimentazione prevede pulizia dell'area, incollaggio delle giunture e perimetrale, spazzolatura…"></textarea>
                   </label>
-                  <label class="field field-full">
+                  <p class="settings-subhead field-full">Pagamento e piè di pagina</p>
+                  <label class="field">
                     <span>Metodi di pagamento — riga 1</span>
                     <input class="text-input" name="paymentMain" type="text" placeholder="Pagamento disponibile con carta, PayPal, bonifico bancario, Scalapay e HeyLight." />
                   </label>
-                  <label class="field field-full">
+                  <label class="field">
                     <span>Metodi di pagamento — riga 2 (HeyLight)</span>
                     <input class="text-input" name="paymentHeyLight" type="text" placeholder="Con HeyLight puoi suddividere il preventivo in 3 o 5 rate senza interessi." />
                   </label>
                   <label class="field field-full">
-                    <span>Footer aziendale (riga in fondo a pagina 2)</span>
+                    <span>Riga in fondo a pagina 2</span>
                     <input class="text-input" name="footerInfo" type="text" placeholder="VERTEX SRLS · P.IVA … · Via … · vertexsrls@pec.it · www.pratosinteticoitalia.com" />
                   </label>
-                  <div class="field field-full">
-                    <span>Logo aziendale archivio (non usato nel preventivo)</span>
+                  <details class="field field-full settings-more">
+                    <summary>Logo aziendale d'archivio (non va nel PDF)</summary>
                     <div id="brand-logo-preview" class="product-image-preview" style="margin:6px 0;min-height:60px;display:flex;align-items:center;"></div>
                     <input type="hidden" name="brandLogoDataUrl" id="brand-logo-data-url" />
                     <input type="file" id="brand-logo-input" accept="image/*" class="text-input" style="margin-top:4px;" />
                     <button type="button" id="brand-logo-clear" class="ghost-button small-button" style="margin-top:6px;">Rimuovi logo</button>
-                    <small class="field-hint">⚠ Il logo nel preventivo viene preso automaticamente dalla squadra di posa (Impostazioni → Account squadra). Questo campo è solo un archivio aziendale facoltativo e <strong>non</strong> appare nel PDF generato.</small>
-                  </div>
+                    <small class="field-hint">Il logo del preventivo arriva dalla squadra di posa (Utenti e squadre). Questo è solo un archivio facoltativo.</small>
+                  </details>
                   <div class="inline-actions field-full">
                     <button type="submit" class="primary-button small-button">Salva testi</button>
                     <button type="button" id="preventivo-texts-reset" class="ghost-button small-button">Ripristina default</button>
@@ -2166,7 +2170,7 @@
                 </form>
                 <div id="preventivo-texts-status" class="panel-note hidden"></div>
               </section>
-              <section class="panel" id="quote-costs-panel">
+              <section class="panel" id="quote-costs-panel" data-settings-section="quotes">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Preventivi</p>
@@ -2177,7 +2181,7 @@
                 <div id="quote-costs-editor"></div>
                 <div id="quote-costs-status" class="panel-note hidden"></div>
               </section>
-              <section class="panel">
+              <section class="panel" data-settings-section="catalog">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Catalogo</p>
@@ -2253,7 +2257,7 @@
                 </form>
                 <div id="preventivo-product-status" class="panel-note hidden"></div>
               </section>
-              <section class="panel">
+              <section class="panel" data-settings-section="team">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Trasferte</p>
@@ -2264,7 +2268,7 @@
               </section>
 
               <!-- Pannello Crew -->
-              <section class="panel" id="crew-catalog-panel">
+              <section class="panel" id="crew-catalog-panel" data-settings-section="team">
                 <div class="panel-head">
                   <h2>Squadre operative</h2>
                 </div>
@@ -2277,7 +2281,7 @@
               </section>
 
               <!-- Pannello Assegnazioni CRM -->
-              <section class="panel" id="assignment-catalog-panel">
+              <section class="panel" id="assignment-catalog-panel" data-settings-section="team">
                 <div class="panel-head">
                   <h2>Assegnazioni CRM</h2>
                 </div>
@@ -2292,7 +2296,7 @@
 
             <!-- COL DESTRA: integrazioni + log -->
             <div class="settings-col">
-              <section class="panel panel-large">
+              <section class="panel panel-large" data-settings-section="integrations">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Collegamenti</p>
@@ -2368,7 +2372,7 @@
                 <div id="settings-status" class="panel-note hidden"></div>
               </section>
 
-              <section class="panel sales-request-source-panel">
+              <section class="panel sales-request-source-panel" data-settings-section="integrations">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Collegamento Google Sheets</p>
@@ -2409,7 +2413,7 @@
                 </div>
               </section>
 
-              <section class="panel">
+              <section class="panel" data-settings-section="integrations">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Centro controllo</p>
@@ -2419,7 +2423,7 @@
                 <div id="sync-control-panel" class="sync-control-grid"></div>
               </section>
 
-              <section class="panel">
+              <section class="panel" data-settings-section="security">
                 <div class="panel-head">
                   <div>
                     <p class="panel-eyebrow">Security Center</p>
@@ -2741,7 +2745,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261023-riapri-preventivo" defer></script>
-    <script src="./app.js?v=20261023-riapri-preventivo" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261023-impostazioni-fornitori" defer></script>
+    <script src="./app.js?v=20261023-impostazioni-fornitori" type="module"></script>
   </body>
 </html>

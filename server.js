@@ -3,6 +3,7 @@ import { validateAbsenceInput } from "./lib/timesheet-absence.js";
 import { profitPaymentBalance } from "./lib/profit-history.js";
 import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
+import { computeSupplierLandedCosts, hasSupplierInvoiceCosts, normalizeSupplierInvoiceCosts } from "./lib/supplier-landed-cost.js";
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -5667,6 +5668,7 @@ function buildDefaultStore() {
     resellerOrderRequests: [],
     supplierProfiles: [],
     supplierPriceEntries: [],
+    supplierInvoiceCosts: {},
     timesheetAbsences: [],
     timesheetCertificates: [],
     timesheetAbsenceRequests: [],
@@ -11169,6 +11171,7 @@ function normalizeQuoteCostConfig(config = {}) {
 
 // Ultimo prezzo per ogni coppia fornitore + materiale (dalla data fattura).
 function buildQuoteCostSupplierOptions(currentStore = {}) {
+  const landed = computeSupplierLandedCosts(currentStore.supplierPriceEntries || [], currentStore.supplierInvoiceCosts || {});
   const latest = new Map();
   (currentStore.supplierPriceEntries || []).forEach((entry) => {
     const supplierName = String(entry.supplierName || "").trim();
@@ -11186,7 +11189,12 @@ function buildQuoteCostSupplierOptions(currentStore = {}) {
       supplierName: String(entry.supplierName).trim(),
       material: String(entry.material).trim(),
       unit: String(entry.unit || "").trim(),
-      unitPrice: Number(entry.unitPrice) || 0,
+      // Costo effettivo: prezzo in fattura + trasporto/dazio/altre spese divisi
+      // sulle righe della fattura (lib/supplier-landed-cost.js).
+      unitPrice: landed.get(entry.id)?.landedUnitPrice ?? (Number(entry.unitPrice) || 0),
+      invoiceUnitPrice: Number(entry.unitPrice) || 0,
+      extraPct: landed.get(entry.id)?.extraPct ?? 0,
+      landedStatus: landed.get(entry.id)?.landedStatus || "none",
       invoiceDate: String(entry.invoiceDate || ""),
       invoiceNumber: String(entry.invoiceNumber || ""),
     }))
@@ -11417,6 +11425,26 @@ function normalizeResellerOrderRequest(item = {}) {
     createdAt: String(item.createdAt || new Date().toISOString()),
     updatedAt: String(item.updatedAt || new Date().toISOString()),
   };
+}
+
+// Costi in più delle fatture fornitore (trasporto, dazio, altre spese),
+// indicizzati per invoiceId. Le fatture senza costi non hanno voce.
+function normalizeSupplierInvoiceCostsMap(raw) {
+  const result = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return result;
+  Object.entries(raw).forEach(([invoiceId, costs]) => {
+    const key = String(invoiceId || "").trim();
+    if (key && hasSupplierInvoiceCosts(costs)) result[key] = normalizeSupplierInvoiceCosts(costs);
+  });
+  return result;
+}
+
+function serializeSupplierPriceEntriesWithCosts(currentStore = {}, entries = currentStore.supplierPriceEntries || []) {
+  const landed = computeSupplierLandedCosts(currentStore.supplierPriceEntries || [], currentStore.supplierInvoiceCosts || {});
+  return entries.map((entry) => ({
+    ...serializeSupplierPriceEntryForClient(entry),
+    ...(landed.get(entry.id) || { landedUnitPrice: Number(entry.unitPrice) || 0, extraPerUnit: 0, extraPct: 0, landedStatus: "none" }),
+  }));
 }
 
 function serializeSupplierPriceEntryForClient(item = {}) {
@@ -12106,6 +12134,8 @@ function reconcileStoreData(store) {
   store.supplierProfiles = Array.isArray(store.supplierProfiles)
     ? store.supplierProfiles.map((item) => normalizeSupplierProfile(item)).filter((item) => item.name)
     : [];
+
+  store.supplierInvoiceCosts = normalizeSupplierInvoiceCostsMap(store.supplierInvoiceCosts);
 
   store.resellerOrderRequests = Array.isArray(store.resellerOrderRequests)
     ? store.resellerOrderRequests.map((item) => normalizeResellerOrderRequest(item))
@@ -18448,12 +18478,43 @@ async function handleApi(req, res, url) {
     });
   }
 
+  // PUT /api/supplier-invoice-costs → trasporto, dazio e altre spese di una
+  // fattura. Si indicano le voci della fattura: quelle registrate prima dei
+  // costi (senza invoiceId comune) ricevono qui un invoiceId condiviso.
+  if (url.pathname === "/api/supplier-invoice-costs" && req.method === "PUT") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const entryIds = Array.isArray(body.entryIds) ? [...new Set(body.entryIds.map((id) => String(id || "").trim()).filter(Boolean))] : [];
+    const entries = entryIds.map((id) => (store.supplierPriceEntries || []).find((entry) => entry.id === id));
+    if (!entryIds.length || entries.some((entry) => !entry)) return sendJson(res, 404, { error: "not_found" });
+    if (new Set(entries.map((entry) => supplierProfileKey(entry.supplierName))).size > 1) {
+      return sendJson(res, 400, { error: "mixed_suppliers" });
+    }
+    const invoiceIds = [...new Set(entries.map((entry) => String(entry.invoiceId || "").trim()).filter(Boolean))];
+    if (invoiceIds.length > 1) return sendJson(res, 400, { error: "mixed_invoices" });
+    const invoiceId = invoiceIds[0] || randomUUID();
+    const now = new Date().toISOString();
+    store.supplierPriceEntries = store.supplierPriceEntries.map((entry) => (
+      entryIds.includes(entry.id) && entry.invoiceId !== invoiceId
+        ? normalizeSupplierPriceEntry({ ...entry, invoiceId, updatedAt: now })
+        : entry
+    ));
+    const costs = normalizeSupplierInvoiceCosts({ ...body, updatedAt: now, updatedBy: currentUser.email || currentUser.id });
+    const nextCosts = { ...(store.supplierInvoiceCosts || {}) };
+    if (hasSupplierInvoiceCosts(costs)) nextCosts[invoiceId] = costs;
+    else delete nextCosts[invoiceId];
+    store.supplierInvoiceCosts = nextCosts;
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { invoiceId, costs: nextCosts[invoiceId] || null });
+  }
+
   if (url.pathname === "/api/supplier-prices" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
     try {
-      const entries = (store.supplierPriceEntries || []).map(serializeSupplierPriceEntryForClient);
-      return sendJson(res, 200, { entries, suppliers: buildSupplierDirectory(store) });
+      const entries = serializeSupplierPriceEntriesWithCosts(store);
+      return sendJson(res, 200, { entries, suppliers: buildSupplierDirectory(store), invoiceCosts: store.supplierInvoiceCosts || {} });
     } catch (err) {
       console.error("supplier_directory_load_failed", err);
       return sendJson(res, 500, { error: "supplier_directory_load_failed" });
@@ -18846,8 +18907,14 @@ async function handleApi(req, res, url) {
       store.supplierPriceEntries.unshift(entry);
       created.push(entry);
     }
+    if (hasSupplierInvoiceCosts(body.costs)) {
+      store.supplierInvoiceCosts = {
+        ...(store.supplierInvoiceCosts || {}),
+        [invoiceId]: normalizeSupplierInvoiceCosts({ ...body.costs, updatedAt: now, updatedBy: currentUser.email || currentUser.id }),
+      };
+    }
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, { entries: created.map(serializeSupplierPriceEntryForClient) });
+    return sendJson(res, 200, { entries: serializeSupplierPriceEntriesWithCosts(store, created) });
     } finally { if (invoiceKey) pendingSupplierInvoiceKeys.delete(invoiceKey); }
   }
 
@@ -18871,7 +18938,7 @@ async function handleApi(req, res, url) {
     });
     store.supplierPriceEntries[index] = updated;
     await writeJson(STORE_PATH, store);
-    return sendJson(res, 200, serializeSupplierPriceEntryForClient(updated));
+    return sendJson(res, 200, serializeSupplierPriceEntriesWithCosts(store, [updated])[0]);
   }
 
   if (url.pathname.match(/^\/api\/supplier-prices\/[^/]+$/) && req.method === "DELETE") {
@@ -18881,6 +18948,11 @@ async function handleApi(req, res, url) {
     const index = (store.supplierPriceEntries || []).findIndex((e) => e.id === id);
     if (index < 0) return sendJson(res, 404, { error: "not_found" });
     const [removed] = store.supplierPriceEntries.splice(index, 1);
+    const removedInvoiceId = String(removed.invoiceId || "").trim();
+    if (removedInvoiceId && store.supplierInvoiceCosts?.[removedInvoiceId]
+      && !store.supplierPriceEntries.some((entry) => entry.invoiceId === removedInvoiceId)) {
+      delete store.supplierInvoiceCosts[removedInvoiceId];
+    }
     await writeJson(STORE_PATH, store);
     if (removed.attachment) scheduleAttachmentAssetRemoval([removed.attachment], "supplier_price_attachment_delete_failed");
     return sendJson(res, 200, { ok: true });
