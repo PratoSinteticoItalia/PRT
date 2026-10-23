@@ -11116,6 +11116,69 @@ function normalizeSupplierPriceEntry(item = {}) {
   };
 }
 
+// Barra dell'utile del generatore: quale voce fornitore dà il costo di ogni
+// modello di prato e di ogni materiale, scarto di taglio, quota del posatore
+// (riparto dell'utile come in Conti posa) e soglie dei colori.
+const QUOTE_COST_MATERIAL_KEYS = ["pietrisco", "telo", "bande", "colla", "picchetti"];
+
+function normalizeQuoteCostConfig(config = {}) {
+  const bounded = (value, fallback, max = 100) => {
+    const number = Number(value);
+    return value !== "" && value != null && Number.isFinite(number) ? Math.min(max, Math.max(0, number)) : fallback;
+  };
+  const cleanRef = (value) => String(value || "").trim().slice(0, 400);
+  const products = {};
+  Object.entries(config.products && typeof config.products === "object" ? config.products : {}).forEach(([slug, ref]) => {
+    const key = String(slug || "").trim().slice(0, 80);
+    if (key && cleanRef(ref)) products[key] = cleanRef(ref);
+  });
+  const materials = {};
+  QUOTE_COST_MATERIAL_KEYS.forEach((key) => {
+    const item = config.materials?.[key];
+    const ref = cleanRef(item?.ref);
+    if (!ref) return;
+    const factor = Number(item.factor);
+    materials[key] = { ref, factor: Number.isFinite(factor) && factor > 0 ? factor : null };
+  });
+  const lowPct = bounded(config.lowPct, 15);
+  return {
+    products,
+    materials,
+    wastePct: bounded(config.wastePct, 8, 50),
+    partnerSharePct: bounded(config.partnerSharePct, 50),
+    lowPct,
+    goodPct: Math.max(lowPct, bounded(config.goodPct, 30)),
+    updatedAt: String(config.updatedAt || ""),
+    updatedBy: String(config.updatedBy || ""),
+  };
+}
+
+// Ultimo prezzo per ogni coppia fornitore + materiale (dalla data fattura).
+function buildQuoteCostSupplierOptions(currentStore = {}) {
+  const latest = new Map();
+  (currentStore.supplierPriceEntries || []).forEach((entry) => {
+    const supplierName = String(entry.supplierName || "").trim();
+    const material = String(entry.material || "").trim();
+    if (!supplierName || !material || !(Number(entry.unitPrice) > 0)) return;
+    const key = `${supplierName.toLowerCase()}::${material.toLowerCase()}`;
+    const when = String(entry.invoiceDate || entry.createdAt || "");
+    const previous = latest.get(key);
+    if (previous && String(previous.invoiceDate || previous.createdAt || "") >= when) return;
+    latest.set(key, entry);
+  });
+  return [...latest.values()]
+    .map((entry) => ({
+      ref: `${String(entry.supplierName).trim()}::${String(entry.material).trim()}`,
+      supplierName: String(entry.supplierName).trim(),
+      material: String(entry.material).trim(),
+      unit: String(entry.unit || "").trim(),
+      unitPrice: Number(entry.unitPrice) || 0,
+      invoiceDate: String(entry.invoiceDate || ""),
+      invoiceNumber: String(entry.invoiceNumber || ""),
+    }))
+    .sort((left, right) => left.material.localeCompare(right.material, "it") || left.supplierName.localeCompare(right.supplierName, "it"));
+}
+
 function normalizeSupplierProfile(item = {}) {
   const now = new Date().toISOString();
   return {
@@ -17787,6 +17850,7 @@ async function handleApi(req, res, url) {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       mine: String(row.author_id) === String(currentUser.id),
+      marginPct: Number.isFinite(Number(row.payload?.marginPct)) && row.payload?.marginPct !== null ? Number(row.payload.marginPct) : null,
       ...(full ? { payload: row.payload || {} } : {}),
     });
     const quoteLabel = (number, revision) => `${number}${Number(revision) > 1 ? ` rev.${revision}` : ""}`;
@@ -18254,6 +18318,26 @@ async function handleApi(req, res, url) {
   }
 
   // Supplier invoice drafts are reviewed before this write path.
+
+  // Costi della barra dell'utile: tutto l'ufficio li legge (la barra la vede
+  // tutto l'ufficio) e li imposta da Impostazioni.
+  if (url.pathname === "/api/quote-costs" && ["GET", "PUT"].includes(req.method)) {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (req.method === "PUT") {
+      const body = await readBody(req);
+      store.quoteCostConfig = normalizeQuoteCostConfig({
+        ...body,
+        updatedAt: new Date().toISOString(),
+        updatedBy: String(currentUser.name || currentUser.email || ""),
+      });
+      await writeJson(STORE_PATH, store);
+    }
+    return sendJson(res, 200, {
+      config: normalizeQuoteCostConfig(store.quoteCostConfig || {}),
+      supplierOptions: buildQuoteCostSupplierOptions(store),
+    });
+  }
 
   if (url.pathname === "/api/supplier-prices" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
