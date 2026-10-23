@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-messaggio-invio";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261023-messaggio-invio";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-messaggio-invio";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-messaggio-invio";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-messaggio-invio";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-messaggio-invio";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-messaggio-invio';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-link-preventivo";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261023-link-preventivo";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-link-preventivo";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-link-preventivo";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-link-preventivo";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-link-preventivo";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-link-preventivo';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261023-messaggio-invio";
+} from "./lib/order-money.js?v=20261023-link-preventivo";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261023-messaggio-invio";
+import { regionForCity } from "./lib/geo.js?v=20261023-link-preventivo";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261023-messaggio-invio";
+} from "./lib/shipping-eligibility.js?v=20261023-link-preventivo";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261023-messaggio-invio";
+} from "./lib/profit-split.js?v=20261023-link-preventivo";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261023-messaggio-invio";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-messaggio-invio";
+} from "./lib/preventivo-pricing.js?v=20261023-link-preventivo";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-link-preventivo";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261023-messaggio-invio";
+} from "./lib/sales-assignment.js?v=20261023-link-preventivo";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261023-messaggio-invio";
+} from "./lib/surveys.js?v=20261023-link-preventivo";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261023-messaggio-invio";
+const APP_SHELL_VERSION = "20261023-link-preventivo";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15510,7 +15510,8 @@ async function openQuoteSendDialog(quoteId = "") {
       && Boolean(navigator.canShare && navigator.share && navigator.canShare({ files: [send.file] }));
     if (!send.canShareFiles) {
       const link = await apiFetch(`/api/quotes/${encodeURIComponent(quote.id)}/share-link`, { method: "POST", body: "{}" });
-      send.shareLink = link?.path ? `${window.location.origin}${link.path}` : "";
+      // Indirizzo dei preventivi se è attivo, altrimenti /preventivo/… sul portale.
+      send.shareLink = link?.url || (link?.path ? `${window.location.origin}${link.path}` : "");
     }
   } catch (error) {
     send.status = it ? `Preparazione non riuscita: ${error.message}` : `Preparation failed: ${error.message}`;
@@ -18517,6 +18518,75 @@ async function processSalesRequestSave(draftRecord, {
     }
     syncSalesRequestSubmitButtons({ busy: false, queued: false });
     flushPendingCurrentViewRefresh();
+  }
+}
+
+// Menu "Assegna a…" sul pulsante della riga (ottobre 2026): prima il pulsante
+// apriva la scheda e metteva il cursore sulla tendina, senza che si capisse
+// cosa fare. Ora si sceglie il nome e la richiesta è assegnata.
+function closeCrmAssignMenu() {
+  document.getElementById("crm-assign-menu")?.remove();
+}
+
+function openCrmAssignMenu(anchor, requestId) {
+  const it = state.lang === "it";
+  const wasOpenFor = document.getElementById("crm-assign-menu")?.dataset.requestId;
+  closeCrmAssignMenu();
+  if (wasOpenFor === requestId) return;
+  const options = getSalesRequestAssignmentOptions();
+  const menu = document.createElement("div");
+  menu.id = "crm-assign-menu";
+  menu.className = "crm-assign-menu";
+  menu.dataset.requestId = requestId;
+  menu.setAttribute("role", "menu");
+  menu.innerHTML = `<p class="crm-assign-menu-title">${it ? "Assegna a" : "Assign to"}</p>${options.length
+    ? options.map((name) => `<button type="button" role="menuitem" data-action="crm-assign-pick" data-id="${escapeAttr(requestId)}" data-assignment="${escapeAttr(name)}">${escapeHtml(name)}</button>`).join("")
+    : `<p class="crm-assign-menu-empty">${it ? "Nessun nome: aggiungili in Impostazioni → Utenti e squadre → Assegnazioni CRM." : "No names: add them in Settings → Users and crews → CRM assignments."}</p>`}`;
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  const left = Math.min(Math.max(8, rect.right - menu.offsetWidth), window.innerWidth - menu.offsetWidth - 8);
+  const fitsBelow = rect.bottom + 6 + menu.offsetHeight <= window.innerHeight - 8;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - menu.offsetHeight)}px`;
+  menu.querySelector("button")?.focus({ preventScroll: true });
+  if (!document.body.dataset.crmAssignMenuBound) {
+    document.body.dataset.crmAssignMenuBound = "1";
+    document.addEventListener("pointerdown", (event) => {
+      if (!event.target.closest?.("#crm-assign-menu, [data-action='crm-row-action']")) closeCrmAssignMenu();
+    }, true);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeCrmAssignMenu(); });
+    window.addEventListener("scroll", closeCrmAssignMenu, true);
+    window.addEventListener("resize", closeCrmAssignMenu);
+  }
+}
+
+async function assignSingleSalesRequest(requestId = "", assignmentValue = "") {
+  const it = state.lang === "it";
+  const assignment = normalizeSalesRequestAssignment(assignmentValue);
+  closeCrmAssignMenu();
+  if (!requestId || !assignment) return;
+  try {
+    const result = await apiFetchWithRetry("/api/sales/requests/bulk-assignment", {
+      method: "POST",
+      timeoutMs: SALES_REQUEST_SAVE_TIMEOUT_MS,
+      body: JSON.stringify({ ids: [requestId], assignment }),
+    }, {
+      retries: SALES_REQUEST_SAVE_MAX_RETRIES,
+    });
+    mergeSalesRequestRecords(Array.isArray(result?.requests) ? result.requests : []);
+    if (state.selectedSalesRequestSnapshot?.id === requestId) {
+      state.selectedSalesRequestSnapshot = normalizeSalesRequestRecord({ ...state.selectedSalesRequestSnapshot, assignment, firstContactBy: assignment });
+    }
+    // Scheda aperta sulla stessa richiesta: la tendina deve dire lo stesso,
+    // altrimenti il prossimo salvataggio automatico rimetterebbe "nessuno".
+    if (ui.salesRequestForm?.id?.value === requestId && ui.salesRequestForm.assignment) {
+      ui.salesRequestForm.assignment.value = assignment;
+    }
+    renderOps();
+    renderSalesRequests();
+    showToast(it ? `Assegnata a ${assignment}` : `Assigned to ${assignment}`, "success");
+  } catch (error) {
+    showToast(getSalesRequestSaveErrorMessage(error), "error");
   }
 }
 
@@ -34862,6 +34932,10 @@ function handleGlobalClick(event) {
     showGlobalSearchDialog();
     return;
   }
+  if (action === "crm-assign-pick") {
+    void assignSingleSalesRequest(button.dataset.id || "", button.dataset.assignment || "");
+    return;
+  }
   if (action === "settings-section") {
     setSettingsSection(button.dataset.section || "");
     return;
@@ -34981,6 +35055,12 @@ function handleGlobalClick(event) {
     event.stopPropagation();
     const rowId = String(button?.dataset?.id || "");
     if (!rowId) return;
+    // "Assegna": si sceglie subito a chi, senza aprire la scheda.
+    const unassignedRecord = findSalesRequestById(rowId);
+    if (unassignedRecord && !normalizeSalesRequestAssignment(unassignedRecord.assignment || "")) {
+      openCrmAssignMenu(button, rowId);
+      return;
+    }
     state.selectedSalesRequestId = rowId;
     const rowRecord = findSalesRequestById(rowId);
     if (rowRecord) rememberSelectedSalesRequest(rowRecord);

@@ -30334,3 +30334,30 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 /* Invio dal computer: scelta se mettere il link al PDF nel messaggio. */
 .srq-send-option { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; color: var(--ui-text); font-size: 13px; cursor: pointer; }
 .srq-send-option input { margin-top: 2px; accent-color: var(--brand, #2f7a55); }
+
+/* ── Richieste: assegna dalla riga, tendine, preventivo in evidenza (ott 2026) ── */
+.crm-assign-menu { position: fixed; z-index: 1200; display: grid; min-width: 190px; max-width: 280px; max-height: 60vh; overflow-y: auto; padding: 6px; border: 1px solid var(--ui-line, #e2e7e3); border-radius: 10px; background: #fff; box-shadow: 0 10px 30px rgba(20, 40, 28, .16); }
+.crm-assign-menu-title { margin: 2px 8px 4px; color: var(--ui-muted, #66716a); font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.crm-assign-menu button { min-height: 36px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--ui-text, #18231c); font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
+.crm-assign-menu button:hover, .crm-assign-menu button:focus-visible { background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); outline: none; }
+.crm-assign-menu-empty { margin: 4px 8px 6px; color: var(--ui-muted, #66716a); font-size: 12.5px; line-height: 1.4; }
+
+/* Tendine della scheda richiesta: la freccia nativa del Mac stava attaccata
+   al bordo destro; ora è nostra, un po' più dentro. */
+#sales-requests select.text-input, #sales-requests select.srq-quote-status {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 38px !important;
+  /* !important: regole più vecchie usano "background: … !important". */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%235f6b63' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 14px center !important;
+  background-size: 12px 8px !important;
+  text-overflow: ellipsis;
+}
+
+/* Cartella: il preventivo in un riquadro verde tenue, i pulsanti bianchi sopra. */
+#sales-requests .srq-quote:not(.is-ghost) { border-color: #cfe3d6; background: #f2f8f4; box-shadow: inset 3px 0 var(--brand, #2f7a55); }
+#sales-requests .srq-quote:not(.is-ghost) .srq-quote-total { color: var(--brand-strong, #276647); }
+#sales-requests .srq-quote:not(.is-ghost) .srq-quote-actions .ghost-button:not(.is-primary),
+#sales-requests .srq-quote:not(.is-ghost) .srq-quote-status { background-color: #fff; }

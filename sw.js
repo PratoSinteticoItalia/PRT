@@ -1,36 +1,36 @@
-const CACHE_NAME = "psi-ops-shell-20261023-messaggio-invio";
+const CACHE_NAME = "psi-ops-shell-20261023-link-preventivo";
 const APP_SHELL = [
   "/",
-  "/?shell=20261023-messaggio-invio",
+  "/?shell=20261023-link-preventivo",
   "/index.html",
   "/garden-planner.html",
-  "/garden-planner.html?shell=20261023-messaggio-invio",
-  "/garden-planner.html?v=20261023-messaggio-invio&shell=20261023-messaggio-invio",
+  "/garden-planner.html?shell=20261023-link-preventivo",
+  "/garden-planner.html?v=20261023-link-preventivo&shell=20261023-link-preventivo",
   "/garden-photo-configurator.html?v=20260416-photo-loader-fix-34",
   "/garden-photo-configurator-v2.html?v=20260416-photo-loader-fix-34",
-  "/garden-planner-page.js?v=20261023-messaggio-invio",
-  "/styles.css?v=20261023-messaggio-invio",
-  "/app.js?v=20261023-messaggio-invio",
-  "/lib/order-money.js?v=20261023-messaggio-invio",
-  "/lib/geo.js?v=20261023-messaggio-invio",
-  "/lib/comuni-regioni.js?v=20261023-messaggio-invio",
-  "/lib/sales-assignment.js?v=20261023-messaggio-invio",
-  "/lib/surveys.js?v=20261023-messaggio-invio",
-  "/lib/i18n-en.js?v=20261023-messaggio-invio",
-  "/lib/i18n-en-catalog.js?v=20261023-messaggio-invio",
-  "/lib/i18n-dom.js?v=20261023-messaggio-invio",
-  "/lib/timesheet-absence.js?v=20261023-messaggio-invio",
-  "/lib/profit-history.js?v=20261023-messaggio-invio",
-  "/lib/supplier-product-units.js?v=20261023-messaggio-invio",
+  "/garden-planner-page.js?v=20261023-link-preventivo",
+  "/styles.css?v=20261023-link-preventivo",
+  "/app.js?v=20261023-link-preventivo",
+  "/lib/order-money.js?v=20261023-link-preventivo",
+  "/lib/geo.js?v=20261023-link-preventivo",
+  "/lib/comuni-regioni.js?v=20261023-link-preventivo",
+  "/lib/sales-assignment.js?v=20261023-link-preventivo",
+  "/lib/surveys.js?v=20261023-link-preventivo",
+  "/lib/i18n-en.js?v=20261023-link-preventivo",
+  "/lib/i18n-en-catalog.js?v=20261023-link-preventivo",
+  "/lib/i18n-dom.js?v=20261023-link-preventivo",
+  "/lib/timesheet-absence.js?v=20261023-link-preventivo",
+  "/lib/profit-history.js?v=20261023-link-preventivo",
+  "/lib/supplier-product-units.js?v=20261023-link-preventivo",
   "/logo-prato.png",
   "/pwa-icon-192.png",
   "/pwa-icon-512.png",
   "/apple-touch-icon.png",
   "/manifest.webmanifest",
-  "/preventivo-v2.html?embedded=1&p2=1&v=20261023-messaggio-invio",
-  "/preventivo-v2.html?embedded=1&p2=0&v=20261023-messaggio-invio",
-  "/vendor/signature_pad.umd.min.js?v=20261023-messaggio-invio",
-  "/vendor/html2pdf.bundle.min.js?v=20261023-messaggio-invio",
+  "/preventivo-v2.html?embedded=1&p2=1&v=20261023-link-preventivo",
+  "/preventivo-v2.html?embedded=1&p2=0&v=20261023-link-preventivo",
+  "/vendor/signature_pad.umd.min.js?v=20261023-link-preventivo",
+  "/vendor/html2pdf.bundle.min.js?v=20261023-link-preventivo",
 ];
 const NETWORK_FIRST_PATHS = new Set([
   "/",
@@ -121,6 +121,8 @@ self.addEventListener("fetch", (event) => {
   // a parte, sempre vivo: mai intercettarlo, altrimenti il service worker del
   // gestionale continua a servire dati/foto vecchie anche dopo un deploy.
   if (url.pathname.startsWith("/vetrina") || url.pathname.startsWith("/showroom-content/")) return;
+  // Link dei preventivi per i clienti: pagine private e PDF, sempre dal server.
+  if (url.pathname.startsWith("/preventivo/")) return;
 
   const isShellRequest = request.mode === "navigate" || NETWORK_FIRST_PATHS.has(url.pathname);
   if (isShellRequest) {
