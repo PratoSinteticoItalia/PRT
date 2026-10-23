@@ -4,6 +4,7 @@ import { profitPaymentBalance } from "./lib/profit-history.js";
 import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { computeSupplierLandedCosts, hasSupplierInvoiceCosts, normalizeSupplierInvoiceCosts } from "./lib/supplier-landed-cost.js";
+import { renderQuoteLinkErrorPage, renderQuotePublicPage } from "./lib/quote-public-page.js";
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -18028,10 +18029,17 @@ async function handleApi(req, res, url) {
       if (sendMatch[2] === "share-link") {
         let token = row.share_token;
         if (!token || !row.share_expires_at || new Date(row.share_expires_at).getTime() < Date.now() + 86400000) {
-          token = randomBytes(24).toString("base64url");
+          // 12 caratteri casuali (72 bit): link corto ma non indovinabile.
+          token = randomBytes(9).toString("base64url");
           await pool.query("UPDATE sales_quotes SET share_token = $2, share_expires_at = NOW() + INTERVAL '60 days' WHERE id = $1", [row.id, token]);
         }
-        return sendJson(res, 200, { ok: true, path: `/api/public/quote/${token}` });
+        const linkPath = `/${quoteLinkSlug(row)}/${token}`;
+        const quoteBase = await getQuoteLinkBaseUrl();
+        return sendJson(res, 200, {
+          ok: true,
+          path: `/preventivo${linkPath}`,
+          url: quoteBase ? `${quoteBase}${linkPath}` : "",
+        });
       }
       const body = await readBody(req);
       const channel = ["whatsapp-share", "whatsapp-link", "manual"].includes(body.channel) ? body.channel : "manual";
@@ -21102,6 +21110,132 @@ async function handleApi(req, res, url) {
   return sendJson(res, 404, { error: "not_found" });
 }
 
+// ── Link pubblici dei preventivi (ottobre 2026) ───────────────────────────
+// Il cliente riceve preventivi.pratosinteticoitalia.it/F-2026-2569/<codice>:
+// niente "portale" nell'indirizzo. Finché quell'indirizzo non risponde (CNAME
+// su SiteGround + dominio aggiunto su Render) il link resta sul portale,
+// /preventivo/F-2026-2569/<codice>: il server se ne accorge da solo e passa
+// all'indirizzo nuovo appena è attivo. Sul dominio dei preventivi si risponde
+// solo a questi link: niente portale né API.
+const QUOTE_LINK_HOST = String(process.env.QUOTE_LINK_HOST || "preventivi.pratosinteticoitalia.it").trim().toLowerCase();
+const QUOTE_LINK_CHECK_PATH = "/__verifica-preventivi";
+const quoteLinkHostStatus = { ready: false, checkedAt: 0 };
+
+async function getQuoteLinkBaseUrl() {
+  if (!QUOTE_LINK_HOST) return "";
+  const maxAge = quoteLinkHostStatus.ready ? 30 * 60_000 : 5 * 60_000;
+  if (Date.now() - quoteLinkHostStatus.checkedAt > maxAge) {
+    quoteLinkHostStatus.checkedAt = Date.now();
+    try {
+      const response = await fetch(`https://${QUOTE_LINK_HOST}${QUOTE_LINK_CHECK_PATH}`, { signal: AbortSignal.timeout(4000) });
+      const data = response.ok ? await response.json() : null;
+      quoteLinkHostStatus.ready = data?.service === "psi-preventivi";
+    } catch {
+      quoteLinkHostStatus.ready = false;
+    }
+  }
+  return quoteLinkHostStatus.ready ? `https://${QUOTE_LINK_HOST}` : "";
+}
+
+function quoteLinkSlug(row = {}) {
+  const number = String(row.number || "preventivo").replace(/[^\w.-]+/g, "-");
+  return Number(row.revision) > 1 ? `${number}-rev${row.revision}` : number;
+}
+
+function sendQuoteLinkHtml(res, status, html) {
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "private, no-store",
+    "X-Robots-Tag": "noindex, nofollow",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+  });
+  return res.end(html);
+}
+
+// Restituisce true se la richiesta era un link di preventivo (o arrivava sul
+// dominio dei preventivi) ed è stata servita.
+async function handleQuoteLinkRequest(req, res, url, { onQuoteHost = false } = {}) {
+  const method = String(req.method || "GET").toUpperCase();
+  if (onQuoteHost && url.pathname === QUOTE_LINK_CHECK_PATH) {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ service: "psi-preventivi" }));
+    return true;
+  }
+  if (onQuoteHost && ["/logo-prato.png", "/pwa-icon-512.png"].includes(url.pathname)) {
+    try {
+      const image = await readFile(resolve(ROOT, url.pathname.slice(1)));
+      res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" });
+      res.end(method === "HEAD" ? undefined : image);
+    } catch {
+      res.writeHead(404);
+      res.end();
+    }
+    return true;
+  }
+  if (onQuoteHost && url.pathname === "/") {
+    res.writeHead(302, { Location: "https://www.pratosinteticoitalia.com", "Cache-Control": "no-cache" });
+    res.end();
+    return true;
+  }
+  const path = onQuoteHost ? url.pathname : (url.pathname.startsWith("/preventivo/") ? url.pathname.slice("/preventivo".length) : "");
+  if (!path) return false;
+  // …/<numero>/<codice> = pagina; …/<numero>/<codice>/Preventivo-<numero>.pdf = PDF
+  // (il nome del file è quello che il visore mostra e propone salvando).
+  const match = path.match(/^\/([\w.-]{1,60})\/([\w-]{10,80})(\/pdf|\/[\w.-]{1,80}\.pdf)?\/?$/);
+  if (!match || !["GET", "HEAD"].includes(method) || !USE_POSTGRES) {
+    sendQuoteLinkHtml(res, 404, renderQuoteLinkErrorPage());
+    return true;
+  }
+  const [, , token, wantsPdf] = match;
+  let row = null;
+  try {
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      `SELECT number, revision, customer_name, customer_city, summary, payload, pdf, created_at, share_expires_at
+         FROM sales_quotes WHERE share_token = $1 AND share_expires_at > NOW()`,
+      [token],
+    );
+    row = rows[0] || null;
+  } catch (error) {
+    console.error("quote_link_failed", error?.message || error);
+    sendQuoteLinkHtml(res, 500, renderQuoteLinkErrorPage());
+    return true;
+  }
+  if (!row?.pdf) {
+    sendQuoteLinkHtml(res, 404, renderQuoteLinkErrorPage());
+    return true;
+  }
+  const label = `${row.number}${Number(row.revision) > 1 ? ` rev.${row.revision}` : ""}`;
+  if (wantsPdf) {
+    const download = url.searchParams.has("scarica");
+    const fileName = `Preventivo ${label}${row.customer_name ? ` - ${row.customer_name}` : ""}.pdf`;
+    await streamAttachmentAsset(req, res, { ...row.pdf, name: fileName, type: "application/pdf" }, { cacheControl: "private, no-store", forceDownload: download });
+    return true;
+  }
+  const origin = `${onQuoteHost ? "https" : (req.headers["x-forwarded-proto"] || "http")}://${req.headers.host}`;
+  const base = `${origin}${onQuoteHost ? "" : "/preventivo"}/${quoteLinkSlug(row)}/${token}`;
+  const form = row.payload?.form || {};
+  sendQuoteLinkHtml(res, 200, renderQuotePublicPage({
+    label,
+    customerName: row.customer_name,
+    customerCity: row.customer_city,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    validUntil: form.dataAl || "",
+    quoteType: form.quoteType || "",
+    sqm: form.sqm,
+    summary: row.summary,
+    expiresAt: row.share_expires_at instanceof Date ? row.share_expires_at.toISOString() : row.share_expires_at,
+  }, {
+    page: base,
+    pdf: `${base}/Preventivo-${quoteLinkSlug(row)}.pdf`,
+    download: `${base}/Preventivo-${quoteLinkSlug(row)}.pdf?scarica=1`,
+    image: `${origin}/pwa-icon-512.png`,
+  }));
+  return true;
+}
+
 const server = createServer(async (req, res) => {
   const rawRequestPath = String(req.url || "/").split("?")[0] || "/";
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -21126,6 +21260,10 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    const onQuoteHost = Boolean(QUOTE_LINK_HOST) && incomingHost.split(":")[0] === QUOTE_LINK_HOST;
+    if (onQuoteHost || url.pathname.startsWith("/preventivo/")) {
+      if (await handleQuoteLinkRequest(req, res, url, { onQuoteHost })) return;
+    }
     if (url.pathname.startsWith("/api/")) {
       const method = String(req.method || "GET").toUpperCase();
       const shouldLockState = !["/api/healthz", "/api/events", "/api/session/revision", "/api/showroom/diag"].includes(url.pathname)
