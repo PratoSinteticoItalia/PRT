@@ -5,6 +5,7 @@ import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { computeSupplierLandedCosts, hasSupplierInvoiceCosts, normalizeSupplierInvoiceCosts } from "./lib/supplier-landed-cost.js";
 import { renderQuoteLinkErrorPage, renderQuotePublicPage } from "./lib/quote-public-page.js";
+import { buildSalesRequestSearchPatterns } from "./lib/sales-search.js";
 import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { createReadStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -87,6 +88,17 @@ const writeGuard = createWriteGuard({
   onError: (label, err, meta) => logError(`write:${label}`, err, meta),
 });
 const ROOT = dirname(fileURLToPath(import.meta.url));
+
+// Testo su cui cerca la lista Richieste (ottobre 2026): nome, cognome, azienda,
+// città, email, telefono (anche solo cifre) e nota, minuscolo e senza accenti.
+// La stessa espressione è nell'indice a trigrammi, così "toda" trova "Todaro" e
+// "3491113" trova "+39 349 111 3205" senza rileggere tutta la tabella.
+const SALES_REQUEST_SEARCH_TEXT_SQL = `translate(lower(
+  coalesce(first_name,'') || ' ' || coalesce(last_name,'') || ' ' || coalesce(company,'') || ' ' ||
+  coalesce(city,'') || ' ' || coalesce(email,'') || ' ' || coalesce(phone,'') || ' ' ||
+  regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g') || ' ' || coalesce(note,'')
+), 'àáèéìíòóùú', 'aaeeiioouu')`;
+
 const FALLBACK_DATA_DIR = resolve(join(ROOT, "data"));
 let DATA_DIR = resolve(process.env.DATA_DIR || FALLBACK_DATA_DIR);
 let STORE_PATH = join(DATA_DIR, "store.json");
@@ -1644,6 +1656,14 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS job_events_crew_idx        ON job_events (crew_name, occurred_at DESC);
       CREATE INDEX IF NOT EXISTS job_events_recent_idx      ON job_events (occurred_at DESC);
     `);
+    // Ricerca contatti su pezzi di parola: indice a trigrammi. Facoltativo:
+    // senza pg_trgm la ricerca funziona lo stesso, solo senza indice.
+    try {
+      await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+      await pool.query(`CREATE INDEX IF NOT EXISTS sales_requests_search_trgm_idx ON sales_requests USING gin ((${SALES_REQUEST_SEARCH_TEXT_SQL}) gin_trgm_ops)`);
+    } catch (error) {
+      console.warn("[db] indice ricerca contatti non creato:", error?.message);
+    }
     console.log("[db] schema relazionale verificato");
   })().catch((err) => {
     relationalSchemaBootstrapPromise = null;
@@ -2047,13 +2067,13 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
     params.push(requestedId);
     where.push(`id = $${params.length}`);
   } else if (q && q.trim()) {
-    params.push(q.trim());
-    where.push(`to_tsvector('italian',
-      coalesce(first_name,'') || ' ' || coalesce(last_name,'') || ' ' ||
-      coalesce(phone,'') || ' ' || coalesce(city,'') || ' ' ||
-      coalesce(email,'') || ' ' || coalesce(note,'') || ' ' ||
-      coalesce(company,'')
-    ) @@ plainto_tsquery('italian', $${params.length})`);
+    // Ogni parola deve comparire, anche a metà ("toda" → Todaro). Prima era
+    // una ricerca per parole intere: finché non si finiva di scrivere il
+    // cognome, o con un pezzo di telefono, la lista restava vuota.
+    buildSalesRequestSearchPatterns(q).forEach((pattern) => {
+      params.push(pattern);
+      where.push(`${SALES_REQUEST_SEARCH_TEXT_SQL} LIKE $${params.length}`);
+    });
   }
   if (!requestedId && status && status !== "all") {
     // Filtro per CATEGORIA (allineato al popover tone): new | contacted | quoted | won | lost
@@ -2230,12 +2250,17 @@ async function searchSalesRequestsFromDb({ id = "", q = "", status = "", assignm
 
   try {
     const [countRes, dataRes, stats] = await withOperationTimeout(Promise.all([
+      // Il conteggio usa le date delle email solo se il filtro le chiede
+      // ("ferme da 5+ giorni"): altrimenti il join non cambia il numero e
+      // rifaceva per niente il raggruppamento di tutte le email a ogni ricerca.
       pool.query(
-        `${SHADOW_CTE}
+        stale
+          ? `${SHADOW_CTE}
          SELECT COUNT(*) AS total
          FROM sales_requests sr
          LEFT JOIN shadow_dates sd ON sd.sr_id = sr.id
-         ${whereWithSd}`,
+         ${whereWithSd}`
+          : `SELECT COUNT(*) AS total FROM sales_requests sr ${whereWithSd}`,
         params,
       ),
       pool.query(
@@ -18034,7 +18059,7 @@ async function handleApi(req, res, url) {
           await pool.query("UPDATE sales_quotes SET share_token = $2, share_expires_at = NOW() + INTERVAL '60 days' WHERE id = $1", [row.id, token]);
         }
         const linkPath = `/${quoteLinkSlug(row)}/${token}`;
-        const quoteBase = await getQuoteLinkBaseUrl();
+        const quoteBase = getQuoteLinkBaseUrl();
         return sendJson(res, 200, {
           ok: true,
           path: `/preventivo${linkPath}`,
@@ -21119,21 +21144,30 @@ async function handleApi(req, res, url) {
 // solo a questi link: niente portale né API.
 const QUOTE_LINK_HOST = String(process.env.QUOTE_LINK_HOST || "preventivi.pratosinteticoitalia.it").trim().toLowerCase();
 const QUOTE_LINK_CHECK_PATH = "/__verifica-preventivi";
-const quoteLinkHostStatus = { ready: false, checkedAt: 0 };
+const quoteLinkHostStatus = { ready: false, checkedAt: 0, checking: null };
 
-async function getQuoteLinkBaseUrl() {
-  if (!QUOTE_LINK_HOST) return "";
-  const maxAge = quoteLinkHostStatus.ready ? 30 * 60_000 : 5 * 60_000;
-  if (Date.now() - quoteLinkHostStatus.checkedAt > maxAge) {
-    quoteLinkHostStatus.checkedAt = Date.now();
+// Il controllo gira in sottofondo (all'avvio e ogni 10 minuti): chi crea un
+// link non aspetta mai la risposta del dominio.
+function refreshQuoteLinkHost() {
+  if (!QUOTE_LINK_HOST || quoteLinkHostStatus.checking) return quoteLinkHostStatus.checking;
+  quoteLinkHostStatus.checking = (async () => {
     try {
       const response = await fetch(`https://${QUOTE_LINK_HOST}${QUOTE_LINK_CHECK_PATH}`, { signal: AbortSignal.timeout(4000) });
       const data = response.ok ? await response.json() : null;
       quoteLinkHostStatus.ready = data?.service === "psi-preventivi";
     } catch {
       quoteLinkHostStatus.ready = false;
+    } finally {
+      quoteLinkHostStatus.checkedAt = Date.now();
+      quoteLinkHostStatus.checking = null;
     }
-  }
+  })();
+  return quoteLinkHostStatus.checking;
+}
+
+function getQuoteLinkBaseUrl() {
+  if (!QUOTE_LINK_HOST) return "";
+  if (Date.now() - quoteLinkHostStatus.checkedAt > 10 * 60_000) void refreshQuoteLinkHost();
   return quoteLinkHostStatus.ready ? `https://${QUOTE_LINK_HOST}` : "";
 }
 
@@ -21509,6 +21543,12 @@ async function bootstrapRelationalSchemaWithRetry(attempt = 1) {
 
 server.listen(PORT, HOST, () => {
   console.log(`Vertex Ops backend running on http://${HOST}:${PORT}`);
+  // Indirizzo dei link preventivo: si controlla poco dopo l'avvio (quando il
+  // server risponde già a sé stesso) e poi ogni 10 minuti.
+  if (QUOTE_LINK_HOST && USE_POSTGRES) {
+    setTimeout(() => { void refreshQuoteLinkHost(); }, 15_000).unref?.();
+    setInterval(() => { void refreshQuoteLinkHost(); }, 10 * 60_000).unref?.();
+  }
   // Avvia listener PG per invalidazione cache cross-istanza
   setupPgListener().catch((err) => console.error("[pg-listen] setup error:", err?.message));
   // Keepalive PG: una SELECT 1 ogni 5 s mantiene le connessioni nel pool

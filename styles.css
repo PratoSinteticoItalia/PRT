@@ -30361,3 +30361,22 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 #sales-requests .srq-quote:not(.is-ghost) .srq-quote-total { color: var(--brand-strong, #276647); }
 #sales-requests .srq-quote:not(.is-ghost) .srq-quote-actions .ghost-button:not(.is-primary),
 #sales-requests .srq-quote:not(.is-ghost) .srq-quote-status { background-color: #fff; }
+
+/* Ricerca richieste: rotellina nel campo mentre arrivano i risultati. */
+#sales-requests .search-field { position: relative; }
+#sales-requests .search-field.is-searching::after { content: ""; position: absolute; right: 12px; bottom: 50%; width: 14px; height: 14px; margin-bottom: -7px; border: 2px solid #cfd8d1; border-top-color: var(--brand, #2f7a55); border-radius: 50%; animation: spin .7s linear infinite; pointer-events: none; }
+#sales-requests .search-field.is-searching input { padding-right: 34px; }
+/* Esito del preventivo: freccia staccata dal testo. */
+#sales-requests .srq-quote-actions .srq-quote-status { padding: 0 32px 0 10px !important; background-position: right 11px center !important; }
+/* "Versione precedente": freccina propria, niente riquadro di focus al clic. */
+#sales-requests .srq-quote-previous > summary { display: inline-flex; align-items: center; gap: 6px; list-style: none; border-radius: 6px; font-weight: 600; }
+#sales-requests .srq-quote-previous > summary::-webkit-details-marker { display: none; }
+#sales-requests .srq-quote-previous > summary::before { content: "›"; display: inline-block; font-size: 15px; line-height: 1; transition: transform .15s; }
+#sales-requests .srq-quote-previous[open] > summary::before { transform: rotate(90deg); }
+#sales-requests summary:focus:not(:focus-visible) { outline: none; }
+#sales-requests summary:focus-visible { outline: 2px solid var(--brand, #2f7a55); outline-offset: 2px; }
+/* Riga selezionata: basta la riga verde sul bordo. La vecchia barretta delle
+   card (::before) finiva sopra il pallino di selezione anche sul computer. */
+#sales-requests .sales-request-card.crm-row.is-active::before { content: none !important; }
+/* Ricerca generale: mentre arrivano le richieste dal server. */
+.cmd-k-searching { padding: 28px 16px; color: rgba(255, 255, 255, .45); font-size: 14px; text-align: center; }
