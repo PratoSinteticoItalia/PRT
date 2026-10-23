@@ -1459,6 +1459,14 @@ async function ensureRelationalSchema() {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+      -- Invio (23 ott): salvato = "to_send"; "sent" solo quando parte davvero.
+      -- share_token = link privato al PDF per WhatsApp quando il browser non
+      -- può allegare il file; scade dopo 60 giorni.
+      ALTER TABLE sales_quotes ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
+      ALTER TABLE sales_quotes ADD COLUMN IF NOT EXISTS sent_channel TEXT;
+      ALTER TABLE sales_quotes ADD COLUMN IF NOT EXISTS share_token TEXT;
+      ALTER TABLE sales_quotes ADD COLUMN IF NOT EXISTS share_expires_at TIMESTAMPTZ;
+      CREATE UNIQUE INDEX IF NOT EXISTS sales_quotes_share_token_idx ON sales_quotes (share_token) WHERE share_token IS NOT NULL;
       CREATE UNIQUE INDEX IF NOT EXISTS sales_quotes_number_rev_idx ON sales_quotes (number, revision);
       CREATE INDEX IF NOT EXISTS sales_quotes_request_idx ON sales_quotes (request_id);
       CREATE INDEX IF NOT EXISTS sales_quotes_author_idx ON sales_quotes (author_id);
@@ -11116,6 +11124,12 @@ function normalizeSupplierPriceEntry(item = {}) {
   };
 }
 
+// Stati della richiesta legati al preventivo (gli stessi testi dell'elenco
+// stati del CRM: finiscono nelle fasi "In preventivo" e "Preventivo inviato").
+const QUOTE_TO_SEND_REQUEST_STATUS = "preventivo da inviare";
+const QUOTE_SENT_REQUEST_STATUS = "Preventivo inviato";
+const QUOTE_ACCEPTED_REQUEST_STATUS = "preventivo confermato";
+
 // Barra dell'utile del generatore: quale voce fornitore dà il costo di ogni
 // modello di prato e di ogni materiale, scarto di taglio, quota del posatore
 // (riparto dell'utile come in Conti posa) e soglie dei colori.
@@ -15254,6 +15268,22 @@ async function handleApi(req, res, url) {
   }
 
   // GET /api/public/track/:token → dati pubblici filtrati (no auth)
+  // Link privato al PDF di un preventivo (mandato su WhatsApp quando il
+  // browser non può allegare il file): token lungo e casuale, scade in 60 giorni.
+  if (url.pathname.startsWith("/api/public/quote/") && req.method === "GET") {
+    if (!USE_POSTGRES) return sendJson(res, 404, { error: "not_found" });
+    const token = decodeURIComponent(url.pathname.slice("/api/public/quote/".length));
+    if (!/^[\w-]{20,80}$/.test(token)) return sendJson(res, 404, { error: "not_found" });
+    try {
+      const pool = await getPgPool();
+      const { rows } = await pool.query("SELECT pdf FROM sales_quotes WHERE share_token = $1 AND share_expires_at > NOW()", [token]);
+      if (!rows[0]?.pdf) return sendJson(res, 404, { error: "not_found" });
+      return streamAttachmentAsset(req, res, rows[0].pdf, { cacheControl: "private, no-store", forceDownload: false });
+    } catch (error) {
+      return sendJson(res, 500, { error: "quote_link_failed" });
+    }
+  }
+
   if (url.pathname.startsWith("/api/public/track/") && req.method === "GET") {
     const token = decodeURIComponent(url.pathname.slice("/api/public/track/".length));
     try {
@@ -17844,6 +17874,9 @@ async function handleApi(req, res, url) {
       status: row.status || "sent",
       customerName: row.customer_name || "",
       customerCity: row.customer_city || "",
+      customerPhone: row.customer_phone || "",
+      sentAt: row.sent_at || null,
+      sentChannel: row.sent_channel || "",
       total: Number(row.total || 0),
       summary: row.summary || "",
       hasPdf: Boolean(row.pdf),
@@ -17888,57 +17921,114 @@ async function handleApi(req, res, url) {
       if (!buffer?.length || buffer.subarray(0, 5).toString() !== "%PDF-" || buffer.length > 10 * 1024 * 1024) {
         return sendJson(res, 400, { error: "PDF del preventivo mancante o non valido." });
       }
-      const requestRows = await pool.query("SELECT id, status, quoted_at FROM sales_requests WHERE id = $1", [requestId]);
+      const requestRows = await pool.query("SELECT id, status, assignment FROM sales_requests WHERE id = $1", [requestId]);
       const request = requestRows.rows[0];
       if (!request) return sendJson(res, 404, { error: "Richiesta cliente non trovata." });
-      const previousRows = await pool.query("SELECT * FROM sales_quotes WHERE number = $1 ORDER BY revision DESC LIMIT 1", [number]);
-      const previous = previousRows.rows[0] || null;
-      if (previous && String(previous.author_id) !== String(currentUser.id) && !seeAll) {
-        return sendJson(res, 409, { error: "Questo numero è di un preventivo di un collega: usa Duplica per farne uno tuo." });
-      }
-      if (previous && previous.request_id !== requestId) {
-        return sendJson(res, 409, { error: "Questo numero è già archiviato per un altro cliente: usa Duplica per un preventivo nuovo." });
-      }
-      const revision = previous ? Number(previous.revision || 1) + 1 : 1;
       const shared = body.shared === true;
       const id = randomUUID();
       const customer = body.customer && typeof body.customer === "object" ? body.customer : {};
       const fileName = String(body.fileName || `Preventivo ${number}.pdf`).replace(/[\\/:*?"<>|]+/g, " ").slice(0, 160);
-      const asset = await storeAttachmentBuffer(`quote-${id}`, { id, name: fileName, type: "application/pdf" }, buffer, "quotes");
       const payload = body.payload && typeof body.payload === "object" ? body.payload : {};
-      const { rows } = await pool.query(
-        `INSERT INTO sales_quotes (id, number, revision, request_id, author_id, author_name, shared, status,
-           customer_name, customer_phone, customer_email, customer_city, total, summary, payload, pdf)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'sent',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-        [
-          id, number, revision, requestId, String(currentUser.id), String(currentUser.name || currentUser.email || ""), shared,
-          String(customer.name || "").slice(0, 200), String(customer.phone || "").slice(0, 60),
-          String(customer.email || "").slice(0, 200), String(customer.city || "").slice(0, 120),
-          Number.isFinite(Number(body.total)) ? Number(body.total) : null, String(body.summary || "").slice(0, 300),
-          JSON.stringify(payload), JSON.stringify(asset),
-        ],
-      );
-      // La richiesta passa a "preventivo inviato" (se era ancora da lavorare)
-      // e prende la data del primo preventivo: la usa il follow-up in dashboard.
-      const statusCode = String(request.status || "").trim().toLowerCase();
-      const moveToQuoted = ["", "new", "followup"].includes(statusCode);
-      await pool.query(
-        `UPDATE sales_requests SET
-           status = CASE WHEN $2 THEN 'quoted' ELSE status END,
-           quoted_at = COALESCE(quoted_at, NOW()),
-           updated_at = NOW()
-         WHERE id = $1`,
-        [requestId, moveToQuoted],
-      );
-      const cached = (store.salesRequests || []).find((item) => item.id === requestId);
-      if (cached) {
-        if (moveToQuoted) cached.status = "quoted";
-        cached.quotedAt = cached.quotedAt || new Date().toISOString();
+      let asset = null;
+      let rows = [];
+      let revision = 1;
+      // Due salvataggi dello stesso numero insieme (doppio clic, due persone):
+      // l'indice unico numero+revisione ne blocca uno, che riprova con la
+      // revisione successiva invece di fallire.
+      for (let attempt = 0; attempt < 3 && !rows.length; attempt += 1) {
+        const previousRows = await pool.query("SELECT * FROM sales_quotes WHERE number = $1 ORDER BY revision DESC LIMIT 1", [number]);
+        const previous = previousRows.rows[0] || null;
+        if (previous && String(previous.author_id) !== String(currentUser.id) && !seeAll) {
+          return sendJson(res, 409, { error: "Questo numero è di un preventivo di un collega: usa Duplica per farne uno tuo." });
+        }
+        if (previous && previous.request_id !== requestId) {
+          return sendJson(res, 409, { error: "Questo numero è già archiviato per un altro cliente: usa Duplica per un preventivo nuovo." });
+        }
+        revision = previous ? Number(previous.revision || 1) + 1 : 1;
+        asset = asset || await storeAttachmentBuffer(`quote-${id}`, { id, name: fileName, type: "application/pdf" }, buffer, "quotes");
+        try {
+          ({ rows } = await pool.query(
+            `INSERT INTO sales_quotes (id, number, revision, request_id, author_id, author_name, shared, status,
+               customer_name, customer_phone, customer_email, customer_city, total, summary, payload, pdf)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'to_send',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+            [
+              id, number, revision, requestId, String(currentUser.id), String(currentUser.name || currentUser.email || ""), shared,
+              String(customer.name || "").slice(0, 200), String(customer.phone || "").slice(0, 60),
+              String(customer.email || "").slice(0, 200), String(customer.city || "").slice(0, 120),
+              Number.isFinite(Number(body.total)) ? Number(body.total) : null, String(body.summary || "").slice(0, 300),
+              JSON.stringify(payload), JSON.stringify(asset),
+            ],
+          ));
+        } catch (error) {
+          if (error?.code !== "23505" || attempt === 2) throw error;
+        }
+      }
+      // Salvato non vuol dire inviato: la richiesta passa a "preventivo da
+      // inviare" (se era ancora prima del preventivo). "Preventivo inviato" e la
+      // data per il follow-up arrivano solo con l'invio vero (…/send).
+      const bucket = getSalesRequestPipelineBucket({ status: request.status, assignment: request.assignment });
+      const moveToQuoting = !["quoting", "quoted", "won", "lost"].includes(bucket);
+      if (moveToQuoting) {
+        await pool.query("UPDATE sales_requests SET status = $2, updated_at = NOW() WHERE id = $1", [requestId, QUOTE_TO_SEND_REQUEST_STATUS]);
+        const cached = (store.salesRequests || []).find((item) => item.id === requestId);
+        if (cached) cached.status = QUOTE_TO_SEND_REQUEST_STATUS;
       }
       writeAuditLog("sales_request", requestId, "quote_saved", {
         text: `Preventivo ${quoteLabel(number, revision)} salvato${shared ? " nella cartella comune" : " (privato)"}`,
       }, currentUser.email || null).catch(() => {});
-      return sendJson(res, 200, { ok: true, quote: toQuote(rows[0]), requestMovedToQuoted: moveToQuoted });
+      return sendJson(res, 200, {
+        ok: true,
+        quote: toQuote(rows[0]),
+        requestStatusChanged: moveToQuoting,
+        request: moveToQuoting ? { id: requestId, status: QUOTE_TO_SEND_REQUEST_STATUS } : null,
+      });
+    }
+
+    // Invio fatto (WhatsApp dal telefono/PC o in altro modo): il preventivo
+    // diventa "inviato", la richiesta "Preventivo inviato" e il follow-up
+    // parte da oggi. Una richiesta già confermata o chiusa resta com'è.
+    const sendMatch = url.pathname.match(/^\/api\/quotes\/([^/]+)\/(send|share-link)$/);
+    if (sendMatch && req.method === "POST") {
+      const { rows } = await pool.query("SELECT * FROM sales_quotes WHERE id = $1", [decodeURIComponent(sendMatch[1])]);
+      const row = rows[0];
+      if (!row || !isVisible(row)) return sendJson(res, 404, { error: "not_found" });
+      if (String(row.author_id) !== String(currentUser.id) && !seeAll) {
+        return sendJson(res, 403, { error: "Solo chi ha fatto il preventivo può inviarlo." });
+      }
+      if (sendMatch[2] === "share-link") {
+        let token = row.share_token;
+        if (!token || !row.share_expires_at || new Date(row.share_expires_at).getTime() < Date.now() + 86400000) {
+          token = randomBytes(24).toString("base64url");
+          await pool.query("UPDATE sales_quotes SET share_token = $2, share_expires_at = NOW() + INTERVAL '60 days' WHERE id = $1", [row.id, token]);
+        }
+        return sendJson(res, 200, { ok: true, path: `/api/public/quote/${token}` });
+      }
+      const body = await readBody(req);
+      const channel = ["whatsapp-share", "whatsapp-link", "manual"].includes(body.channel) ? body.channel : "manual";
+      await pool.query("UPDATE sales_quotes SET status = 'sent', sent_at = NOW(), sent_channel = $2, updated_at = NOW() WHERE id = $1", [row.id, channel]);
+      const requestRows = await pool.query("SELECT status, assignment FROM sales_requests WHERE id = $1", [row.request_id]);
+      const request = requestRows.rows[0];
+      const bucket = request ? getSalesRequestPipelineBucket({ status: request.status, assignment: request.assignment }) : "";
+      const moveToQuoted = Boolean(request) && !["won", "lost"].includes(bucket);
+      if (moveToQuoted) {
+        await pool.query("UPDATE sales_requests SET status = $2, quoted_at = NOW(), updated_at = NOW() WHERE id = $1", [row.request_id, QUOTE_SENT_REQUEST_STATUS]);
+        const cached = (store.salesRequests || []).find((item) => item.id === row.request_id);
+        if (cached) {
+          cached.status = QUOTE_SENT_REQUEST_STATUS;
+          cached.quotedAt = new Date().toISOString();
+        }
+      }
+      const channelLabel = { "whatsapp-share": "WhatsApp con il PDF allegato", "whatsapp-link": "WhatsApp con il link al PDF", manual: "segnato a mano" }[channel];
+      writeAuditLog("sales_request", row.request_id, "quote_sent", {
+        text: `Preventivo ${quoteLabel(row.number, row.revision)} inviato (${channelLabel})`,
+      }, currentUser.email || null).catch(() => {});
+      const updated = await pool.query("SELECT * FROM sales_quotes WHERE id = $1", [row.id]);
+      return sendJson(res, 200, {
+        ok: true,
+        quote: toQuote(updated.rows[0]),
+        requestStatusChanged: moveToQuoted,
+        request: moveToQuoted ? { id: row.request_id, status: QUOTE_SENT_REQUEST_STATUS, quotedAt: new Date().toISOString() } : null,
+      });
     }
 
     const quoteMatch = url.pathname.match(/^\/api\/quotes\/([^/]+)(\/pdf)?$/);
@@ -17954,6 +18044,7 @@ async function handleApi(req, res, url) {
       if (req.method === "PATCH") {
         const body = await readBody(req);
         const mine = String(row.author_id) === String(currentUser.id);
+        let requestStatusChanged = false;
         if (body.shared !== undefined) {
           if (!mine) return sendJson(res, 403, { error: "Solo chi ha fatto il preventivo può cambiarne la visibilità." });
           // La visibilità vale per tutte le revisioni dello stesso numero.
@@ -17964,16 +18055,34 @@ async function handleApi(req, res, url) {
         }
         if (body.status !== undefined) {
           const status = String(body.status || "");
-          if (!["sent", "accepted", "rejected", "expired"].includes(status)) return sendJson(res, 400, { error: "invalid_status" });
+          if (!["to_send", "sent", "accepted", "rejected", "expired"].includes(status)) return sendJson(res, 400, { error: "invalid_status" });
           if (!mine && !seeAll) return sendJson(res, 403, { error: "Solo chi ha fatto il preventivo può cambiarne l'esito." });
           await pool.query("UPDATE sales_quotes SET status = $2, updated_at = NOW() WHERE id = $1", [row.id, status]);
-          const labels = { sent: "inviato", accepted: "accettato", rejected: "rifiutato", expired: "scaduto" };
+          if (status === "accepted") {
+            // Preventivo accettato = richiesta confermata (fase "Confermate"),
+            // salvo che sia già confermata o chiusa.
+            const requestRows = await pool.query("SELECT status, assignment FROM sales_requests WHERE id = $1", [row.request_id]);
+            const request = requestRows.rows[0];
+            const bucket = request ? getSalesRequestPipelineBucket({ status: request.status, assignment: request.assignment }) : "";
+            if (request && !["won", "lost"].includes(bucket)) {
+              await pool.query("UPDATE sales_requests SET status = $2, updated_at = NOW() WHERE id = $1", [row.request_id, QUOTE_ACCEPTED_REQUEST_STATUS]);
+              const cached = (store.salesRequests || []).find((item) => item.id === row.request_id);
+              if (cached) cached.status = QUOTE_ACCEPTED_REQUEST_STATUS;
+              requestStatusChanged = true;
+            }
+          }
+          const labels = { to_send: "da inviare", sent: "inviato", accepted: "accettato", rejected: "rifiutato", expired: "scaduto" };
           writeAuditLog("sales_request", row.request_id, "quote_status", {
             text: `Preventivo ${quoteLabel(row.number, row.revision)}: ${labels[status]}`,
           }, currentUser.email || null).catch(() => {});
         }
         const updated = await pool.query("SELECT * FROM sales_quotes WHERE id = $1", [row.id]);
-        return sendJson(res, 200, { ok: true, quote: toQuote(updated.rows[0]) });
+        return sendJson(res, 200, {
+          ok: true,
+          quote: toQuote(updated.rows[0]),
+          requestStatusChanged,
+          request: requestStatusChanged ? { id: row.request_id, status: QUOTE_ACCEPTED_REQUEST_STATUS } : null,
+        });
       }
       return sendJson(res, 405, { error: "method_not_allowed" });
     }

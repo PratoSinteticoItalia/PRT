@@ -29845,6 +29845,18 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 #sales-requests .srq-next .inline-actions { margin: 0; gap: 6px; }
 #sales-requests .srq-next .inline-actions:not(:has(a:not(.hidden))) { display: none; }
 
+/* Schede della richiesta: una riga sola, scorrevole se non ci sta. */
+#sales-requests #sales-request-detail-tabs { display: flex !important; flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+#sales-requests #sales-request-detail-tabs .crm-detail-tab { flex: 0 0 auto; white-space: nowrap; display: inline-flex; align-items: center; gap: 2px; }
+@media (max-width: 768px) {
+  /* Telefono: "Fai preventivo" largo e "⋯" piccolo accanto, non due barre. */
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel .panel-head .inline-actions { display: flex !important; flex-wrap: nowrap !important; gap: 8px !important; width: 100%; }
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel .panel-head .inline-actions > #sales-request-use-generator-button { flex: 1 1 auto !important; width: auto !important; }
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel .panel-head .inline-actions > .srq-more { flex: 0 0 auto !important; width: auto !important; }
+  body[data-drill-module="sales-requests"] #sales-requests .sales-request-detail-panel .panel-head .inline-actions > .srq-more > summary { width: 48px !important; min-width: 48px !important; padding: 0 !important; height: 100%; display: inline-flex; align-items: center; justify-content: center; }
+  #sales-requests .srq-quote-actions { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px !important; }
+  #sales-requests .srq-quote-actions > * { width: 100% !important; min-width: 0 !important; justify-content: center; margin: 0 !important; }
+}
 @media (max-width: 640px) {
   #sales-requests .srq-state-strip .crm-detail-section-grid { grid-template-columns: 1fr !important; }
   #sales-requests .srq-toolbar .sales-request-sort-row { width: 100%; }
@@ -29856,6 +29868,9 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 .srq-badge.is-shared, .srq-badge.is-status-accepted { background: #e8f2ec; color: #276647; }
 .srq-badge.is-owner { background: #f3eefc; color: #6b4bb8; }
 .srq-badge.is-status-sent { background: #ebf1fc; color: #2c5aa8; }
+.srq-badge.is-status-to_send { background: #fcf2df; color: #8f6514; }
+.srq-send-confirm { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #edf5ef; border: 1px solid #cfe3d6; border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
+#quote-send-message { width: 100%; resize: vertical; min-height: 110px; font: inherit; font-size: 13.5px; }
 .srq-badge.is-status-rejected { background: #fcebe9; color: #a3352c; }
 .srq-badge.is-status-expired { background: #fcf2df; color: #8f6514; }
 
