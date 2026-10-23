@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-link-preventivo";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261023-link-preventivo";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-link-preventivo";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-link-preventivo";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-link-preventivo";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-link-preventivo";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-link-preventivo';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-blindatura-richieste";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261024-blindatura-richieste";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-blindatura-richieste";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-blindatura-richieste";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-blindatura-richieste";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-blindatura-richieste";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-blindatura-richieste';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261023-link-preventivo";
+} from "./lib/order-money.js?v=20261024-blindatura-richieste";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261023-link-preventivo";
+import { regionForCity } from "./lib/geo.js?v=20261024-blindatura-richieste";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261023-link-preventivo";
+} from "./lib/shipping-eligibility.js?v=20261024-blindatura-richieste";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261023-link-preventivo";
+} from "./lib/profit-split.js?v=20261024-blindatura-richieste";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261023-link-preventivo";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-link-preventivo";
+} from "./lib/preventivo-pricing.js?v=20261024-blindatura-richieste";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-blindatura-richieste";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261023-link-preventivo";
+} from "./lib/sales-assignment.js?v=20261024-blindatura-richieste";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261023-link-preventivo";
+} from "./lib/surveys.js?v=20261024-blindatura-richieste";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261023-link-preventivo";
+const APP_SHELL_VERSION = "20261024-blindatura-richieste";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1473,6 +1473,7 @@ const state = {
   inventorySuggestions: {},
   // CRM server-side state (paginazione + FTS via GET /api/sales/requests)
   crmServerPage: { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false },
+  crmSearchCache: new Map(),
   crmFocusedRequestId: "",
   // CRM pipeline kanban (GET /api/sales/requests/pipeline)
   crmPipeline: { columns: [], loading: false, loadedAt: 0 },
@@ -14174,6 +14175,8 @@ function getFilteredSalesContents({ ignoreCategory = false } = {}) {
  * Carica una pagina del CRM dal server con filtri correnti.
  * Aggiorna state.crmServerPage e re-renderizza.
  */
+const CRM_SEARCH_CACHE_MS = 60_000;
+
 async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {}) {
   if (!forceReload && state.crmServerPage.loading) return;
   const focusedRequestId = String(requestId || state.crmFocusedRequestId || "").trim();
@@ -14218,12 +14221,22 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     return;
   }
   const requestSeq = ++_crmPageRequestSeq;
-  state.crmServerPage = {
-    ...state.crmServerPage,
-    loading: true,
-    loadError: false,
-    page,
-  };
+  // Ricerca già fatta da poco (es. si cancella una lettera): la lista si
+  // mostra subito com'era e intanto si aggiorna dal server, senza oscurarla.
+  const cachedSearch = q && !focusedRequestId ? state.crmSearchCache?.get(queryKey) : null;
+  if (cachedSearch && Date.now() - cachedSearch.at < CRM_SEARCH_CACHE_MS) {
+    state.crmServerPage = { ...cachedSearch.page, loading: true, softLoading: true, page };
+    state.salesRequests = state.crmServerPage.items;
+    invalidateSalesRequestsFilterCache();
+  } else {
+    state.crmServerPage = {
+      ...state.crmServerPage,
+      loading: true,
+      softLoading: false,
+      loadError: false,
+      page,
+    };
+  }
   // Notifica subito renderSalesRequests: se ci sono dati cached mostra quelli,
   // altrimenti (loadedAt === 0) mostra lo spinner e ritorna in attesa del fetch.
 	  renderSalesRequests();
@@ -14240,6 +14253,9 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
     if (_quickResellerOnly) params.set("resellerAssigned", "1");
     if (_quickStale)        params.set("stale", "1");
     if (sort === "urgent")  params.set("sort", "urgent");
+    // I contatori in alto non dipendono da cosa si cerca: durante la ricerca
+    // non si chiedono (una query in meno a ogni lettera).
+    if (q) params.set("includeStats", "0");
     // Refresh authoritative DB counters with each list response (server caches them).
     const data = await apiFetch(`/api/sales/requests?${params}`, { timeoutMs: CRM_REQUEST_TIMEOUT_MS });
     if (requestSeq !== _crmPageRequestSeq) return;
@@ -14299,6 +14315,11 @@ async function loadCrmPage({ page = 1, forceReload = false, requestId = "" } = {
         stale: data.stats.stale ?? 0,
         pipeline: data.stats.pipeline && typeof data.stats.pipeline === "object" ? data.stats.pipeline : undefined,
       };
+    }
+    if (q && !focusedRequestId) {
+      state.crmSearchCache.set(queryKey, { page: state.crmServerPage, at: Date.now() });
+      // Solo le ultime ricerche: le più vecchie escono per prime.
+      while (state.crmSearchCache.size > 20) state.crmSearchCache.delete(state.crmSearchCache.keys().next().value);
     }
     const selectedInPage = mergedItems.find((item) => item.id === state.selectedSalesRequestId);
     if (selectedInPage) rememberSelectedSalesRequest(selectedInPage);
@@ -14839,8 +14860,11 @@ function renderSalesRequests() {
     state.salesAssignmentCatalogLoadedAt = Date.now();
     loadCatalogItems("sales_assignment").catch(() => { state.salesAssignmentCatalogLoadedAt = 0; });
   }
-  const isCrmLoading = Boolean(state.crmServerPage?.loading);
+  // Aggiornamento di una ricerca già mostrata: niente lista oscurata, solo
+  // la rotellina nel campo di ricerca.
+  const isCrmLoading = Boolean(state.crmServerPage?.loading && !state.crmServerPage?.softLoading);
   document.getElementById("sales-requests")?.classList.toggle("crm-is-loading", isCrmLoading);
+  ui.salesRequestsSearch?.closest(".search-field")?.classList.toggle("is-searching", Boolean(state.crmServerPage?.loading && state.search?.salesRequests));
   syncSalesRequestFilters();
   // Vista kanban: delega a renderSalesRequestsKanban()
   if (state.crmViewMode === "kanban") {
@@ -15110,7 +15134,9 @@ function renderSalesRequestsDetailPanel(selected = null) {
   if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !effectiveSelected;
   if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !effectiveSelected;
   if (ui.salesRequestVcardButton) ui.salesRequestVcardButton.disabled = !effectiveSelected || !hasSalesRequestContactInfo(effectiveSelected);
-  if (selected?.id) {
+  // La Storia si scarica solo se è la scheda aperta: prima ripartiva a ogni
+  // ridisegno della scheda richiesta, anche due o tre volte di fila.
+  if (selected?.id && document.querySelector('#sales-requests .crm-tab-panel[data-tab-panel="history"].is-active')) {
     void loadAuditTrail("sales_request", selected.id, "sales-request-audit-trail");
   }
 }
@@ -15648,9 +15674,16 @@ async function setSavedQuoteStatus(quoteId = "", status = "to_send") {
 }
 
 function openSalesRequestFolder(requestId = "") {
+  openSalesRequest(requestId, { tab: "folder" });
+}
+
+// Apre una richiesta qualunque, anche fuori dalla pagina della lista: filtri
+// azzerati e caricamento mirato di quella richiesta.
+function openSalesRequest(requestId = "", { tab = "", record = null } = {}) {
   if (!requestId) return;
   state.selectedSalesRequestId = requestId;
-  state.salesRequestPendingTab = { requestId, tab: "folder" };
+  if (record) rememberSelectedSalesRequest(normalizeSalesRequestRecord(record));
+  state.salesRequestPendingTab = tab ? { requestId, tab } : null;
   state.filters.salesRequestQuick = "all";
   state.filters.salesRequestStatus = "all";
   state.filters.salesRequestAssignment = "all";
@@ -27883,14 +27916,27 @@ async function removeCatalogItem(category, value) {
   });
 }
 
+const auditTrailLoads = new Map();
+
 async function loadAuditTrail(entityType, entityId, containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  container.innerHTML = '<p style="color:#888;font-size:13px;padding:8px 0;">Caricamento...</p>';
+  const key = `${entityType}|${entityId}`;
+  // Stessa storia già in arrivo: non si chiede due volte.
+  if (auditTrailLoads.get(containerId) === key) return;
+  auditTrailLoads.set(containerId, key);
+  // Ricaricando la stessa scheda si lascia la storia attuale finché arriva
+  // quella nuova, senza il lampo di "Caricamento...".
+  if (container.dataset.auditKey !== key) {
+    container.innerHTML = '<p style="color:#888;font-size:13px;padding:8px 0;">Caricamento...</p>';
+  }
   try {
     const response = await fetch(`/api/audit/${entityType}/${encodeURIComponent(entityId)}`);
     if (!response.ok) throw new Error(response.status);
     const entries = await response.json();
+    // Nel frattempo si è passati a un'altra scheda: questa risposta non serve.
+    if (auditTrailLoads.get(containerId) !== key) return;
+    container.dataset.auditKey = key;
     if (!entries.length) {
       container.innerHTML = '<p style="color:#888;font-size:13px;padding:8px 0;">Nessuna modifica registrata.</p>';
       return;
@@ -27912,18 +27958,19 @@ async function loadAuditTrail(entityType, entityId, containerId) {
       const diffEntries = Object.entries(entry.diff || {});
       let description = "";
       if (entry.action === "create") {
-        description = `Creato — stato: <strong>${entry.diff?.status || ""}</strong>`;
+        description = `Creato — stato: <strong>${escapeHtml(entry.diff?.status || "")}</strong>`;
       } else if (typeof entry.diff?.text === "string") {
         description = escapeHtml(entry.diff.text);
       } else if (diffEntries.length) {
         description = diffEntries.map(([field, change]) => {
-          const label = fieldLabels[field] || field;
-          const before = change?.before ?? "";
-          const after = change?.after ?? "";
+          // Valori scritti da persone o importati: sempre come testo.
+          const label = escapeHtml(fieldLabels[field] || field);
+          const before = escapeHtml(change?.before ?? "");
+          const after = escapeHtml(change?.after ?? "");
           return `${label}: <em>${before}</em> → <strong>${after}</strong>`;
         }).join(" · ");
       } else {
-        description = entry.action;
+        description = escapeHtml(entry.action);
       }
       const userLabel = entry.userId ? `<span class="audit-entry-user">${escapeHtml(entry.userId)}</span>` : "";
       return `<div class="audit-entry">
@@ -27933,7 +27980,12 @@ async function loadAuditTrail(entityType, entityId, containerId) {
     }).join("");
     container.innerHTML = html;
   } catch {
-    container.innerHTML = '<p style="color:#e74c3c;font-size:13px;padding:8px 0;">Errore caricamento storia.</p>';
+    if (auditTrailLoads.get(containerId) === key) {
+      container.innerHTML = '<p style="color:#e74c3c;font-size:13px;padding:8px 0;">Errore caricamento storia.</p>';
+      delete container.dataset.auditKey;
+    }
+  } finally {
+    if (auditTrailLoads.get(containerId) === key) auditTrailLoads.delete(containerId);
   }
 }
 
@@ -28427,6 +28479,7 @@ function applySessionPayload(session = {}) {
     state.resellerSalesRequests = [];
     state.resellerSalesRequestsLoadedAt = 0;
     state.crmServerPage = { total: 0, page: 1, limit: 50, items: [], loading: false, loadedAt: 0, loadError: false };
+    state.crmSearchCache = new Map();
 	    state.marketingItems = [];
 	    state.freeDdts = [];
 	    state.selectedDdtKind = "order";
@@ -36431,6 +36484,9 @@ function showGlobalSearchDialog() {
     input.focus();
   }
   cmdKActiveIndex = -1;
+  // Ogni apertura riparte da zero (anche i risultati del server: dopo un
+  // cambio di account non devono restare quelli di prima).
+  cmdKServerRequests = { query: "", items: [] };
   renderCmdKResults("");
 }
 
@@ -36472,7 +36528,10 @@ function searchGlobalData(query) {
     }
   }
 
-  const requests = state.salesRequests || [];
+  // Richieste: quelle trovate sul server (tutte, non solo la pagina aperta
+  // della lista) appena arrivano; nel frattempo quelle già in memoria.
+  const serverRequests = cmdKServerRequests.query === String(query || "").trim() ? cmdKServerRequests.items : null;
+  const requests = serverRequests || state.salesRequests || [];
   for (const req of requests) {
     if (results.filter((r) => r.type === "request").length >= 6) break;
     const fullName = `${req.name} ${req.surname}`.trim();
@@ -36482,7 +36541,7 @@ function searchGlobalData(query) {
       req.phone,
       req.email,
     ].join(" "));
-    if (haystack.includes(q)) {
+    if (serverRequests || haystack.includes(q)) {
       results.push({
         type: "request",
         id: req.id,
@@ -36496,18 +36555,45 @@ function searchGlobalData(query) {
   return results;
 }
 
-function renderCmdKResults(query) {
+let cmdKServerRequests = { query: "", items: [] };
+let cmdKServerTimer = 0;
+let cmdKServerSeq = 0;
+
+function scheduleCmdKServerSearch(query = "") {
+  window.clearTimeout(cmdKServerTimer);
+  const q = String(query || "").trim();
+  if (q.length < 2 || !["office", "rivenditore"].includes(state.currentUser?.role)) return;
+  cmdKServerTimer = window.setTimeout(async () => {
+    const seq = ++cmdKServerSeq;
+    try {
+      const data = await apiFetch(`/api/sales/requests?q=${encodeURIComponent(q)}&limit=6&includeStats=0`, { timeoutMs: CRM_REQUEST_TIMEOUT_MS });
+      if (seq !== cmdKServerSeq || String(ui.cmdKInput?.value || "").trim() !== q) return;
+      cmdKServerRequests = { query: q, items: Array.isArray(data?.items) ? data.items.map(normalizeSalesRequestRecord) : [] };
+    } catch {
+      if (seq !== cmdKServerSeq) return;
+      cmdKServerRequests = { query: q, items: [] };
+    }
+    renderCmdKResults(q, { fromServer: true });
+  }, 150);
+}
+
+function renderCmdKResults(query, { fromServer = false } = {}) {
   if (!ui.cmdKResults || !ui.cmdKEmpty) return;
   if (!query.trim()) {
+    window.clearTimeout(cmdKServerTimer);
     ui.cmdKResults.innerHTML = "";
     ui.cmdKEmpty.classList.add("hidden");
     cmdKActiveIndex = -1;
     return;
   }
+  if (!fromServer) scheduleCmdKServerSearch(query);
   const results = searchGlobalData(query);
+  // "Nessun risultato" solo quando ha risposto anche il server.
+  const waitingServer = query.trim().length >= 2 && cmdKServerRequests.query !== query.trim()
+    && ["office", "rivenditore"].includes(state.currentUser?.role);
   if (!results.length) {
-    ui.cmdKResults.innerHTML = "";
-    ui.cmdKEmpty.classList.remove("hidden");
+    ui.cmdKResults.innerHTML = waitingServer ? `<div class="cmd-k-searching">${state.lang === "it" ? "Cerco…" : "Searching…"}</div>` : "";
+    ui.cmdKEmpty.classList.toggle("hidden", waitingServer);
     cmdKActiveIndex = -1;
     return;
   }
@@ -36557,10 +36643,9 @@ function activateCmdKResult(item) {
     state.selectedOrderId = id;
     setView("orders");
   } else if (type === "request") {
-    state.selectedSalesRequestId = id;
-    const requestRecord = findSalesRequestById(id || "");
-    if (requestRecord) rememberSelectedSalesRequest(requestRecord);
-    setView("sales-requests");
+    // Può essere una richiesta fuori dalla pagina aperta della lista.
+    const record = findSalesRequestById(id || "") || cmdKServerRequests.items.find((item) => item.id === id) || null;
+    openSalesRequest(id, { record });
   }
 }
 
@@ -36933,8 +37018,12 @@ bindEvent(ui.ordersSearch, "input", (event) => {
 bindEvent(ui.salesRequestsSearch, "input", (event) => {
   state.search.salesRequests = event.target.value;
   state.salesRequestPage = 1;
-  // Debounce 300ms poi carica dal server con FTS
-  scheduleSearchRender("sales-requests", () => loadCrmPage({ page: 1, forceReload: true }));
+  // Breve attesa tra una lettera e l'altra, poi si cerca sul server. Una
+  // ricerca già fatta (es. tornando indietro col tasto cancella) si mostra
+  // subito dalla memoria e intanto si aggiorna.
+  const typed = String(event.target.value || "").trim();
+  const alreadySearched = Boolean(typed) && [...(state.crmSearchCache?.keys() || [])].some((key) => key.split("|")[2] === typed);
+  scheduleSearchRender("sales-requests", () => loadCrmPage({ page: 1, forceReload: true }), alreadySearched ? 0 : 150);
 });
 bindEvent(ui.salesRequestAssignmentFilter, "change", (event) => {
   if (state.crmServerPage?.loading) return;
