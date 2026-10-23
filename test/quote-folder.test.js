@@ -48,3 +48,11 @@ test('preventivo salvato = da inviare; inviato solo con l\'invio vero', () => {
   assert.ok(send.includes('quoted_at = NOW()'),'il follow-up parte dall\'invio');
   assert.ok(send.includes('!["won", "lost"].includes(bucket)'),'una richiesta confermata o chiusa non torna indietro');
 });
+
+test('riaprire un preventivo aggiorna il modulo esistente, non lo sostituisce', () => {
+  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+  // I gestori del generatore restano collegati all'oggetto del modulo: una
+  // copia nuova renderebbe le modifiche invisibili (bug del 23 ott).
+  const assignments=app.match(/state\.preventivoForm = /g)||[];
+  assert.equal(assignments.length,1,'solo ensurePreventivoForm crea il modulo');
+});
