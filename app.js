@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-impostazioni-fornitori";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261023-impostazioni-fornitori";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-impostazioni-fornitori";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-impostazioni-fornitori";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-impostazioni-fornitori";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-impostazioni-fornitori";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-impostazioni-fornitori';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-invio-whatsapp-computer";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261023-invio-whatsapp-computer";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-invio-whatsapp-computer";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-invio-whatsapp-computer";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-invio-whatsapp-computer";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-invio-whatsapp-computer";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-invio-whatsapp-computer';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261023-impostazioni-fornitori";
+} from "./lib/order-money.js?v=20261023-invio-whatsapp-computer";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261023-impostazioni-fornitori";
+import { regionForCity } from "./lib/geo.js?v=20261023-invio-whatsapp-computer";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261023-impostazioni-fornitori";
+} from "./lib/shipping-eligibility.js?v=20261023-invio-whatsapp-computer";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261023-impostazioni-fornitori";
+} from "./lib/profit-split.js?v=20261023-invio-whatsapp-computer";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261023-impostazioni-fornitori";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-impostazioni-fornitori";
+} from "./lib/preventivo-pricing.js?v=20261023-invio-whatsapp-computer";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-invio-whatsapp-computer";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261023-impostazioni-fornitori";
+} from "./lib/sales-assignment.js?v=20261023-invio-whatsapp-computer";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261023-impostazioni-fornitori";
+} from "./lib/surveys.js?v=20261023-invio-whatsapp-computer";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261023-impostazioni-fornitori";
+const APP_SHELL_VERSION = "20261023-invio-whatsapp-computer";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -15446,11 +15446,19 @@ async function handleSalesRequestFolderAction(button) {
 }
 
 // ── Invio del preventivo su WhatsApp dal telefono/PC ──────────────────────
-// Dove il browser può condividere file (iPhone, Mac) si apre il pannello di
-// condivisione con il PDF già allegato: scegli WhatsApp e la chat. Altrove si
-// apre la chat con il messaggio e un link privato al PDF. Il PDF e il link si
-// preparano all'apertura della finestra: la condivisione deve partire subito
-// dal clic, senza attese, altrimenti Safari la blocca.
+// Sul telefono si apre il pannello di condivisione con il PDF già allegato:
+// scegli WhatsApp e la chat. Sul computer no: la condivisione del Mac non
+// elenca WhatsApp (segnalato dall'utente il 23 ott 2026), quindi si apre la
+// chat del cliente con il messaggio e un link privato al PDF, e il PDF si
+// scarica per trascinarlo nella chat. PDF e link si preparano all'apertura
+// della finestra: la condivisione deve partire subito dal clic, senza attese,
+// altrimenti Safari la blocca.
+function isPhoneOrTabletDevice() {
+  const ua = navigator.userAgent || "";
+  // L'iPad si presenta come Mac: lo riconosce il touch.
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
 async function openQuoteSendDialog(quoteId = "") {
   const it = state.lang === "it";
   const dialog = document.getElementById("quote-send-dialog");
@@ -15472,6 +15480,7 @@ async function openQuoteSendDialog(quoteId = "") {
     message: request ? buildSalesRequestQuoteWhatsAppMessage(request) : (it ? "Ciao, ti inoltro il preventivo che abbiamo valutato." : "Hello, here is the quote we discussed."),
     file: null,
     canShareFiles: false,
+    includeLink: true,
     shareLink: "",
     preparing: true,
     awaitingConfirm: false,
@@ -15487,7 +15496,8 @@ async function openQuoteSendDialog(quoteId = "") {
     const blob = await response.blob();
     const fileName = `Preventivo ${quoteNumberLabel(quote)}${quote.customerName ? ` - ${quote.customerName}` : ""}.pdf`.replace(/[\\/:*?"<>|]+/g, " ");
     send.file = new File([blob], fileName, { type: "application/pdf" });
-    send.canShareFiles = Boolean(navigator.canShare && navigator.share && navigator.canShare({ files: [send.file] }));
+    send.canShareFiles = isPhoneOrTabletDevice()
+      && Boolean(navigator.canShare && navigator.share && navigator.canShare({ files: [send.file] }));
     if (!send.canShareFiles) {
       const link = await apiFetch(`/api/quotes/${encodeURIComponent(quote.id)}/share-link`, { method: "POST", body: "{}" });
       send.shareLink = link?.path ? `${window.location.origin}${link.path}` : "";
@@ -15508,22 +15518,31 @@ function renderQuoteSendDialog() {
   const messageField = body.querySelector("#quote-send-message");
   const message = messageField ? messageField.value : send.message;
   send.message = message;
+  const includeField = body.querySelector("#quote-send-include-link");
+  if (includeField) send.includeLink = includeField.checked;
   const how = send.preparing
     ? (it ? "Preparo il PDF…" : "Preparing the PDF…")
     : send.canShareFiles
       ? (it ? "Si apre la condivisione con il PDF già allegato: scegli WhatsApp e la chat del cliente. Il messaggio viene copiato: incollalo nella chat se WhatsApp non lo riporta." : "The share panel opens with the PDF attached: choose WhatsApp and the customer's chat. The message is copied: paste it in the chat if WhatsApp drops it.")
-      : (it ? "Su questo dispositivo il PDF non si può allegare in automatico: si apre la chat con il messaggio e un link privato al PDF (valido 60 giorni)." : "This device can't attach the PDF automatically: the chat opens with the message and a private link to the PDF (valid 60 days).");
+      : (it ? "Si apre la chat WhatsApp del cliente con il messaggio. Il PDF si scarica anche sul computer: per mandarlo come allegato trascinalo nella chat." : "The customer's WhatsApp chat opens with the message. The PDF is also downloaded to your computer: drag it into the chat to send it as an attachment.");
   body.innerHTML = `
     <div class="srq-linked"><span>${escapeHtml(quoteNumberLabel(send.quote))} · <strong>${escapeHtml(name || "—")}</strong>${send.phone ? ` · +${escapeHtml(send.phone)}` : ""}</span></div>
     ${send.phone ? "" : `<p class="srq-dialog-note"><span class="is-warning">${it ? "Il cliente non ha un numero di telefono: aggiungilo nella scheda Cliente." : "The customer has no phone number: add it in the Customer tab."}</span></p>`}
     <label class="srq-dialog-section"><span class="srq-dialog-label">${it ? "Messaggio" : "Message"}</span>
       <textarea id="quote-send-message" class="text-input" rows="5">${escapeHtml(message)}</textarea></label>
+    ${!send.canShareFiles && !send.preparing ? `<label class="srq-send-option"><input type="checkbox" id="quote-send-include-link" ${send.includeLink ? "checked" : ""} />
+      <span>${it ? "Metti nel messaggio anche il link al PDF (privato, valido 60 giorni)" : "Also put the PDF link in the message (private, valid 60 days)"}</span></label>` : ""}
     <p class="srq-dialog-note">${escapeHtml(how)}</p>
     ${send.awaitingConfirm ? `<div class="srq-send-confirm"><span>${it ? "Hai inviato il preventivo nella chat?" : "Did you send the quote in the chat?"}</span>
       <button type="button" class="primary-button small-button" data-action="quote-send-confirm" data-channel="whatsapp-link">${it ? "Sì, segna come inviato" : "Yes, mark as sent"}</button></div>` : ""}
     <p class="srq-dialog-status" role="status">${escapeHtml(send.status || "")}</p>`;
   const openButton = document.getElementById("quote-send-open");
-  if (openButton) openButton.disabled = send.preparing || send.busy || !send.phone || (!send.canShareFiles && !send.shareLink);
+  if (openButton) {
+    openButton.textContent = send.canShareFiles
+      ? (it ? "Apri WhatsApp con il PDF" : "Open WhatsApp with the PDF")
+      : (it ? "Apri la chat WhatsApp" : "Open the WhatsApp chat");
+    openButton.disabled = send.preparing || send.busy || !send.phone || (!send.canShareFiles && !send.file);
+  }
 }
 
 function openQuoteWhatsApp() {
@@ -15551,8 +15570,23 @@ function openQuoteWhatsApp() {
       });
     return;
   }
-  const text = `${message}\n\n${it ? "Il preventivo" : "The quote"}: ${send.shareLink}`;
+  const includeLink = document.getElementById("quote-send-include-link")?.checked ?? send.includeLink;
+  send.includeLink = includeLink;
+  const text = includeLink && send.shareLink ? `${message}\n\n${it ? "Il preventivo" : "The quote"}: ${send.shareLink}` : message;
   window.open(`https://wa.me/${encodeURIComponent(send.phone)}?text=${encodeURIComponent(text)}`, "psi_sales_request_whatsapp", "noopener");
+  // Il PDF finisce nei Download, pronto da trascinare nella chat.
+  if (send.file && !send.downloaded) {
+    const url = URL.createObjectURL(send.file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = send.file.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    send.downloaded = true;
+  }
+  send.status = it ? `PDF scaricato: "${send.file?.name || "preventivo.pdf"}". Trascinalo nella chat se vuoi allegarlo.` : `PDF downloaded: "${send.file?.name || "quote.pdf"}". Drag it into the chat to attach it.`;
   send.awaitingConfirm = true;
   renderQuoteSendDialog();
 }
