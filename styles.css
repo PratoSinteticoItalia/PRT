@@ -30380,3 +30380,107 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 #sales-requests .sales-request-card.crm-row.is-active::before { content: none !important; }
 /* Ricerca generale: mentre arrivano le richieste dal server. */
 .cmd-k-searching { padding: 28px 16px; color: rgba(255, 255, 255, .45); font-size: 14px; text-align: center; }
+
+/* ── Generatore leggibile (ottobre 2026) ───────────────────────────────────
+   Dopo la versione "piatta" si faticava a leggere: sezioni con intestazione
+   tenue e titolo vero, etichette più scure; a destra un riepilogo sempre a
+   vista (totale cliente, utile spiegato, genera). */
+#sales-generator .native-form .nf-section { margin-bottom: 14px; border: 1px solid #dfe5df; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(20, 40, 28, .04); }
+#sales-generator .native-form .nf-section-head { margin: 0 -16px 16px; padding: 12px 16px; border-bottom: 1px solid #e3e9e4; background: #f5f8f5; }
+#sales-generator details.nf-section:not([open]) > .nf-section-head { border-bottom: 0; }
+#sales-generator .native-form .nf-section-head::before { width: 24px; height: 24px; background: var(--brand, #2f7a55); color: #fff; font-size: 12px; font-weight: 750; }
+#sales-generator .native-form .nf-legend-txt { color: #18231c; font-size: 14.5px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+#sales-generator .native-form .nf-legend-hint { color: #6a766d; font-size: 12px; font-weight: 500; }
+#sales-generator .native-form .field > span { color: #2f3d34; font-size: 12.5px; font-weight: 600; }
+#sales-generator .native-form .text-input { min-height: 38px; border-color: #d3dad3; font-size: 13.5px; }
+#sales-generator .native-form .text-input:focus { border-color: var(--brand, #2f7a55); box-shadow: 0 0 0 3px rgba(47, 122, 85, .14); }
+#sales-generator .native-form .nf-row + .nf-row { margin-top: 12px; }
+#sales-generator .native-form .nf-seg { border-color: #cdd6ce; }
+
+/* Due colonne sul computer: il riepilogo resta fermo mentre si compila. */
+#sales-generator .nf-aside { display: grid; gap: 12px; align-content: start; }
+@media (min-width: 1180px) {
+  #sales-generator .native-form:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+  #sales-generator .nf-aside { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; scrollbar-width: thin; padding-bottom: 4px; }
+}
+#sales-generator .nf-aside-block { padding: 14px 16px; border: 1px solid #dfe5df; border-radius: 12px; background: #fff; }
+#sales-generator .nf-aside-title { margin: 0 0 10px; color: #18231c; font-size: 14.5px; font-weight: 700; }
+#sales-generator .nf-aside-title small { color: #6a766d; font-size: 12px; font-weight: 500; }
+#sales-generator .nf-summary { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; gap: 0; }
+#sales-generator .nf-summary-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; align-items: baseline; padding: 8px 0; }
+#sales-generator .nf-summary-line + .nf-summary-line { border-top: 1px solid #e8ece8; }
+#sales-generator .nf-summary-line > span { grid-column: 1; grid-row: 1; overflow: hidden; color: #2f3d34; font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+#sales-generator .nf-summary-line > strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--brand-strong, #276647); font-size: 21px; font-weight: 750; font-variant-numeric: tabular-nums; }
+#sales-generator .nf-summary-line > em { grid-column: 1; grid-row: 2; min-width: 0; color: #6a766d; font-size: 12px; text-align: left; }
+#sales-generator .nf-actions { padding: 0; }
+#sales-generator .nf-aside .nf-actions .primary-button { width: 100%; min-height: 46px; font-size: 15px; }
+
+/* Utile: numero grande, giudizio, dove vanno i soldi, conto riga per riga. */
+#sales-generator .nf-margin { margin: 0; padding: 14px 16px; gap: 12px; border-color: #dfe5df; }
+#sales-generator .nf-margin-head { display: grid; gap: 3px; }
+#sales-generator .nf-margin-head strong { color: #18231c; font-size: 14.5px; }
+#sales-generator .nf-margin-head span { color: #6a766d; font-size: 12px; line-height: 1.45; }
+#sales-generator .nf-margin-card { gap: 10px; padding: 12px; border-radius: 10px; background: #fff; border: 1px solid #e3e9e4; }
+#sales-generator .nf-margin-card.tone-good { border-color: #b9d8c4; background: #f4faf6; }
+#sales-generator .nf-margin-card.tone-mid { border-color: #ead7ac; background: #fdf9ef; }
+#sales-generator .nf-margin-card.tone-low { border-color: #ebc1bc; background: #fdf4f3; }
+#sales-generator .nf-margin-card.tone-partial { border-style: dashed; background: #fafbfa; }
+#sales-generator .nf-margin-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#sales-generator .nf-margin-name { overflow: hidden; color: #2f3d34; font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
+#sales-generator .nf-margin-badge { flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; background: #eef1ee; color: #4f5a52; font-size: 11.5px; font-weight: 700; }
+#sales-generator .tone-good .nf-margin-badge { background: #dff0e5; color: #1f6b44; }
+#sales-generator .tone-mid .nf-margin-badge { background: #f8ebc9; color: #7d5810; }
+#sales-generator .tone-low .nf-margin-badge { background: #f8dcd8; color: #9a2f25; }
+#sales-generator .nf-margin-figures { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+#sales-generator .nf-margin-figures > div { display: grid; gap: 1px; }
+#sales-generator .nf-margin-figures small { color: #6a766d; font-size: 11.5px; }
+#sales-generator .nf-margin-profit { font-size: 25px; font-weight: 780; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#sales-generator .nf-margin-pct { text-align: right; }
+#sales-generator .nf-margin-pct strong { font-size: 19px; font-weight: 750; line-height: 1.1; }
+#sales-generator .tone-good :is(.nf-margin-profit, .nf-margin-pct strong) { color: #1f6b44; }
+#sales-generator .tone-mid :is(.nf-margin-profit, .nf-margin-pct strong) { color: #8a6212; }
+#sales-generator .tone-low :is(.nf-margin-profit, .nf-margin-pct strong) { color: #a3352c; }
+#sales-generator .tone-partial :is(.nf-margin-profit, .nf-margin-pct strong) { color: #5c665f; }
+#sales-generator .nf-margin-stack { display: flex; height: 14px; overflow: hidden; border-radius: 999px; background: #eef0ed; }
+#sales-generator .nf-margin-stack > span { min-width: 3px; }
+#sales-generator .nf-margin-stack > span + span { box-shadow: inset 1px 0 rgba(255, 255, 255, .8); }
+#sales-generator :is(.nf-margin-stack, .nf-margin-legend) .seg-turf { background: #93b59f; }
+#sales-generator :is(.nf-margin-stack, .nf-margin-legend) .seg-materials { background: #c9b88f; }
+#sales-generator :is(.nf-margin-stack, .nf-margin-legend) .seg-other { background: #a9b4c2; }
+#sales-generator :is(.nf-margin-stack, .nf-margin-legend) .seg-posa { background: #dca673; }
+#sales-generator :is(.nf-margin-stack, .nf-margin-legend) .seg-profit { background: #2f7a55; }
+#sales-generator .tone-mid :is(.nf-margin-stack, .nf-margin-legend) .seg-profit { background: #c99536; }
+#sales-generator .tone-low :is(.nf-margin-stack, .nf-margin-legend) .seg-profit { background: #c2453a; }
+#sales-generator .tone-partial :is(.nf-margin-stack, .nf-margin-legend) .seg-profit { background: repeating-linear-gradient(45deg, #b8bfba 0 6px, #d6dcd4 6px 12px); }
+#sales-generator .nf-margin-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; margin: 0; padding: 0; list-style: none; }
+#sales-generator .nf-margin-legend li { display: flex; align-items: center; gap: 5px; min-width: 0; color: #4f5a52; font-size: 11.5px; }
+#sales-generator .nf-margin-legend i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 2px; }
+#sales-generator .nf-margin-legend strong { margin-left: auto; color: #2f3d34; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#sales-generator .nf-margin-calc { border-top: 1px solid rgba(20, 40, 28, .08); padding-top: 8px; }
+#sales-generator .nf-margin-calc > summary { display: inline-flex; align-items: center; gap: 6px; color: var(--brand-strong, #276647); font-size: 12.5px; font-weight: 650; list-style: none; cursor: pointer; }
+#sales-generator .nf-margin-calc > summary::-webkit-details-marker { display: none; }
+#sales-generator .nf-margin-calc > summary::before { content: "›"; display: inline-block; font-size: 15px; line-height: 1; transition: transform .15s; }
+#sales-generator .nf-margin-calc[open] > summary::before { transform: rotate(90deg); }
+#sales-generator .nf-margin-calc table { width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 12.5px; }
+#sales-generator .nf-margin-calc td { padding: 5px 0; border-bottom: 1px solid rgba(20, 40, 28, .06); vertical-align: top; color: #2f3d34; }
+#sales-generator .nf-margin-calc td:last-child { padding-left: 10px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#sales-generator .nf-margin-calc td small { display: block; color: #6a766d; font-size: 11px; line-height: 1.35; }
+#sales-generator .nf-margin-calc tr.is-cost td:last-child { color: #5c665f; }
+#sales-generator .nf-margin-calc tr.is-total td { border-bottom: 0; padding-top: 7px; font-size: 13.5px; font-weight: 750; }
+#sales-generator .nf-margin-hint { margin: 0; color: #2f3d34; font-size: 12.5px; line-height: 1.45; }
+#sales-generator .nf-margin-warn { line-height: 1.45; }
+#sales-generator .nf-margin-controls-wrap { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #e8ece8; }
+#sales-generator .nf-margin-controls-wrap:has(.nf-margin-controls:empty) { display: none; }
+#sales-generator .nf-margin-controls-title { margin: 0; color: #2f3d34; font-size: 12.5px; font-weight: 700; }
+#sales-generator .nf-aside .nf-margin-controls { grid-template-columns: 1fr; }
+/* Il pulsante resta sempre in fondo al riepilogo, anche quando scorre. */
+@media (min-width: 1180px) {
+  #sales-generator .nf-aside .nf-actions { position: sticky; bottom: 0; z-index: 1; padding-top: 10px; background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 12px); }
+}
+/* Richiesta collegata: i dati su una riga sola invece di una griglia alta. */
+#sales-generator #sales-generator-request-card { padding: 12px 14px; }
+#sales-generator #sales-generator-request-card .sales-generator-card-grid { display: flex; flex-wrap: wrap; gap: 2px 0; margin-top: 4px; }
+#sales-generator #sales-generator-request-card .sales-generator-card-grid > span { color: #4f5a52; font-size: 13px; }
+#sales-generator #sales-generator-request-card .sales-generator-card-grid > span + span::before { content: "·"; margin: 0 8px; color: #b4bbb4; }
+#sales-generator #sales-generator-request-card .sales-generator-request-note { margin: 4px 0 0; font-size: 12.5px; }
+#sales-generator #sales-generator-request-card .sales-generator-card-foot { margin-top: 8px; }

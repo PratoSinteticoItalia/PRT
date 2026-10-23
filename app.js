@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-blindatura-richieste";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261024-blindatura-richieste";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-blindatura-richieste";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-blindatura-richieste";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-blindatura-richieste";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-blindatura-richieste";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-blindatura-richieste';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-generatore-leggibile";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261024-generatore-leggibile";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-generatore-leggibile";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-generatore-leggibile";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-generatore-leggibile";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-generatore-leggibile";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-generatore-leggibile';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261024-blindatura-richieste";
+} from "./lib/order-money.js?v=20261024-generatore-leggibile";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261024-blindatura-richieste";
+import { regionForCity } from "./lib/geo.js?v=20261024-generatore-leggibile";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261024-blindatura-richieste";
+} from "./lib/shipping-eligibility.js?v=20261024-generatore-leggibile";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261024-blindatura-richieste";
+} from "./lib/profit-split.js?v=20261024-generatore-leggibile";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261024-blindatura-richieste";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-blindatura-richieste";
+} from "./lib/preventivo-pricing.js?v=20261024-generatore-leggibile";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-generatore-leggibile";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261024-blindatura-richieste";
+} from "./lib/sales-assignment.js?v=20261024-generatore-leggibile";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261024-blindatura-richieste";
+} from "./lib/surveys.js?v=20261024-generatore-leggibile";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261024-blindatura-richieste";
+const APP_SHELL_VERSION = "20261024-generatore-leggibile";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -38246,6 +38246,9 @@ function renderNfMarginControls(cq, validIndexes) {
   return { signature: `${turfMissing.join(",")}|${isPosa}|${shippingUnknown}|${hasAccessories}`, html: fields.join("") };
 }
 
+const nfMarginCalcOpen = new Set();
+const nfMarginCalcTouched = new Set();
+
 function renderNfMargin(cq) {
   const box = document.getElementById("nf-margin");
   if (!box) return;
@@ -38265,9 +38268,17 @@ function renderNfMargin(cq) {
   box.hidden = false;
   if (!box.querySelector(".nf-margin-cards")) {
     box.innerHTML = `<div class="nf-margin-head"><strong>${it ? "Utile stimato" : "Estimated profit"}</strong>
-        <span>${it ? "Solo per l'ufficio · non va nel PDF · imponibile senza IVA" : "Office only · not in the PDF · net of VAT"}</span></div>
+        <span>${it ? "Quanto resta all'azienda, IVA esclusa. Solo per l'ufficio: non va nel PDF." : "What the company keeps, net of VAT. Office only: not in the PDF."}</span></div>
       <div class="nf-margin-cards"></div>
-      <div class="nf-margin-controls"></div>`;
+      <div class="nf-margin-controls-wrap"><p class="nf-margin-controls-title">${it ? "Costi di questo preventivo" : "Costs for this quote"}</p><div class="nf-margin-controls"></div></div>`;
+    // Il dettaglio del calcolo resta aperto o chiuso come l'ha lasciato chi scrive.
+    box.addEventListener("toggle", (event) => {
+      const card = event.target.closest?.(".nf-margin-calc")?.closest("[data-margin-index]");
+      if (!card || !event.target.matches(".nf-margin-calc")) return;
+      const index = Number(card.dataset.marginIndex);
+      nfMarginCalcTouched.add(index);
+      if (event.target.open) nfMarginCalcOpen.add(index); else nfMarginCalcOpen.delete(index);
+    }, true);
   }
   const controls = box.querySelector(".nf-margin-controls");
   const nextControls = renderNfMarginControls(cq, validIndexes);
@@ -38284,13 +38295,19 @@ function renderNfMargin(cq) {
     colla: it ? "colla" : "glue",
     picchetti: it ? "picchetti" : "pegs",
   };
+  const firstIndex = validIndexes[0];
+  const money = (value) => formatCurrency(value || 0);
   box.querySelector(".nf-margin-cards").innerHTML = validIndexes.map((index) => {
     const { margin, turf } = computeNfOptionMargin(cq, index);
     const option = f.options[index];
     // Senza il costo del prato il numero non è affidabile: barra grigia, "parziale".
     const incomplete = margin.missing.includes("prato");
     const tone = incomplete ? "partial" : margin.profit < 0 ? "low" : marginTone(margin.marginPct, config);
-    const costShare = margin.revenueNet > 0 ? Math.min(100, Math.max(0, ((margin.revenueNet - Math.max(0, margin.profit)) / margin.revenueNet) * 100)) : 100;
+    const toneLabel = incomplete ? (it ? "Parziale" : "Partial")
+      : margin.profit < 0 ? (it ? "In perdita" : "Loss")
+        : tone === "good" ? (it ? "Ottimo" : "Great")
+          : tone === "mid" ? (it ? "Nella media" : "Average")
+            : (it ? "Basso" : "Low");
     const maxDiscount = incomplete || (option.slug === "__custom__" && !(Number(option.customPrice) > 0)) ? null : maxTurfDiscountForMargin(margin, {
       pricePerSqm: nfOptionPrice(option, f.customerType),
       sqm: Number(f.sqm) || 0,
@@ -38299,33 +38316,57 @@ function renderNfMargin(cq) {
     });
     const turfNote = turf.source === "supplier"
       ? `${formatCurrency(turf.cost)}/m² · ${turf.supplier.supplierName}${turf.supplier.invoiceDate ? ` · ${formatDate(turf.supplier.invoiceDate)}` : ""}`
-      : turf.source === "manual" ? (it ? "costo scritto a mano" : "manual cost")
+      : turf.source === "manual" ? (it ? `${formatCurrency(turf.cost)}/m² scritto a mano` : `${formatCurrency(turf.cost)}/m² typed by hand`)
         : turf.source === "unit" ? (it ? `la voce fornitore è in ${turf.supplier.unit}, non in m²` : `supplier entry is in ${turf.supplier.unit}, not m²`)
           : (it ? "costo non collegato" : "cost not linked");
-    const lines = [
-      `${it ? "Prato" : "Turf"} ${margin.supply.turfCost == null ? "—" : formatCurrency(margin.supply.turfCost)} <small>(${formatMarginNumber(margin.supply.turfQty)} m² ${it ? "con" : "incl."} ${formatMarginNumber(config.wastePct)}% ${it ? "scarto" : "waste"} · ${escapeHtml(turfNote)})</small>`,
-      margin.supply.materialsCost ? `${it ? "Materiali" : "Materials"} ${formatCurrency(margin.supply.materialsCost)}` : "",
-      margin.supply.shippingCost ? `${it ? "Spedizione" : "Shipping"} ${formatCurrency(margin.supply.shippingCost)}${margin.supply.shippingEstimated ? "" : ` <small>(${it ? "a pareggio" : "break-even"})</small>`}` : "",
-      margin.supply.accessoriesCost ? `${it ? "Accessori" : "Accessories"} ${formatCurrency(margin.supply.accessoriesCost)}` : "",
-      margin.posa.revenue > 0 ? `${it ? "Posa: utile" : "Installation: profit"} ${formatCurrency(margin.posa.profit)}, ${it ? "al posatore" : "to installer"} ${formatCurrency(margin.posa.partnerShare)} (${formatMarginNumber(margin.posa.partnerPct)}%)` : "",
-    ].filter(Boolean);
+    const posaCost = (margin.posa.expenses || 0) + (margin.posa.partnerShare || 0);
+    // Dove va il ricavo: un pezzo di barra per ogni costo, l'ultimo è l'utile.
+    const segments = [
+      { key: "turf", label: it ? "Prato" : "Turf", value: margin.supply.turfCost || 0 },
+      { key: "materials", label: it ? "Materiali" : "Materials", value: margin.supply.materialsCost || 0 },
+      { key: "other", label: margin.supply.accessoriesCost ? (it ? "Sped. e accessori" : "Shipping, accessories") : (it ? "Spedizione" : "Shipping"), value: (margin.supply.shippingCost || 0) + (margin.supply.accessoriesCost || 0) },
+      { key: "posa", label: it ? "Posatore" : "Installer", value: posaCost },
+      { key: "profit", label: it ? "Utile" : "Profit", value: Math.max(0, margin.profit) },
+    ].filter((segment) => segment.value > 0);
+    const barTotal = Math.max(margin.revenueNet, segments.reduce((sum, segment) => sum + segment.value, 0)) || 1;
+    const rows = [
+      [it ? "Prato" : "Turf", `${formatMarginNumber(margin.supply.turfQty)} m² ${it ? "con" : "incl."} ${formatMarginNumber(config.wastePct)}% ${it ? "di scarto" : "waste"} · ${turfNote}`, margin.supply.turfCost],
+      [it ? "Materiali" : "Materials", "", margin.supply.materialsCost],
+      [it ? "Spedizione" : "Shipping", margin.supply.shippingEstimated ? (it ? "tariffa del bancale" : "pallet rate") : (it ? "a pareggio: costo = prezzo al cliente" : "break-even: cost = customer price"), margin.supply.shippingCost],
+      [it ? "Accessori" : "Accessories", "", margin.supply.accessoriesCost],
+      [it ? "Spese della posa" : "Installation expenses", "", margin.posa.expenses],
+      [it ? "Quota del posatore" : "Installer share", margin.posa.revenue > 0 ? `${formatMarginNumber(margin.posa.partnerPct)}% ${it ? "dell'utile posa" : "of installation profit"} (${money(margin.posa.profit)})` : "", margin.posa.partnerShare],
+    ].filter(([, , value], position) => position === 0 || Number(value) > 0);
     const missing = [...new Set(margin.missing)].map((key) => missingLabels[key] || key);
-    return `<div class="nf-margin-card tone-${tone}">
-      <div class="nf-margin-row"><strong>${escapeHtml(nfOptionName(option))}</strong><span>${it ? "Ricavo netto" : "Net revenue"} ${formatCurrency(margin.revenueNet)}</span></div>
-      <div class="nf-margin-bar" role="img" aria-label="${escapeAttr(`${it ? "Utile" : "Profit"} ${formatMarginNumber(margin.marginPct)}%`)}">
-        <span class="nf-margin-bar-cost" style="width:${costShare.toFixed(1)}%"></span>
-        <span class="nf-margin-bar-profit" style="width:${(100 - costShare).toFixed(1)}%"></span>
+    const discountHint = incomplete ? ""
+      : maxDiscount == null && margin.marginPct >= config.lowPct && !margin.missing.length
+        ? (it ? `Resti sopra il ${formatMarginNumber(config.lowPct)}% con qualunque sconto sul prato.` : `You stay above ${formatMarginNumber(config.lowPct)}% with any turf discount.`)
+        : maxDiscount != null && maxDiscount < 95
+          ? (it ? `Sconto massimo sul prato per restare sopra il ${formatMarginNumber(config.lowPct)}%: <strong>${formatMarginNumber(maxDiscount)}%</strong>` : `Max turf discount to stay above ${formatMarginNumber(config.lowPct)}%: <strong>${formatMarginNumber(maxDiscount)}%</strong>`)
+          : maxDiscount != null
+            ? (it ? `Resti sopra il ${formatMarginNumber(config.lowPct)}% con qualunque sconto sul prato.` : `You stay above ${formatMarginNumber(config.lowPct)}% with any turf discount.`)
+            : "";
+    const calcOpen = nfMarginCalcOpen.has(index) || (!nfMarginCalcTouched.has(index) && index === firstIndex);
+    return `<div class="nf-margin-card tone-${tone}" data-margin-index="${index}">
+      <div class="nf-margin-top"><strong class="nf-margin-name">${escapeHtml(nfOptionName(option))}</strong><span class="nf-margin-badge">${toneLabel}</span></div>
+      <div class="nf-margin-figures">
+        <div><small>${incomplete ? (it ? "Utile senza il costo del prato" : "Profit without turf cost") : (it ? "Utile per l'azienda" : "Company profit")}</small><strong class="nf-margin-profit">${money(margin.profit)}</strong></div>
+        <div class="nf-margin-pct"><strong>${formatMarginNumber(margin.marginPct)}%</strong><small>${it ? "del ricavo netto" : "of net revenue"}</small></div>
       </div>
-      <div class="nf-margin-row"><strong class="nf-margin-profit">${incomplete ? (it ? "Utile parziale, senza il prato" : "Partial profit, without turf") : margin.profit < 0 ? (it ? "In perdita" : "Loss") : (it ? "Utile" : "Profit")} ${formatCurrency(margin.profit)} · ${formatMarginNumber(margin.marginPct)}%</strong>
-        ${incomplete ? "" : maxDiscount == null && margin.marginPct >= config.lowPct && !margin.missing.length
-          ? `<span>${it ? `Resti sopra il ${formatMarginNumber(config.lowPct)}% con qualunque sconto sul prato` : `You stay above ${formatMarginNumber(config.lowPct)}% with any turf discount`}</span>`
-          : maxDiscount != null && maxDiscount < 95
-            ? `<span>${it ? `Sconto massimo sul prato per restare sopra il ${formatMarginNumber(config.lowPct)}%: ${formatMarginNumber(maxDiscount)}%` : `Max turf discount to stay above ${formatMarginNumber(config.lowPct)}%: ${formatMarginNumber(maxDiscount)}%`}</span>`
-            : maxDiscount != null
-              ? `<span>${it ? `Resti sopra il ${formatMarginNumber(config.lowPct)}% con qualunque sconto sul prato` : `You stay above ${formatMarginNumber(config.lowPct)}% with any turf discount`}</span>`
-              : ""}</div>
-      <p class="nf-margin-lines">${lines.join(" · ")}</p>
-      ${missing.length ? `<p class="nf-margin-warn">${it ? "Margine parziale: manca il costo di" : "Partial margin: missing cost for"} ${escapeHtml(missing.join(", "))}. ${it ? "Collegalo in Impostazioni → Costi per la barra dell'utile o scrivilo qui sotto." : "Link it in Settings → Costs for the profit bar or type it below."}</p>` : ""}
+      <div class="nf-margin-stack" role="img" aria-label="${escapeAttr(segments.map((segment) => `${segment.label} ${money(segment.value)}`).join(", "))}">
+        ${segments.map((segment) => `<span class="seg-${segment.key}" style="width:${((segment.value / barTotal) * 100).toFixed(2)}%"></span>`).join("")}
+      </div>
+      <ul class="nf-margin-legend">${segments.map((segment) => `<li><i class="seg-${segment.key}"></i>${escapeHtml(segment.label)} <strong>${money(segment.value)}</strong></li>`).join("")}</ul>
+      <details class="nf-margin-calc"${calcOpen ? " open" : ""}>
+        <summary>${it ? "Come si arriva all'utile" : "How the profit is calculated"}</summary>
+        <table>
+          <tr><td>${it ? "Ricavo netto" : "Net revenue"}<small>${it ? "quello che paga il cliente, senza IVA" : "what the customer pays, net of VAT"}</small></td><td>${money(margin.revenueNet)}</td></tr>
+          ${rows.map(([label, note, value]) => `<tr class="is-cost"><td>− ${escapeHtml(label)}${note ? `<small>${escapeHtml(note)}</small>` : ""}</td><td>${value == null ? "—" : `− ${money(value)}`}</td></tr>`).join("")}
+          <tr class="is-total"><td>= ${it ? "Utile per l'azienda" : "Company profit"}</td><td>${money(margin.profit)}</td></tr>
+        </table>
+      </details>
+      ${discountHint ? `<p class="nf-margin-hint">${discountHint}</p>` : ""}
+      ${missing.length ? `<p class="nf-margin-warn">${it ? "Utile parziale: manca il costo di" : "Partial profit: missing cost for"} ${escapeHtml(missing.join(", "))}. ${it ? "Collegalo in Impostazioni → Preventivi → Costi per la barra dell'utile, o scrivilo qui sotto." : "Link it in Settings → Quotes → Costs for the profit bar, or type it below."}</p>` : ""}
     </div>`;
   }).join("");
 }
