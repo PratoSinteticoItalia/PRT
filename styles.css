@@ -30484,3 +30484,8 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 #sales-generator #sales-generator-request-card .sales-generator-card-grid > span + span::before { content: "·"; margin: 0 8px; color: #b4bbb4; }
 #sales-generator #sales-generator-request-card .sales-generator-request-note { margin: 4px 0 0; font-size: 12.5px; }
 #sales-generator #sales-generator-request-card .sales-generator-card-foot { margin-top: 8px; }
+/* I pulsanti a scelta (Tipologia, Superficie, Listino) non si schiacciano:
+   se la riga non basta vanno a capo, mai con la scritta tagliata. */
+#sales-generator .native-form .field:has(> .nf-seg) { flex: 1 0 auto; min-width: fit-content; }
+#sales-generator .native-form .nf-seg { max-width: 100%; }
+#sales-generator .native-form .nf-seg button { flex: 1 0 auto; }
