@@ -2290,7 +2290,7 @@
   }
 
   window.psiDownloadPdf = async function psiDownloadPdf() {
-    if (typeof window.html2pdf === "undefined") { window.print(); return; }
+    if (typeof window.html2pdf === "undefined") { window.print(); return null; }
     const root = document.documentElement;
     const numText = String(document.querySelector('[data-field="quoteNumber"]')?.textContent || "").trim();
     const num = numText.replace(/[^\w-]+/g, "") || "PSI";
@@ -2344,8 +2344,11 @@
         pdf.addImage(img, "JPEG", (W - wmm) / 2, 0, wmm, hmm);
       }
       pdf.save(pdfFilename);
+      // Il portale archivia lo stesso file nella cartella del cliente.
+      return { blob: pdf.output("blob"), filename: pdfFilename };
     } catch (e) {
       alert(`Esportazione non completata: ${e.message || 'riprova tra qualche istante'}`);
+      return null;
     } finally {
       pagination?.cleanup();
       originalLabels.forEach(([element, text]) => { element.textContent = text; });

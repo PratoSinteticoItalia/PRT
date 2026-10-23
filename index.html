@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261021-inglese-integrale" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261021-inglese-integrale" />
+    <link rel="preload" href="./styles.css?v=20261022-richieste-cartella-5" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261022-richieste-cartella-5" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -591,13 +591,16 @@
         <section class="view" id="sales-requests">
           <div class="page-header">
             <div>
-              <h1 id="sales-requests-title">Richieste Preventivo <span style="font-size:10px;font-weight:400;opacity:.5;vertical-align:middle">v:crm-pipeline</span></h1>
+              <h1 id="sales-requests-title">Richieste <span style="font-size:10px;font-weight:400;opacity:.5;vertical-align:middle">v:crm-pipeline</span></h1>
               <p id="sales-requests-subtitle">Gestisci richieste commerciali e prepara il passaggio verso il generatore.</p>
             </div>
             <div class="action-list">
-              <details class="action-overflow">
-                <summary class="ghost-button small-button" title="Strumenti di manutenzione dati">⚙ Manutenzione</summary>
+              <button id="sales-requests-saved-quotes-button" class="ghost-button small-button" type="button">I miei preventivi</button>
+              <button id="sales-request-new-button" class="ghost-button small-button action-primary" type="button">+ Nuova richiesta</button>
+              <details class="action-overflow srq-more">
+                <summary class="ghost-button small-button" title="Importa e strumenti di manutenzione" aria-label="Altre azioni">⋯</summary>
                 <div class="action-overflow-menu">
+                  <button id="sales-request-import-button" class="ghost-button small-button" type="button">Importa richieste</button>
                   <p class="action-overflow-label">Manutenzione dati</p>
                   <button id="sales-request-restore-dates-button" class="ghost-button small-button" type="button" title="Ripristina le date reali dalla coda IMAP (corregge le date '08 giu' artificiali)">Ripristina date</button>
                   <button id="sales-request-restore-names-button" class="ghost-button small-button" type="button" title="Completa nomi/cognomi/MQ mancanti dai dati shadow IMAP">Ripristina nomi</button>
@@ -606,8 +609,6 @@
                   <button id="sales-request-normalize-service-button" class="ghost-button small-button" type="button" title="Corregge Servizio/Fondo salvati come testo libero (es. 'Fornitura e Posa') invece del valore riconosciuto dal menu a tendina">Sistema Servizio/Fondo</button>
                 </div>
               </details>
-              <button id="sales-request-import-button" class="ghost-button small-button" type="button">Importa richieste</button>
-              <button id="sales-request-new-button" class="ghost-button small-button action-primary" type="button">Nuova richiesta</button>
             </div>
           </div>
           <div id="lead-intake-alert" class="lead-intake-alert" role="alert" hidden></div>
@@ -620,25 +621,29 @@
                   <h3 id="sales-request-list-title">Richieste attive</h3>
                 </div>
               </div>
-              <!-- CRM v2: ordine layout = KPI → pillole → search → bulk bar → lista -->
-              <div id="sales-request-insights" class="sales-request-insights"></div>
+              <!-- Richieste v2: fasi del percorso in una riga → ricerca e filtri → lista -->
               <div id="sales-request-workflow" class="sales-request-workflow"></div>
-              <div id="sales-request-stale-banner" class="sales-request-stale-banner hidden"></div>
-              <div class="sales-request-toolbar">
-                <div id="sales-request-quick-filters" class="sales-request-quick-filters"></div>
-                <div class="sales-request-toolbar-right">
-                  <select id="sales-request-assignment-filter" class="sales-filter-select" aria-label="Filtra per assegnazione">
-                    <option value="all">Tutte</option>
-                  </select>
-                  <select id="sales-request-status-filter" class="sales-filter-select" aria-label="Filtra per stato">
-                    <option value="all">Tutti</option>
-                  </select>
+              <div id="sales-request-insights" class="sales-request-insights" hidden></div>
+              <div class="srq-toolbar">
+                <label class="search-field">
+                  <span id="sales-requests-search-label">Cerca</span>
+                  <input id="sales-requests-search" type="search" placeholder="Nome, città, telefono, assegnazione..." />
+                </label>
+                <select id="sales-request-assignment-filter" class="sales-filter-select" aria-label="Filtra per assegnazione">
+                  <option value="all">Tutte</option>
+                </select>
+                <select id="sales-request-status-filter" class="sales-filter-select" aria-label="Filtra per stato" hidden>
+                  <option value="all">Tutti</option>
+                </select>
+                <div id="sales-request-sort-row" class="sales-request-sort-row" role="group" aria-label="Ordina">
+                  <button type="button" class="sales-request-sort-btn" data-action="set-sales-request-sort" data-value="urgent">Più urgenti</button>
+                  <button type="button" class="sales-request-sort-btn" data-action="set-sales-request-sort" data-value="recent">Più recenti</button>
                 </div>
               </div>
-              <label class="search-field">
-                <span id="sales-requests-search-label">Cerca</span>
-                <input id="sales-requests-search" type="search" placeholder="Nome, città, telefono, assegnazione..." />
-              </label>
+              <div class="sales-request-toolbar">
+                <div id="sales-request-quick-filters" class="sales-request-quick-filters"></div>
+              </div>
+              <div id="sales-request-stale-banner" class="sales-request-stale-banner hidden"></div>
               <div id="sales-request-import-wrap" class="field field-full collapsible-field order-import-panel hidden">
                 <p class="panel-eyebrow" style="margin-bottom: 8px;">Import richieste</p>
                 <p style="margin: 0 0 10px; color: var(--muted); font-size: 13px;">
@@ -651,16 +656,10 @@
                 </div>
               </div>
               <div id="sales-request-bulk-bar" class="sales-request-bulk-bar"></div>
-              <div id="sales-request-sort-row" class="sales-request-sort-row">
-                <span class="sales-request-sort-label">Ordina</span>
-                <button type="button" class="sales-request-sort-btn" data-action="set-sales-request-sort" data-value="recent">Più recenti prima</button>
-                <button type="button" class="sales-request-sort-btn" data-action="set-sales-request-sort" data-value="urgent">Più urgenti prima</button>
-              </div>
               <div id="sales-requests-list" class="detail-stack sales-request-list"></div>
               <div id="sales-requests-pagination" class="list-pagination hidden"></div>
               <div id="sales-requests-status" class="panel-note hidden" style="margin-top:8px;"></div>
             </section>
-
             <section class="panel panel-large sales-request-detail-panel">
               <div class="panel-head">
                 <div>
@@ -669,21 +668,21 @@
                   <div id="sales-request-detail-meta" class="sales-request-detail-meta"></div>
                 </div>
                 <div class="inline-actions">
-                  <button id="sales-request-vcard-button" class="ghost-button small-button" type="button">📇 Salva in rubrica</button>
-                  <button id="sales-request-delete-button" class="ghost-button small-button" type="button">Elimina</button>
-                  <button id="sales-request-use-generator-button" class="primary-button small-button" type="button">Usa nel generatore</button>
+                  <button id="sales-request-use-generator-button" class="primary-button small-button" type="button">Fai preventivo</button>
+                  <details class="action-overflow srq-more">
+                    <summary class="ghost-button small-button" aria-label="Altre azioni" title="Altre azioni">⋯</summary>
+                    <div class="action-overflow-menu">
+                      <button id="sales-request-vcard-button" class="ghost-button small-button" type="button">📇 Salva in rubrica</button>
+                      <button id="sales-request-delete-button" class="ghost-button small-button srq-danger" type="button">Elimina richiesta</button>
+                    </div>
+                  </details>
                   <button class="crm-drawer-close" type="button" data-action="close-crm-detail" aria-label="Chiudi pannello" title="Chiudi">✕</button>
                 </div>
               </div>
-              <div class="crm-detail-tabs" id="sales-request-detail-tabs" role="tablist">
-                <button type="button" class="crm-detail-tab is-active" role="tab" aria-selected="true" data-action="set-sales-request-detail-tab" data-tab="overview">Panoramica</button>
-                <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="client">Cliente</button>
-                <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="history" id="sales-request-storia-tab-btn">Storia</button>
-              </div>
+              <div id="sales-request-contact-row" class="srq-contact-row"></div>
               <form id="sales-request-form" class="inline-form-grid crm-detail-form">
                 <input type="hidden" name="id" />
-
-                <div class="crm-tab-panel is-active" data-tab-panel="overview">
+                <div class="srq-state-strip field-full">
                   <!-- ── Sezione: Stato commerciale ─────────────────── -->
                   <div class="crm-detail-section field-full">
                     <p class="crm-detail-section-label">Stato commerciale</p>
@@ -711,10 +710,31 @@
                       </label>
                     </div>
                   </div>
-
+                </div>
+                <div class="crm-detail-tabs field-full" id="sales-request-detail-tabs" role="tablist">
+                  <button type="button" class="crm-detail-tab is-active" role="tab" aria-selected="true" data-action="set-sales-request-detail-tab" data-tab="overview">Panoramica</button>
+                  <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="client">Cliente</button>
+                  <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="folder" id="sales-request-folder-tab-btn">Cartella <span class="srq-tab-count" id="sales-request-folder-count" hidden></span></button>
+                  <button type="button" class="crm-detail-tab" role="tab" aria-selected="false" data-action="set-sales-request-detail-tab" data-tab="history" id="sales-request-storia-tab-btn">Storia</button>
+                </div>
+                <div class="crm-tab-panel is-active" data-tab-panel="overview">
+                  <!-- ── Prossimo passo: primo contatto o follow-up WhatsApp ─────── -->
+                  <div class="srq-next field-full" id="sales-request-next-step">
+                    <div class="srq-next-copy">
+                      <span class="srq-next-label">Prossimo passo</span>
+                      <strong id="sales-request-next-step-text"></strong>
+                      <small id="sales-request-whatsapp-hint" class="field-hint">Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente.</small>
+                    </div>
+                    <div class="inline-actions">
+                      <a id="sales-request-whatsapp-button" class="primary-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Apri messaggio WhatsApp</a>
+                    <a id="sales-request-followup-button" class="ghost-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Follow-up WhatsApp</a>
+                    </div>
+                    <input type="hidden" name="whatsappTemplate" />
+                    <input type="hidden" name="whatsappUrl" />
+                  </div>
                   <!-- ── Sezione: Dettaglio richiesta ───────────────── -->
                   <div class="crm-detail-section field-full">
-                    <p class="crm-detail-section-label">Dettaglio richiesta</p>
+                    <p class="crm-detail-section-label">Cosa chiede</p>
                     <div class="crm-detail-section-grid">
                       <label class="field sales-request-sqm-field">
                         <span>MQ richiesti</span>
@@ -742,19 +762,8 @@
                       </label>
                     </div>
                   </div>
-
-                  <div class="field field-full">
-                    <span>Primo contatto WhatsApp</span>
-                    <div class="inline-actions">
-                      <a id="sales-request-whatsapp-button" class="primary-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Apri messaggio WhatsApp</a>
-                    <a id="sales-request-followup-button" class="ghost-button small-button hidden" target="psi_sales_request_whatsapp" href="#">Follow-up WhatsApp</a>
-                    </div>
-                    <small id="sales-request-whatsapp-hint" class="field-hint">Usa lo stesso link rapido del foglio Google quando disponibile, altrimenti viene creato dal numero cliente.</small>
-                    <input type="hidden" name="whatsappTemplate" />
-                    <input type="hidden" name="whatsappUrl" />
-                  </div>
+                  <div class="srq-last-quote field-full" id="sales-request-last-quote" hidden></div>
                 </div>
-
                 <div class="crm-tab-panel" data-tab-panel="client">
                   <!-- ── Sezione: Anagrafica cliente ────────────────── -->
                   <div class="crm-detail-section field-full">
@@ -791,6 +800,9 @@
                     </label>
                   </div>
                 </div>
+                <div class="crm-tab-panel" data-tab-panel="folder" id="sales-request-folder-panel">
+                  <div class="field-full" id="sales-request-folder"></div>
+                </div>
               </form>
               <div class="panel-section crm-tab-panel" data-tab-panel="history" id="sales-request-storia-panel">
                 <div class="subsection-head">
@@ -819,6 +831,7 @@
                   <h3 id="sales-generator-context-title">Richiesta collegata</h3>
                 </div>
                 <div class="inline-actions">
+                  <button id="sales-generator-saved-quotes-button" class="ghost-button small-button" type="button" hidden>I miei preventivi</button>
                   <button id="sales-generator-open-request-button" class="ghost-button small-button" type="button">Apri richiesta</button>
                   <button id="sales-generator-free-quote-button" class="primary-button small-button" type="button">Preventivo libero</button>
                   <button id="sales-generator-prefill-button" class="primary-button small-button" type="button">Aggiorna prefill</button>
@@ -830,6 +843,7 @@
             </section>
 
             <section class="panel panel-large sales-generator-frame-panel">
+              <div id="sales-generator-quote-edit" class="srq-edit-banner" hidden></div>
               <div class="sales-generator-toolbar">
                 <label class="quote-p2-toggle" title="Includi la pagina 2 con schede tecniche prodotti e certificazioni">
                   <input type="checkbox" id="quote-include-p2" checked />
@@ -2653,8 +2667,50 @@
       </div>
     </div>
 
+    <!-- Archiviazione del preventivo nella cartella del cliente (generatore → "Salva PDF") -->
+    <dialog id="quote-save-dialog" class="srq-dialog" aria-labelledby="quote-save-title">
+      <div class="srq-dialog-body">
+        <header class="srq-dialog-head">
+          <div>
+            <h2 id="quote-save-title">Archivia il preventivo</h2>
+            <p>Il PDF si scarica come sempre e una copia resta nella cartella del cliente.</p>
+          </div>
+        </header>
+        <div class="srq-dialog-section">
+          <span class="srq-dialog-label">Cartella del cliente</span>
+          <div id="quote-save-request"></div>
+          <div id="quote-save-search-wrap" hidden>
+            <input type="search" id="quote-save-search" class="text-input" placeholder="Cerca il cliente per nome, telefono o città…" autocomplete="off" />
+            <div id="quote-save-results" class="srq-search-results"></div>
+          </div>
+        </div>
+        <p id="quote-save-revision" class="srq-dialog-note"></p>
+        <label class="srq-switch-row">
+          <span class="srq-switch"><input type="checkbox" id="quote-save-shared" /><span aria-hidden="true"></span></span>
+          <span class="srq-switch-copy"><strong>Condividi nella cartella del cliente</strong><small id="quote-save-shared-hint"></small></span>
+        </label>
+        <p id="quote-save-status" class="srq-dialog-status" role="status"></p>
+        <footer class="srq-dialog-actions">
+          <button type="button" class="ghost-button small-button" data-action="quote-save-cancel">Annulla</button>
+          <button type="button" class="ghost-button small-button" data-action="quote-save-download-only">Scarica senza archiviare</button>
+          <button type="button" class="primary-button small-button" data-action="quote-save-confirm" id="quote-save-confirm">Salva e scarica</button>
+        </footer>
+      </div>
+    </dialog>
+    <!-- Preventivi salvati: i miei (privati e condivisi) e, con il permesso, tutto l'ufficio -->
+    <dialog id="quote-list-dialog" class="srq-dialog is-wide" aria-labelledby="quote-list-title">
+      <div class="srq-dialog-body">
+        <header class="srq-dialog-head">
+          <h2 id="quote-list-title">I miei preventivi</h2>
+          <button type="button" class="crm-drawer-close" data-action="quote-list-close" aria-label="Chiudi">✕</button>
+        </header>
+        <div class="srq-seg" id="quote-list-filters"></div>
+        <div id="quote-list-body"></div>
+      </div>
+    </dialog>
+
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261021-inglese-integrale" defer></script>
-    <script src="./app.js?v=20261021-inglese-integrale" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261022-richieste-cartella-5" defer></script>
+    <script src="./app.js?v=20261022-richieste-cartella-5" type="module"></script>
   </body>
 </html>

@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Richieste riordinate con cartella cliente</title>
+<style>
+  :root {
+    --bg: #f4f4f3; --topbar: #18191a; --sidebar: #1f2122;
+    --brand: #2f7a55; --brand-strong: #276647; --brand-soft: #e8f2ec;
+    --text: #1f2a22; --muted: #69736b; --faint: #8d968e;
+    --line: #e6e9e4; --line-strong: #d6dcd4;
+    --amber: #8f6514; --amber-soft: #fcf2df; --red: #a3352c; --red-soft: #fcebe9;
+    --blue: #2c5aa8; --blue-soft: #ebf1fc; --slate-soft: #f0f2ef; --violet: #6b4bb8; --violet-soft: #f3eefc;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    color: var(--text);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); font-size: 14px; }
+  button { font: inherit; cursor: pointer; color: inherit; }
+  input, select, textarea { font: inherit; color: inherit; }
+
+  .demo-bar { background: #fff8e6; border-bottom: 1px solid #efdcae; padding: 8px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  .demo-bar strong { color: var(--amber); }
+  .demo-bar select { padding: 4px 8px; border: 1px solid #e0c98f; border-radius: 6px; background: #fff; }
+  .demo-bar .hint { color: var(--muted); }
+
+  .topbar { background: var(--topbar); color: #fff; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+  .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--brand); display: grid; place-items: center; font-weight: 700; }
+  .topbar .title { font-weight: 600; }
+  .topbar .title small { display: block; color: #a9b0ab; font-weight: 400; font-size: 11px; }
+  .topbar .user { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #2c2f30; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; flex: none; }
+
+  .shell { display: grid; grid-template-columns: 200px 1fr; min-height: calc(100vh - 90px); }
+  .sidebar { background: var(--sidebar); padding: 14px 10px; }
+  .sidebar .sec { color: #7d8580; font-size: 10px; letter-spacing: .12em; margin: 14px 8px 6px; }
+  .nav { display: flex; align-items: center; gap: 8px; color: #c9cfcb; padding: 8px 10px; border-radius: 8px; border: 0; background: none; width: 100%; text-align: left; }
+  .nav:hover { background: #2a2d2e; }
+  .nav.is-active { background: #2c2f30; color: #fff; box-shadow: inset 3px 0 var(--brand); }
+  .nav .count { margin-left: auto; background: #3a3e3f; color: #fff; border-radius: 999px; padding: 0 7px; font-size: 11px; }
+  .nav.is-active .count { background: var(--brand); }
+
+  main { padding: 20px 24px; min-width: 0; }
+  .page-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin: 0; }
+  .page-head .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; position: relative; }
+
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .crm { display: grid; grid-template-columns: minmax(330px, 440px) 1fr; gap: 16px; align-items: start; }
+
+  /* Pipeline */
+  .pipeline { display: flex; gap: 6px; overflow-x: auto; padding: 12px 12px 8px; scrollbar-width: thin; }
+  .chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 11px; white-space: nowrap; font-size: 12.5px; display: inline-flex; gap: 6px; align-items: center; }
+  .chip b { font-weight: 700; }
+  .chip.is-active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .toolbar { display: flex; gap: 8px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .toolbar input[type=search] { flex: 1; min-width: 160px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 8px; }
+  .toolbar select { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; font-size: 13px; }
+  .bulk { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--brand-soft); border-bottom: 1px solid var(--line); font-size: 13px; flex-wrap: wrap; }
+  .bulk select { padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; font-size: 12px; }
+
+  /* Righe */
+  .row { display: grid; grid-template-columns: 18px 10px 1fr auto; gap: 10px; align-items: center; padding: 11px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .row:last-child { border-bottom: 0; }
+  .row:hover { background: #fafbfa; }
+  .row.is-selected { background: var(--brand-soft); box-shadow: inset 3px 0 var(--brand); }
+  .row .check { width: 16px; height: 16px; border: 1.5px solid var(--line-strong); border-radius: 4px; background: #fff; display: grid; place-items: center; font-size: 11px; color: #fff; padding: 0; }
+  .row .check.is-on { background: var(--brand); border-color: var(--brand); }
+  .sdot { width: 9px; height: 9px; border-radius: 50%; }
+  .t-unassigned { background: #b8bfba; } .t-new { background: var(--blue); } .t-contacted { background: #4f8fd6; }
+  .t-followup { background: var(--amber); } .t-quoting { background: #b98a2f; } .t-quoted { background: var(--violet); }
+  .t-won { background: var(--brand); } .t-lost { background: var(--red); }
+  .row .name { font-weight: 600; }
+  .row .meta { color: var(--muted); font-size: 12px; margin-top: 2px; display: flex; flex-wrap: wrap; gap: 0 6px; }
+  .row .meta .warn { color: var(--amber); font-weight: 600; }
+  .row .meta .bad { color: var(--red); font-weight: 600; }
+  .row .aside { text-align: right; display: grid; gap: 4px; justify-items: end; }
+  .row .aside small { color: var(--faint); font-size: 11.5px; }
+  .mini-avatar { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+  .mini-avatar i { width: 20px; height: 20px; border-radius: 50%; background: #dfe5e0; color: #3d4741; font-style: normal; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+  .mini-avatar.empty i { background: #fff; border: 1px dashed var(--line-strong); color: var(--faint); }
+  .row-action { border: 1px solid var(--line-strong); background: #fff; border-radius: 7px; padding: 3px 9px; font-size: 12px; }
+  .row-action.blue { border-color: #c9d8f1; color: var(--blue); background: var(--blue-soft); }
+  .row-action.green { border-color: #cfe3d6; color: var(--brand-strong); background: var(--brand-soft); }
+  .folder-pill { font-size: 11px; color: var(--muted); background: var(--slate-soft); border-radius: 999px; padding: 0 7px; }
+
+  /* Dettaglio */
+  .d-head { padding: 16px 18px 12px; display: grid; gap: 10px; }
+  .d-title { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .d-title .name { font-size: 19px; font-weight: 600; }
+  .d-title .meta { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .d-title .right { margin-left: auto; display: flex; gap: 6px; align-items: center; position: relative; }
+  .contact-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .state-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .state-strip label { display: grid; gap: 3px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .state-strip select { padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .tabs { display: flex; gap: 2px; padding: 0 18px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tab { border: 0; background: none; padding: 9px 12px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tab.is-active { color: var(--brand-strong); border-color: var(--brand); font-weight: 600; }
+  .tab .n { background: var(--slate-soft); border-radius: 999px; padding: 0 7px; font-size: 11px; margin-left: 4px; }
+  .d-body { padding: 16px 18px 18px; }
+
+  .next { border: 1px solid #cfe3d6; background: var(--brand-soft); border-radius: 12px; padding: 12px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .next.amber { border-color: #ecd9ac; background: var(--amber-soft); }
+  .next.blue { border-color: #c9d8f1; background: var(--blue-soft); }
+  .next .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .next strong { display: block; margin-top: 2px; }
+  .next .go { margin-left: auto; display: flex; gap: 6px; }
+
+  .sec { margin-bottom: 18px; }
+  .sec h3 { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+  .sec h3 .right { margin-left: auto; text-transform: none; letter-spacing: 0; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .f input, .f select, .f textarea { padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; font-size: 13.5px; }
+  .f textarea { resize: vertical; min-height: 70px; }
+  .quote-note { border: 1px solid var(--line); background: #fbfbfa; border-radius: 10px; padding: 10px 12px; color: #3d4741; font-size: 13.5px; }
+  .last-quote { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; flex-wrap: wrap; }
+  .last-quote .t { margin-left: auto; font-weight: 600; }
+
+  .quote { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: #fff; }
+  .quote-main { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 14px; align-items: center; }
+  .quote .num { font-weight: 600; }
+  .quote .num .rev { color: var(--muted); font-weight: 500; }
+  .quote .line2 { color: var(--muted); font-size: 12px; }
+  .quote .total { font-weight: 600; text-align: right; }
+  .quote-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 12px; }
+  .quote.is-ghost { background: #fafbfa; border-style: dashed; }
+  .quote.is-ghost .quote-main { color: var(--muted); }
+  .older { border-top: 1px dashed var(--line); padding: 8px 14px; font-size: 12px; color: var(--muted); }
+  .older-row { display: flex; gap: 10px; align-items: center; padding: 4px 0; }
+  .older-row .t { margin-left: auto; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 1px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .b-private { background: var(--slate-soft); color: #4a524c; }
+  .b-shared { background: var(--brand-soft); color: var(--brand-strong); }
+  .b-sent { background: var(--blue-soft); color: var(--blue); }
+  .b-ok { background: var(--brand-soft); color: var(--brand-strong); }
+  .b-ko { background: var(--red-soft); color: var(--red); }
+  .b-exp { background: var(--amber-soft); color: var(--amber); }
+  .b-owner { background: var(--violet-soft); color: var(--violet); }
+
+  .btn { border: 1px solid var(--line-strong); background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; color: var(--text); }
+  .btn:hover { background: #f7f8f6; }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary:hover { background: var(--brand-strong); }
+  .btn.wa { background: #e7f6ec; border-color: #bfe3cb; color: #1f7a45; }
+  .btn.big { padding: 8px 14px; font-size: 13.5px; }
+  .btn.link { border: 0; background: none; color: var(--brand-strong); padding: 0; text-decoration: underline; }
+  .btn.icon { padding: 5px 9px; }
+  select.status { border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 6px; font-size: 12px; background: #fff; }
+
+  .menu { position: absolute; right: 0; top: calc(100% + 6px); background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.12); min-width: 230px; padding: 6px; z-index: 10; display: none; }
+  .menu.is-open { display: block; }
+  .menu p { margin: 6px 8px 4px; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 6px; font-size: 13px; }
+  .menu button:hover { background: var(--slate-soft); }
+  .menu button.danger { color: var(--red); }
+
+  .item-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; background: #fff; }
+  .item-row .ico { width: 30px; height: 30px; border-radius: 8px; background: var(--slate-soft); display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #4a524c; flex: none; }
+  .item-row .txt { min-width: 0; }
+  .item-row .txt small { display: block; color: var(--muted); font-size: 12px; }
+  .item-row .act { margin-left: auto; }
+  .drop { border: 1.5px dashed var(--line-strong); border-radius: 10px; padding: 12px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .drop:hover { border-color: var(--brand); color: var(--brand-strong); background: var(--brand-soft); }
+  .empty { color: var(--faint); font-size: 13px; padding: 4px 0 8px; }
+
+  .timeline { list-style: none; margin: 0; padding: 0; }
+  .timeline li { display: grid; grid-template-columns: 70px 14px 1fr; gap: 10px; padding: 7px 0; font-size: 13px; }
+  .timeline .when { color: var(--faint); font-size: 12px; text-align: right; }
+  .timeline .pin { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); margin-top: 4px; }
+  .timeline .pin.q { background: var(--violet); } .timeline .pin.c { background: var(--blue); } .timeline .pin.s { background: var(--brand); }
+  .timeline small { display: block; color: var(--muted); }
+
+  /* Generatore e liste */
+  .gen-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
+  .gen-form { padding: 16px 18px; display: grid; gap: 12px; }
+  .summary { padding: 16px 18px; display: grid; gap: 10px; }
+  .summary .tot { font-size: 24px; font-weight: 700; }
+  .edit-banner { background: var(--blue-soft); color: var(--blue); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .linked { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fafbfa; font-size: 13px; }
+  .list-table { width: 100%; border-collapse: collapse; }
+  .list-table th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .list-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .list-table tr:last-child td { border-bottom: 0; }
+  .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 5px 10px; font-size: 12px; }
+  .seg button.is-active { background: var(--brand-soft); color: var(--brand-strong); font-weight: 600; }
+
+  /* Finestra salvataggio */
+  .overlay { position: fixed; inset: 0; background: rgba(20,22,21,.45); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+  .overlay.is-open { display: flex; }
+  .dialog { background: #fff; border-radius: 14px; width: min(520px, 100%); max-height: 90vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  .dialog header { padding: 16px 18px 6px; }
+  .dialog header h2 { margin: 0; font-size: 17px; }
+  .dialog header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .dialog .body { padding: 10px 18px; display: grid; gap: 14px; }
+  .dialog footer { padding: 12px 18px 16px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); }
+  .opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .opt:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+  .opt small { display: block; color: var(--muted); }
+  .switch-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+  .switch { position: relative; width: 40px; height: 22px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: #cfd5d0; border-radius: 999px; transition: .15s; }
+  .switch span::after { content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + span { background: var(--brand); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch-row small { display: block; color: var(--muted); margin-top: 2px; }
+  .search-results { border: 1px solid var(--line); border-radius: 8px; margin-top: 6px; max-height: 160px; overflow: auto; }
+  .search-results button { display: block; width: 100%; text-align: left; border: 0; background: #fff; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .search-results button:hover { background: var(--brand-soft); }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1f2122; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; display: none; z-index: 30; gap: 12px; align-items: center; max-width: calc(100% - 32px); }
+  .toast.is-open { display: flex; }
+  .toast button { background: none; border: 0; color: #9fd8b8; text-decoration: underline; }
+  .back { display: none; }
+
+  @media (max-width: 1000px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar { display: flex; gap: 6px; overflow-x: auto; padding: 8px; }
+    .sidebar .sec { display: none; }
+    .nav { width: auto; white-space: nowrap; }
+    .gen-grid { grid-template-columns: 1fr; }
+    .crm { grid-template-columns: minmax(280px, 340px) 1fr; gap: 12px; }
+    main { padding: 14px; }
+    .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .list-table .hide-m { display: none; }
+  }
+  /* Telefono: elenco e scheda a schermo intero, una alla volta. */
+  @media (max-width: 720px) {
+    .crm { grid-template-columns: 1fr; }
+    .crm.has-detail .list-col { display: none; }
+    .crm:not(.has-detail) .detail-col { display: none; }
+    .back { display: inline-flex; }
+    .state-strip { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="demo-bar">
+  <strong>Prototipo</strong>
+  <span>Stai provando come:</span>
+  <select id="who"></select>
+  <span class="hint" id="who-hint"></span>
+</div>
+
+<div class="topbar">
+  <div class="logo">P</div>
+  <div class="title">Portale operativo<small>Prototipo: Richieste riordinate + cartella cliente</small></div>
+  <div class="user"><span id="user-name"></span><div class="avatar" id="user-initials"></div></div>
+</div>
+
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sec">VENDITE</div>
+    <button class="nav" data-view="requests">Richieste</button>
+    <button class="nav" data-view="generator">Generatore</button>
+    <button class="nav" data-view="mine">I miei preventivi <span class="count" id="mine-count"></span></button>
+  </nav>
+  <main id="main"></main>
+</div>
+
+<div class="overlay" id="save-overlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="save-title">
+    <header>
+      <h2 id="save-title">Salva il preventivo</h2>
+      <p>Il PDF viene scaricato e una copia resta nel portale.</p>
+    </header>
+    <div class="body" id="save-body"></div>
+    <footer>
+      <button class="btn" data-action="close-save">Annulla</button>
+      <button class="btn primary" data-action="confirm-save">Scarica e salva</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toast-text"></span><button id="toast-link" hidden></button></div>
+
+<script>
+const USERS = [
+  { id: "gabriele", name: "Gabriele", role: "Titolare", seeAll: true },
+  { id: "ivan", name: "Ivan", role: "Ufficio vendite", seeAll: false },
+];
+const STAGES = [
+  { key: "unassigned", label: "Da assegnare", tone: "t-unassigned" },
+  { key: "new", label: "Da contattare", tone: "t-new" },
+  { key: "contacted", label: "Primo contatto", tone: "t-contacted" },
+  { key: "followup", label: "Follow-up", tone: "t-followup" },
+  { key: "quoting", label: "In preventivo", tone: "t-quoting" },
+  { key: "quoted", label: "Preventivo inviato", tone: "t-quoted" },
+  { key: "won", label: "Confermate", tone: "t-won" },
+  { key: "lost", label: "Perse / chiuse", tone: "t-lost" },
+];
+const ACTIVE_STAGES = ["unassigned", "new", "contacted", "followup", "quoting", "quoted"];
+const PRODUCTS = { "Cedro 30 mm": 18.9, "Rovere 40 mm": 21.5, "Ginepro 45 mm": 24.9, "Faggio 25 mm": 15.2 };
+
+const state = {
+  user: "ivan",
+  view: "requests",
+  selected: "R-1042",
+  showDetail: true,
+  tab: "overview",
+  stageFilter: "active",
+  assignFilter: "all",
+  search: "",
+  sort: "urgent",
+  bulk: new Set(),
+  menu: null,
+  mineFilter: "all",
+  expanded: {},
+  editing: null,
+  gen: { requestId: "R-1042", product: "Cedro 30 mm", sqm: 60, service: "Fornitura + posa" },
+  save: null,
+  requests: [
+    { id: "R-1042", name: "Mario Rossi", city: "Roma", region: "Lazio", phone: "333 123 4567", email: "mario.rossi@email.it", sqm: 60, height: "30 mm", service: "Fornitura + posa", surface: "Terra", stage: "quoted", assignee: "ivan", reseller: "", source: "📧 sito", arrived: "8 ott", lastContactDays: 4, note: "Giardino sul retro, circa 60 mq, vorrei un prato morbido per i bambini. Disponibile per sopralluogo il sabato." },
+    { id: "R-1048", name: "Chiara Fontana", city: "Viterbo", region: "Lazio", phone: "339 712 0045", email: "", sqm: 40, height: "", service: "Solo fornitura", surface: "Pavimentazione", stage: "new", assignee: "", reseller: "", source: "📧 sito", arrived: "21 ott", lastContactDays: 0, note: "Terrazzo condominiale, mi servono anche le bande di giunzione." },
+    { id: "R-1046", name: "Andrea Galli", city: "Pomezia", region: "Lazio", phone: "328 440 9921", email: "a.galli@email.it", sqm: 85, height: "40 mm", service: "Fornitura + posa", surface: "Terra", stage: "new", assignee: "gabriele", reseller: "", source: "📋 foglio", arrived: "17 ott", lastContactDays: 5, note: "" },
+    { id: "R-1039", name: "Laura Bianchi", city: "Anguillara Sabazia", region: "Lazio", phone: "347 555 0101", email: "laura.b@email.it", sqm: 35, height: "25 mm", service: "Solo fornitura", surface: "Terra", stage: "followup", assignee: "ivan", reseller: "", source: "📧 sito", arrived: "11 ott", lastContactDays: 6, note: "Richiamare dopo il 20, è in ferie." },
+    { id: "R-1031", name: "Studio Verde srl", city: "Firenze", region: "Toscana", phone: "055 220 1188", email: "info@studioverde.it", sqm: 140, height: "40 mm", service: "Fornitura + posa", surface: "Terra", stage: "quoting", assignee: "ivan", reseller: "Verde Casa Firenze", source: "🏬 rivenditore", arrived: "9 ott", lastContactDays: 2, note: "Capitolato condominio allegato in cartella." },
+    { id: "R-1027", name: "Paolo Neri", city: "Latina", region: "Lazio", phone: "320 888 4521", email: "", sqm: 22, height: "25 mm", service: "Solo fornitura", surface: "Terra", stage: "won", assignee: "gabriele", reseller: "", source: "📞 telefono", arrived: "1 ott", lastContactDays: 1, note: "" },
+    { id: "R-1019", name: "Elena Marchi", city: "Frascati", region: "Lazio", phone: "333 019 7788", email: "", sqm: 50, height: "", service: "Fornitura + posa", surface: "Terra", stage: "lost", assignee: "ivan", reseller: "", source: "📧 sito", arrived: "24 set", lastContactDays: 20, note: "Ha scelto un'altra ditta (prezzo)." },
+  ],
+  quotes: [
+    { number: "F-2026-2301", rev: 1, requestId: "R-1042", author: "ivan", shared: true, total: 3612.4, date: "14 ott", product: "Rovere 40 mm · 60 mq", status: "Inviato" },
+    { number: "F-2026-2301", rev: 2, requestId: "R-1042", author: "ivan", shared: true, total: 3542.88, date: "18 ott", product: "Cedro 30 mm · 60 mq", status: "Inviato" },
+    { number: "F-2026-2298", rev: 1, requestId: "R-1042", author: "gabriele", shared: false, total: 3891.0, date: "12 ott", product: "Ginepro 45 mm · 60 mq", status: "Inviato" },
+    { number: "F-2026-2310", rev: 1, requestId: "R-1031", author: "ivan", shared: false, total: 8420, date: "19 ott", product: "Rovere 40 mm · 140 mq", status: "Inviato" },
+    { number: "F-2026-2305", rev: 1, requestId: "R-1039", author: "ivan", shared: true, total: 690.2, date: "16 ott", product: "Faggio 25 mm · 35 mq", status: "Scaduto" },
+    { number: "F-2026-2288", rev: 1, requestId: "R-1027", author: "gabriele", shared: true, total: 455.8, date: "2 ott", product: "Faggio 25 mm · 22 mq", status: "Accettato" },
+  ],
+  docs: {
+    "R-1042": [
+      { name: "planimetria-giardino.pdf", kind: "PDF", by: "ivan", date: "13 ott" },
+      { name: "foto-terreno-1.jpg", kind: "IMG", by: "gabriele", date: "10 ott" },
+    ],
+    "R-1031": [{ name: "capitolato-condominio.pdf", kind: "PDF", by: "ivan", date: "18 ott" }],
+  },
+  extras: {
+    "R-1042": [
+      { kind: "GP", title: "Progetto Garden Planner · Giardino retro", sub: "60 m² · 4 rotoli · aggiornato 13 ott" },
+      { kind: "SO", title: "Report sopralluogo · Squadra Alpha", sub: "10 ott · terreno da livellare, nessuna criticità" },
+    ],
+  },
+  orders: { "R-1027": "#2788 · Faggio 25 mm · in preparazione" },
+  history: {
+    "R-1042": [
+      { when: "18 ott", kind: "q", text: "Preventivo F-2026-2301 rev.2 inviato", by: "Ivan" },
+      { when: "14 ott", kind: "q", text: "Preventivo F-2026-2301 inviato", by: "Ivan" },
+      { when: "13 ott", kind: "", text: "Caricata planimetria-giardino.pdf", by: "Ivan" },
+      { when: "10 ott", kind: "s", text: "Sopralluogo completato", by: "Squadra Alpha" },
+      { when: "9 ott", kind: "c", text: "Primo contatto WhatsApp", by: "Ivan" },
+      { when: "8 ott", kind: "", text: "Richiesta arrivata dal sito", by: "contatti@" },
+    ],
+  },
+  nextNumber: 2311,
+};
+
+const me = () => USERS.find((u) => u.id === state.user);
+const userName = (id) => USERS.find((u) => u.id === id)?.name || id;
+const stageOf = (key) => STAGES.find((s) => s.key === key);
+const euro = (n) => n.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const canSee = (q) => q.shared || q.author === state.user || me().seeAll;
+const reqById = (id) => state.requests.find((r) => r.id === id);
+
+function latestByNumber(quotes) {
+  const map = new Map();
+  quotes.forEach((q) => { if (!map.has(q.number) || map.get(q.number).rev < q.rev) map.set(q.number, q); });
+  return [...map.values()];
+}
+function effectiveStage(r) { return r.assignee ? r.stage : (r.stage === "won" || r.stage === "lost" ? r.stage : "unassigned"); }
+function folderCount(id) {
+  return latestByNumber(state.quotes.filter((q) => q.requestId === id)).length + (state.docs[id] || []).length + (state.extras[id] || []).length;
+}
+function statusBadge(status) {
+  const cls = { Inviato: "b-sent", Accettato: "b-ok", Rifiutato: "b-ko", Scaduto: "b-exp" }[status] || "b-sent";
+  return `<span class="badge ${cls}">${status}</span>`;
+}
+function visibilityBadge(q) {
+  if (q.shared) return `<span class="badge b-shared">Condiviso</span>`;
+  if (q.author === state.user) return `<span class="badge b-private">Privato · solo tu</span>`;
+  return `<span class="badge b-owner">Privato di ${userName(q.author)}</span>`;
+}
+function rowAction(r) {
+  const st = effectiveStage(r);
+  if (st === "unassigned") return { label: "Assegna", cls: "blue", act: "assign" };
+  if (st === "new") return { label: "Contatta", cls: "blue", act: "contact" };
+  if (st === "contacted" || st === "quoting") return { label: "Fai preventivo", cls: "", act: "quote" };
+  if (st === "followup" || st === "quoted") return { label: "Follow-up", cls: "", act: "followup" };
+  if (st === "won") return { label: "Apri ordine", cls: "green", act: "order" };
+  return { label: "Riapri", cls: "", act: "reopen-req" };
+}
+
+/* ── Richieste: elenco ─────────────────────────────────────── */
+function filteredRequests() {
+  const q = state.search.trim().toLowerCase();
+  let list = state.requests.filter((r) => {
+    const st = effectiveStage(r);
+    if (state.stageFilter === "active" && !ACTIVE_STAGES.includes(st)) return false;
+    if (state.stageFilter !== "active" && state.stageFilter !== "all" && st !== state.stageFilter) return false;
+    if (state.assignFilter === "none" && r.assignee) return false;
+    if (state.assignFilter !== "all" && state.assignFilter !== "none" && r.assignee !== state.assignFilter) return false;
+    if (q && !`${r.name} ${r.city} ${r.phone} ${userName(r.assignee)}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (state.sort === "urgent") list = [...list].sort((a, b) => b.lastContactDays - a.lastContactDays);
+  return list;
+}
+
+function renderList() {
+  const counts = Object.fromEntries(STAGES.map((s) => [s.key, state.requests.filter((r) => effectiveStage(r) === s.key).length]));
+  const activeCount = state.requests.filter((r) => ACTIVE_STAGES.includes(effectiveStage(r))).length;
+  const chips = [`<button class="chip ${state.stageFilter === "active" ? "is-active" : ""}" data-action="stage" data-k="active">Attive <b>${activeCount}</b></button>`]
+    .concat(STAGES.map((s) => `<button class="chip ${state.stageFilter === s.key ? "is-active" : ""}" data-action="stage" data-k="${s.key}"><span class="dot ${s.tone}"></span>${s.label} <b>${counts[s.key]}</b></button>`))
+    .concat([`<button class="chip ${state.stageFilter === "all" ? "is-active" : ""}" data-action="stage" data-k="all">Tutte <b>${state.requests.length}</b></button>`]);
+  const rows = filteredRequests().map((r) => {
+    const st = stageOf(effectiveStage(r));
+    const a = rowAction(r);
+    const stale = ACTIVE_STAGES.includes(effectiveStage(r)) && r.lastContactDays >= 3
+      ? `<span class="${r.lastContactDays >= 5 ? "bad" : "warn"}">${r.lastContactDays} gg senza contatto</span>` : "";
+    const fc = folderCount(r.id);
+    return `<div class="row ${r.id === state.selected && state.showDetail ? "is-selected" : ""}" data-action="select" data-id="${r.id}">
+      <button class="check ${state.bulk.has(r.id) ? "is-on" : ""}" data-action="bulk-toggle" data-id="${r.id}" aria-label="Seleziona">${state.bulk.has(r.id) ? "✓" : ""}</button>
+      <span class="sdot ${st.tone}" title="${st.label}"></span>
+      <div style="min-width:0">
+        <div class="name">${esc(r.name)}</div>
+        <div class="meta"><span>${esc(r.city)} · ${esc(r.region)}</span><span>· ${esc(r.service)}</span>${r.sqm ? `<span>· ${r.sqm} mq${r.height ? " · " + esc(r.height) : ""}</span>` : ""}${stale ? `<span>·</span>${stale}` : ""}</div>
+      </div>
+      <div class="aside">
+        <small>${r.source} · ${r.arrived}</small>
+        <span class="mini-avatar ${r.assignee ? "" : "empty"}"><i>${r.assignee ? userName(r.assignee).slice(0, 2).toUpperCase() : "?"}</i>${r.assignee ? userName(r.assignee) : "da assegnare"}</span>
+        <span style="display:flex;gap:6px;align-items:center">${fc ? `<span class="folder-pill" title="Elementi in cartella">📁 ${fc}</span>` : ""}<button class="row-action ${a.cls}" data-action="row-act" data-id="${r.id}">${a.label}</button></span>
+      </div>
+    </div>`;
+  }).join("");
+  const bulk = state.bulk.size ? `<div class="bulk"><strong>${state.bulk.size} selezionate</strong>
+      <select data-bulk="assign"><option value="">Assegna a…</option>${USERS.map((u) => `<option value="${u.id}">${u.name}</option>`).join("")}</select>
+      <select data-bulk="stage"><option value="">Cambia stato…</option>${STAGES.filter((s) => s.key !== "unassigned").map((s) => `<option value="${s.key}">${s.label}</option>`).join("")}</select>
+      <button class="btn" data-action="bulk-clear" style="margin-left:auto">Annulla</button></div>` : "";
+  return `<div class="panel list-col">
+    <div class="pipeline">${chips.join("")}</div>
+    <div class="toolbar">
+      <input type="search" placeholder="Cerca nome, città, telefono…" value="${esc(state.search)}" data-input="search">
+      <select data-input="assign" aria-label="Assegnazione">
+        <option value="all" ${state.assignFilter === "all" ? "selected" : ""}>Tutti</option>
+        ${USERS.map((u) => `<option value="${u.id}" ${state.assignFilter === u.id ? "selected" : ""}>${u.name}</option>`).join("")}
+        <option value="none" ${state.assignFilter === "none" ? "selected" : ""}>Non assegnate</option>
+      </select>
+      <select data-input="sort" aria-label="Ordina">
+        <option value="urgent" ${state.sort === "urgent" ? "selected" : ""}>Più urgenti</option>
+        <option value="recent" ${state.sort === "recent" ? "selected" : ""}>Più recenti</option>
+      </select>
+    </div>
+    ${bulk}
+    ${rows || `<div class="empty" style="padding:16px">Nessuna richiesta con questi filtri.</div>`}
+  </div>`;
+}
+
+/* ── Richieste: dettaglio ──────────────────────────────────── */
+function nextStep(r) {
+  const st = effectiveStage(r);
+  const last = latestByNumber(state.quotes.filter((q) => q.requestId === r.id && canSee(q))).sort((a, b) => b.rev - a.rev)[0];
+  if (st === "unassigned") return { cls: "blue", lbl: "Prossimo passo", text: "Assegna la richiesta a un commerciale", btns: `<button class="btn primary" data-action="assign-me">Prendila tu</button>` };
+  if (st === "new") return { cls: "blue", lbl: "Prossimo passo", text: "Primo contatto: arrivata " + r.arrived, btns: `<a class="btn wa" href="#" data-action="wa">WhatsApp primo contatto</a><button class="btn" data-action="mark-contacted">Segna contattato</button>` };
+  if (st === "contacted" || st === "quoting") return { cls: "", lbl: "Prossimo passo", text: "Prepara il preventivo", btns: `<button class="btn primary" data-action="make-quote">Fai preventivo</button>` };
+  if (st === "quoted" || st === "followup") return { cls: "amber", lbl: "Prossimo passo", text: last ? `Follow-up: ${last.number} inviato il ${last.date}, ${r.lastContactDays} giorni senza risposta` : `Richiamare il cliente (${r.lastContactDays} giorni senza contatto)`, btns: `<a class="btn wa" href="#" data-action="wa">Follow-up WhatsApp</a>` };
+  if (st === "won") return { cls: "", lbl: "Confermata", text: state.orders[r.id] ? "Ordine " + state.orders[r.id] : "Crea l'ordine", btns: `<button class="btn" data-action="open-order">Apri ordine</button>` };
+  return { cls: "", lbl: "Chiusa", text: "Richiesta persa o chiusa", btns: `<button class="btn" data-action="reopen-request">Riapri</button>` };
+}
+
+function renderDetail() {
+  const r = reqById(state.selected);
+  if (!r) return `<div class="panel detail-col"><div class="empty" style="padding:20px">Seleziona una richiesta.</div></div>`;
+  const n = folderCount(r.id);
+  const body = state.tab === "overview" ? renderOverview(r)
+    : state.tab === "client" ? renderClient(r)
+    : state.tab === "folder" ? renderFolder(r)
+    : renderHistory(r);
+  return `<div class="panel detail-col">
+    <div class="d-head">
+      <button class="btn back" data-action="back">← Richieste</button>
+      <div class="d-title">
+        <div>
+          <div class="name">${esc(r.name)}</div>
+          <div class="meta">#${r.id} · ${r.source} · arrivata ${r.arrived}${r.reseller ? ` · 🏬 ${esc(r.reseller)}` : ""}</div>
+        </div>
+        <div class="right">
+          <button class="btn primary big" data-action="make-quote">Fai preventivo</button>
+          <button class="btn icon" data-action="menu" data-menu="req" aria-label="Altre azioni">⋯</button>
+          <div class="menu ${state.menu === "req" ? "is-open" : ""}">
+            <button data-action="vcard">📇 Salva in rubrica</button>
+            <button data-action="planner">Apri nel Garden Planner</button>
+            <button data-action="survey">Programma sopralluogo</button>
+            <button class="danger" data-action="delete-req">Elimina richiesta</button>
+          </div>
+        </div>
+      </div>
+      <div class="contact-row">
+        <a class="btn" href="#" data-action="call">📞 ${esc(r.phone)}</a>
+        <a class="btn wa" href="#" data-action="wa">WhatsApp</a>
+        ${r.email ? `<a class="btn" href="#" data-action="mail">✉ ${esc(r.email)}</a>` : ""}
+        <span class="btn" style="cursor:default">${esc(r.city)} · ${esc(r.region)}</span>
+      </div>
+      <div class="state-strip">
+        <label>Stato<select data-field="stage">${STAGES.filter((s) => s.key !== "unassigned").map((s) => `<option value="${s.key}" ${r.stage === s.key ? "selected" : ""}>${s.label}</option>`).join("")}</select></label>
+        <label>Assegnata a<select data-field="assignee"><option value="">Non assegnata</option>${USERS.map((u) => `<option value="${u.id}" ${r.assignee === u.id ? "selected" : ""}>${u.name}</option>`).join("")}</select></label>
+        <label>Rivenditore<select data-field="reseller"><option value="">Nessuno</option>${["Verde Casa Firenze", "Giardini Rossi Latina"].map((x) => `<option ${r.reseller === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+      </div>
+    </div>
+    <div class="tabs">
+      ${[["overview", "Panoramica"], ["client", "Cliente"], ["folder", `Cartella <span class="n">${n}</span>`], ["history", "Storia"]].map(([k, l]) => `<button class="tab ${state.tab === k ? "is-active" : ""}" data-action="tab" data-tab="${k}">${l}</button>`).join("")}
+    </div>
+    <div class="d-body">${body}</div>
+  </div>`;
+}
+
+function renderOverview(r) {
+  const ns = nextStep(r);
+  const last = latestByNumber(state.quotes.filter((q) => q.requestId === r.id)).sort((a, b) => (b.date > a.date ? 1 : -1))
+    .find((q) => q.author === state.user || q.shared || me().seeAll);
+  return `
+    <div class="next ${ns.cls}"><div><span class="lbl">${ns.lbl}</span><strong>${esc(ns.text)}</strong></div><div class="go">${ns.btns}</div></div>
+    <div class="sec"><h3>Cosa chiede</h3>
+      <div class="grid4">
+        <label class="f">Metri quadri<input value="${r.sqm || ""}" data-field="sqm"></label>
+        <label class="f">Altezza<input value="${esc(r.height)}" placeholder="35 mm" data-field="height"></label>
+        <label class="f">Servizio<select data-field="service">${["Da definire", "Solo fornitura", "Fornitura + posa"].map((x) => `<option ${r.service === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+        <label class="f">Fondo<select data-field="surface">${["Da definire", "Terra", "Pavimentazione"].map((x) => `<option ${r.surface === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+      </div>
+    </div>
+    ${r.note ? `<div class="sec"><h3>Messaggio del cliente</h3><div class="quote-note">${esc(r.note)}</div></div>` : ""}
+    <div class="sec"><h3>Ultimo preventivo <span class="right"><button class="btn link" data-action="tab" data-tab="folder">Tutta la cartella</button></span></h3>
+      ${last ? `<div class="last-quote"><strong>${last.number}${last.rev > 1 ? " rev." + last.rev : ""}</strong><span style="color:var(--muted)">${esc(last.product)} · ${last.date} · di ${userName(last.author)}</span>${statusBadge(last.status)}<span class="t">${euro(last.total)}</span></div>`
+        : `<div class="empty">Nessun preventivo ancora.</div>`}
+    </div>`;
+}
+
+function renderClient(r) {
+  const [first, ...rest] = r.name.split(" ");
+  return `
+    <div class="sec"><h3>Anagrafica</h3>
+      <div class="grid2">
+        <label class="f">Nome<input value="${esc(first)}"></label>
+        <label class="f">Cognome (opzionale)<input value="${esc(rest.join(" "))}"></label>
+        <label class="f">Città<input value="${esc(r.city)}"></label>
+        <label class="f">Telefono<input value="${esc(r.phone)}"></label>
+        <label class="f" style="grid-column:1/-1">Email<input value="${esc(r.email)}" placeholder="cliente@email.it"></label>
+      </div>
+    </div>
+    <div class="sec"><h3>Note commerciali</h3>
+      <label class="f"><textarea placeholder="Esigenze cliente, riferimenti utili, contesto commerciale…"></textarea></label>
+    </div>
+    <p style="color:var(--muted);font-size:12px">Si salva da sola, come oggi.</p>`;
+}
+
+function renderFolder(r) {
+  const all = state.quotes.filter((q) => q.requestId === r.id);
+  const numbers = [...new Set(all.map((q) => q.number))];
+  const blocks = numbers.map((num) => {
+    const revs = all.filter((q) => q.number === num).sort((a, b) => b.rev - a.rev);
+    const last = revs[0];
+    if (!canSee(last)) {
+      return `<div class="quote is-ghost"><div class="quote-main"><div><div class="num">${num}</div>
+        <div class="line2">Preventivo di ${userName(last.author)} · ${last.date} · privato</div></div><span class="badge b-private">Privato</span></div></div>`;
+    }
+    const mine = last.author === state.user;
+    const older = revs.slice(1);
+    const open = state.expanded[num];
+    return `<div class="quote">
+      <div class="quote-main">
+        <div><div class="num">${num} ${last.rev > 1 ? `<span class="rev">· rev.${last.rev}</span>` : ""}</div>
+          <div class="line2">${esc(last.product)} · ${last.date} · di ${userName(last.author)}</div></div>
+        <div class="total">${euro(last.total)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${visibilityBadge(last)} ${statusBadge(last.status)}</div>
+      </div>
+      <div class="quote-actions">
+        <button class="btn" data-action="download" data-num="${num}">Scarica PDF</button>
+        <button class="btn" data-action="reopen" data-num="${num}">Riapri nel generatore</button>
+        <button class="btn" data-action="duplicate" data-num="${num}">Duplica</button>
+        <a class="btn wa" href="#" data-action="send-wa" data-num="${num}">Invia su WhatsApp</a>
+        <select class="status" data-action="set-status" data-num="${num}" aria-label="Esito">
+          ${["Inviato", "Accettato", "Rifiutato", "Scaduto"].map((s) => `<option ${s === last.status ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+        ${mine && !last.shared ? `<button class="btn primary" data-action="share" data-num="${num}">Condividi con l'ufficio</button>` : ""}
+        ${mine && last.shared ? `<button class="btn" data-action="unshare" data-num="${num}">Rendi privato</button>` : ""}
+      </div>
+      ${older.length ? `<div class="older">
+        <button class="btn link" data-action="toggle-older" data-num="${num}">${open ? "Nascondi" : "Mostra"} ${older.length === 1 ? "la versione precedente" : older.length + " versioni precedenti"}</button>
+        ${open ? older.map((o) => `<div class="older-row"><span>rev.${o.rev} · ${o.date} · ${esc(o.product)}</span><span class="t">${euro(o.total)}</span><button class="btn" data-action="download" data-num="${num}">PDF</button></div>`).join("") : ""}
+      </div>` : ""}
+    </div>`;
+  }).join("");
+  const extras = (state.extras[r.id] || []).map((e) => `<div class="item-row"><div class="ico">${e.kind}</div><div class="txt">${esc(e.title)}<small>${esc(e.sub)}</small></div><button class="btn act">Apri</button></div>`).join("");
+  const docs = (state.docs[r.id] || []).map((d, i) => `<div class="item-row"><div class="ico">${d.kind}</div><div class="txt">${esc(d.name)}<small>caricato da ${userName(d.by)} · ${d.date}</small></div><button class="btn act" data-action="remove-doc" data-i="${i}">Elimina</button></div>`).join("");
+  const order = state.orders[r.id];
+  return `
+    <div class="sec"><h3>Preventivi <span class="right"><button class="btn" data-action="make-quote">+ Nuovo preventivo</button></span></h3>${blocks || `<div class="empty">Nessun preventivo salvato.</div>`}</div>
+    <div class="sec"><h3>Progetti e sopralluoghi</h3>${extras || `<div class="empty">Nessun progetto Garden Planner o sopralluogo collegato.</div>`}</div>
+    <div class="sec"><h3>Documenti</h3>${docs}<div class="drop" data-action="add-doc">＋ Trascina qui un file o clicca (planimetrie, foto, contratti firmati)</div></div>
+    <div class="sec"><h3>Ordine</h3>${order ? `<div class="item-row"><div class="ico">OR</div><div class="txt">Ordine ${esc(order)}</div><button class="btn act">Apri ordine</button></div>` : `<div class="empty">Nessun ordine ancora. Quando un preventivo è "Accettato" puoi crearlo da qui.</div>`}</div>`;
+}
+
+function renderHistory(r) {
+  const items = state.history[r.id] || [{ when: r.arrived, kind: "", text: "Richiesta arrivata", by: r.source }];
+  return `<ul class="timeline">${items.map((h) => `<li><span class="when">${h.when}</span><span class="pin ${h.kind}"></span><div>${esc(h.text)}<small>${esc(h.by)}</small></div></li>`).join("")}</ul>
+    <p style="color:var(--muted);font-size:12px;margin-top:10px">Contatti, preventivi, sopralluoghi e cambi di stato in un'unica storia.</p>`;
+}
+
+function renderRequests() {
+  return `<div class="page-head">
+      <div><h1>Richieste</h1><p class="sub">Elenco pulito a sinistra, scheda del cliente a destra con la sua cartella.</p></div>
+      <div class="actions">
+        <button class="btn primary big" data-action="new-request">+ Nuova richiesta</button>
+        <button class="btn icon big" data-action="menu" data-menu="page" aria-label="Altro">⋯</button>
+        <div class="menu ${state.menu === "page" ? "is-open" : ""}">
+          <button data-action="import">Importa richieste (CSV/JSON)</button>
+          <p>Manutenzione dati</p>
+          <button data-action="maint">Ripristina date</button>
+          <button data-action="maint">Ripristina nomi</button>
+          <button data-action="maint">Fix nomi doppi</button>
+          <button data-action="maint">Rimuovi duplicati</button>
+          <button data-action="maint">Sistema Servizio/Fondo</button>
+        </div>
+      </div>
+    </div>
+    <div class="crm ${state.showDetail ? "has-detail" : ""}">${renderList()}${renderDetail()}</div>`;
+}
+
+/* ── Generatore ────────────────────────────────────────────── */
+function genTotal() {
+  const g = state.gen;
+  const turf = PRODUCTS[g.product] * g.sqm;
+  const posa = g.service === "Fornitura + posa" ? 25 * g.sqm : 0;
+  return Math.round((turf + posa + 4.5 * g.sqm) * 1.22 * 100) / 100;
+}
+
+function renderGenerator() {
+  const g = state.gen;
+  const req = reqById(g.requestId);
+  const banner = state.editing ? `<div class="edit-banner">Stai modificando <strong>${state.editing.number} rev.${state.editing.rev}</strong>. Al salvataggio diventa rev.${state.editing.rev + 1}; la versione precedente resta nella cartella.
+    <button class="btn" data-action="stop-edit" style="margin-left:auto">Fai un preventivo nuovo</button></div>` : "";
+  return `<div class="page-head"><div><h1>Generatore</h1><p class="sub">Il generatore di oggi, semplificato: qui conta solo il salvataggio.</p></div></div>
+    ${banner}
+    <div class="gen-grid">
+      <div class="panel gen-form">
+        <div class="f">Collegato alla richiesta
+          ${req ? `<div class="linked">${esc(req.name)} · ${esc(req.city)} <span style="color:var(--muted)">#${req.id}</span><button class="btn link" style="margin-left:auto" data-action="unlink">Preventivo libero</button></div>`
+                : `<div class="linked" style="color:var(--muted)">Preventivo libero: nessuna richiesta collegata</div>`}
+        </div>
+        <div class="grid2">
+          <label class="f">Prodotto<select data-gen="product">${Object.keys(PRODUCTS).map((p) => `<option ${p === g.product ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+          <label class="f">Metri quadri<input type="number" min="1" value="${g.sqm}" data-gen="sqm"></label>
+        </div>
+        <label class="f">Servizio<select data-gen="service">${["Fornitura + posa", "Solo fornitura"].map((s) => `<option ${s === g.service ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+      </div>
+      <div class="panel summary">
+        <span style="color:var(--muted)">Totale preventivo</span>
+        <span class="tot">${euro(genTotal())}</span>
+        <button class="btn primary big" data-action="open-save" style="justify-content:center">⬇ Salva PDF</button>
+        <span style="color:var(--muted);font-size:12px">Scarica il PDF come oggi e chiede dove archiviarlo.</span>
+      </div>
+    </div>`;
+}
+
+/* ── I miei preventivi ─────────────────────────────────────── */
+function renderMine() {
+  const everyone = me().seeAll && state.mineFilter === "everyone";
+  let list = latestByNumber(state.quotes).filter((q) => everyone || q.author === state.user);
+  if (state.mineFilter === "private") list = list.filter((q) => !q.shared);
+  if (state.mineFilter === "shared") list = list.filter((q) => q.shared);
+  const rows = list.map((q) => {
+    const req = reqById(q.requestId);
+    return `<tr>
+      <td><strong>${q.number}</strong>${q.rev > 1 ? ` <span style="color:var(--muted)">rev.${q.rev}</span>` : ""}<div style="color:var(--muted);font-size:12px">${q.date}${everyone ? " · di " + userName(q.author) : ""}</div></td>
+      <td>${esc(req?.name || "—")}<div style="color:var(--muted);font-size:12px">${esc(q.product)}</div></td>
+      <td class="hide-m" style="text-align:right">${euro(q.total)}</td>
+      <td>${visibilityBadge(q)} ${statusBadge(q.status)}</td>
+      <td style="text-align:right"><button class="btn" data-action="open-folder" data-req="${q.requestId}">Apri cartella</button></td>
+    </tr>`;
+  }).join("");
+  return `<div class="page-head"><div><h1>${everyone ? "Tutti i preventivi" : "I miei preventivi"}</h1>
+      <p class="sub">${everyone ? "Vista del titolare: anche i preventivi privati dei colleghi." : "I preventivi che hai salvato, privati e condivisi."}</p></div></div>
+    <div style="margin-bottom:12px"><div class="seg">
+      ${[["all", "Tutti i miei"], ["private", "Privati"], ["shared", "Condivisi"]].map(([k, l]) => `<button class="${state.mineFilter === k ? "is-active" : ""}" data-action="mine-filter" data-f="${k}">${l}</button>`).join("")}
+      ${me().seeAll ? `<button class="${state.mineFilter === "everyone" ? "is-active" : ""}" data-action="mine-filter" data-f="everyone">Tutto l'ufficio</button>` : ""}
+    </div></div>
+    <div class="panel"><table class="list-table">
+      <thead><tr><th>Numero</th><th>Cliente</th><th class="hide-m" style="text-align:right">Totale</th><th>Stato</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="5" class="empty">Nessun preventivo.</td></tr>`}</tbody>
+    </table></div>`;
+}
+
+/* ── Salvataggio ───────────────────────────────────────────── */
+function openSave() {
+  const g = state.gen;
+  const myPrev = state.editing || (g.requestId && latestByNumber(state.quotes.filter((q) => q.requestId === g.requestId && q.author === state.user))[0]);
+  state.save = {
+    requestId: g.requestId, search: "",
+    mode: myPrev ? "revision" : "new",
+    base: myPrev ? { number: myPrev.number, rev: myPrev.rev } : null,
+    // Una revisione eredita la visibilità del preventivo da cui nasce.
+    shared: myPrev ? Boolean(latestByNumber(state.quotes.filter((q) => q.number === myPrev.number))[0]?.shared) : false,
+  };
+  renderSave();
+  document.getElementById("save-overlay").classList.add("is-open");
+}
+
+function renderSave() {
+  const s = state.save;
+  const req = reqById(s.requestId);
+  const results = s.search.trim() ? state.requests.filter((r) => (r.name + r.phone + r.city).toLowerCase().includes(s.search.toLowerCase())) : [];
+  const folderPart = req
+    ? `<div class="linked">Cartella di <strong>${esc(req.name)}</strong> · ${esc(req.city)} <button class="btn link" style="margin-left:auto" data-action="save-change-req">Cambia</button></div>`
+    : `<input type="search" placeholder="Cerca il cliente per nome, telefono o città…" value="${esc(s.search)}" data-save="search" style="width:100%;padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px">
+       ${results.length ? `<div class="search-results">${results.map((r) => `<button data-action="save-pick-req" data-id="${r.id}">${esc(r.name)} · ${esc(r.city)} · ${esc(r.phone)}</button>`).join("")}</div>` : ""}
+       <button class="btn" style="margin-top:8px" data-action="save-new-client">+ Crea una nuova scheda cliente con i dati del preventivo</button>`;
+  const revPart = s.base ? `<div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:6px">Hai già il preventivo ${s.base.number} per questo cliente</div>
+      <label class="opt"><input type="radio" name="mode" value="revision" ${s.mode === "revision" ? "checked" : ""} data-save="mode">
+        <span>Nuova revisione: <strong>${s.base.number} rev.${s.base.rev + 1}</strong><small>Stesso numero; la versione precedente resta consultabile.</small></span></label>
+      <label class="opt" style="margin-top:6px"><input type="radio" name="mode" value="new" ${s.mode === "new" ? "checked" : ""} data-save="mode">
+        <span>Preventivo nuovo: <strong>F-2026-${state.nextNumber}</strong><small>Per una proposta diversa (es. un altro giardino).</small></span></label>
+    </div>` : `<div style="color:var(--muted);font-size:13px">Numero: <strong style="color:var(--text)">F-2026-${state.nextNumber}</strong></div>`;
+  document.getElementById("save-body").innerHTML = `
+    <div><div style="color:var(--muted);font-size:12px;margin-bottom:6px">Dove lo archivio</div>${folderPart}</div>
+    ${revPart}
+    <div class="switch-row">
+      <label class="switch"><input type="checkbox" data-save="shared" ${s.shared ? "checked" : ""}><span></span></label>
+      <div><strong>Condividi nella cartella del cliente</strong>
+        <small>${s.shared ? "Lo vede tutto l'ufficio." : "Spento: lo vedi solo tu" + (USERS.some((u) => u.seeAll && u.id !== state.user) ? " (e il titolare)" : "") + ". I colleghi vedono solo che esiste."} Puoi cambiarlo quando vuoi.</small></div>
+    </div>`;
+}
+
+function confirmSave() {
+  const s = state.save;
+  if (!s.requestId) { toast("Scegli il cliente o crea una nuova scheda."); return; }
+  const g = state.gen;
+  let number, rev;
+  if (s.mode === "revision" && s.base) { number = s.base.number; rev = s.base.rev + 1; }
+  else { number = `F-2026-${state.nextNumber++}`; rev = 1; }
+  state.quotes.push({ number, rev, requestId: s.requestId, author: state.user, shared: s.shared, total: genTotal(), date: "oggi", product: `${g.product} · ${g.sqm} mq`, status: "Inviato" });
+  const req = reqById(s.requestId);
+  if (ACTIVE_STAGES.includes(req.stage)) { req.stage = "quoted"; req.lastContactDays = 0; }
+  (state.history[req.id] = state.history[req.id] || []).unshift({ when: "oggi", kind: "q", text: `Preventivo ${number}${rev > 1 ? " rev." + rev : ""} inviato`, by: userName(state.user) });
+  state.editing = null;
+  closeSave();
+  render();
+  toast(`PDF scaricato · ${number}${rev > 1 ? " rev." + rev : ""} salvato ${s.shared ? "nella cartella comune" : "come privato"} di ${req.name}`, "Apri cartella", () => { state.selected = s.requestId; state.showDetail = true; state.tab = "folder"; go("requests"); });
+}
+function closeSave() { document.getElementById("save-overlay").classList.remove("is-open"); state.save = null; }
+
+/* ── Comuni ────────────────────────────────────────────────── */
+let toastTimer;
+function toast(text, linkLabel, onLink) {
+  const el = document.getElementById("toast");
+  document.getElementById("toast-text").textContent = text;
+  const link = document.getElementById("toast-link");
+  link.hidden = !linkLabel;
+  if (linkLabel) { link.textContent = linkLabel; link.onclick = () => { onLink(); el.classList.remove("is-open"); }; }
+  el.classList.add("is-open");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("is-open"), 5000);
+}
+function go(view) { state.view = view; state.menu = null; render(); }
+function openGeneratorFor(requestId) {
+  const r = reqById(requestId);
+  state.gen = { requestId, product: "Cedro 30 mm", sqm: r?.sqm || 50, service: r?.service === "Solo fornitura" ? "Solo fornitura" : "Fornitura + posa" };
+  state.editing = null;
+  go("generator");
+}
+
+function render() {
+  const u = me();
+  document.getElementById("user-name").textContent = `${u.name} · ${u.role}`;
+  document.getElementById("user-initials").textContent = u.name.slice(0, 2).toUpperCase();
+  document.getElementById("who-hint").textContent = u.seeAll
+    ? "Il titolare vede anche i preventivi privati dei colleghi."
+    : "Vede i suoi preventivi e quelli condivisi; dei privati altrui solo che esistono.";
+  document.getElementById("mine-count").textContent = latestByNumber(state.quotes.filter((q) => q.author === state.user)).length;
+  document.querySelectorAll(".nav").forEach((b) => b.classList.toggle("is-active", b.dataset.view === state.view));
+  const main = document.getElementById("main");
+  const active = document.activeElement;
+  const refocus = active?.dataset?.input === "search" ? active.selectionStart : null;
+  main.innerHTML = state.view === "requests" ? renderRequests() : state.view === "generator" ? renderGenerator() : renderMine();
+  if (refocus !== null) { const s = main.querySelector('[data-input="search"]'); s?.focus(); s?.setSelectionRange(refocus, refocus); }
+}
+
+document.getElementById("who").innerHTML = USERS.map((u) => `<option value="${u.id}">${u.name} (${u.role})</option>`).join("");
+document.getElementById("who").value = state.user;
+document.getElementById("who").addEventListener("change", (e) => { state.user = e.target.value; state.mineFilter = "all"; state.editing = null; render(); });
+
+document.addEventListener("click", (e) => {
+  const nav = e.target.closest(".nav");
+  if (nav) { go(nav.dataset.view); return; }
+  const el = e.target.closest("[data-action]");
+  if (!el) { if (state.menu) { state.menu = null; render(); } return; }
+  const a = el.dataset.action;
+  if (el.tagName === "A") e.preventDefault();
+  if (a !== "menu" && state.menu && !el.closest(".menu")) state.menu = null;
+  const num = el.dataset.num;
+  const latest = num && latestByNumber(state.quotes.filter((q) => q.number === num))[0];
+  const r = reqById(state.selected);
+
+  if (a === "select") { if (e.target.closest(".check, .row-action")) return; state.selected = el.dataset.id; state.showDetail = true; state.tab = "overview"; render(); }
+  else if (a === "bulk-toggle") { const id = el.dataset.id; state.bulk.has(id) ? state.bulk.delete(id) : state.bulk.add(id); render(); }
+  else if (a === "bulk-clear") { state.bulk.clear(); render(); }
+  else if (a === "row-act") {
+    const rr = reqById(el.dataset.id); state.selected = rr.id; state.showDetail = true;
+    const act = rowAction(rr).act;
+    if (act === "assign") { rr.assignee = state.user; if (rr.stage === "unassigned") rr.stage = "new"; toast(`${rr.name} assegnata a te`); }
+    else if (act === "contact" || act === "followup") toast(`Si apre WhatsApp con il messaggio pronto per ${rr.name}`);
+    else if (act === "quote") { openGeneratorFor(rr.id); return; }
+    else if (act === "order") toast("Si apre l'ordine collegato in Inbox Ordini");
+    else if (act === "reopen-req") { rr.stage = "followup"; toast(`${rr.name} riaperta`); }
+    state.tab = "overview"; render();
+  }
+  else if (a === "stage") { state.stageFilter = el.dataset.k; render(); }
+  else if (a === "tab") { state.tab = el.dataset.tab; render(); }
+  else if (a === "back") { state.showDetail = false; render(); }
+  else if (a === "menu") { state.menu = state.menu === el.dataset.menu ? null : el.dataset.menu; render(); }
+  else if (["vcard", "planner", "survey", "import", "maint", "delete-req", "new-request", "call", "mail"].includes(a)) {
+    const msg = { vcard: "Contatto salvato in rubrica (.vcf)", planner: "Si apre il Garden Planner collegato a questa richiesta", survey: "Si apre la creazione del sopralluogo già collegata", import: "Si apre l'import CSV/JSON (come oggi)", maint: "Strumento di manutenzione (come oggi)", "delete-req": "Chiede conferma ed elimina (come oggi)", "new-request": "Si apre una scheda vuota (come oggi)", call: "Chiamata dal telefono", mail: "Si apre l'email" }[a];
+    state.menu = null; render(); toast(msg);
+  }
+  else if (a === "wa" || a === "send-wa") toast(a === "send-wa" ? `Si apre WhatsApp con il link al PDF di ${num}` : "Si apre WhatsApp con il messaggio pronto");
+  else if (a === "assign-me") { r.assignee = state.user; if (r.stage === "unassigned") r.stage = "new"; render(); toast("Richiesta assegnata a te"); }
+  else if (a === "mark-contacted") { r.stage = "contacted"; r.lastContactDays = 0; render(); toast("Segnata come contattata"); }
+  else if (a === "make-quote") openGeneratorFor(state.selected);
+  else if (a === "open-order") toast("Si apre l'ordine collegato in Inbox Ordini");
+  else if (a === "reopen-request") { r.stage = "followup"; render(); }
+  else if (a === "toggle-older") { state.expanded[num] = !state.expanded[num]; render(); }
+  else if (a === "download") toast(`Download del PDF ${num} (identico a quello inviato al cliente)`);
+  else if (a === "reopen") {
+    const [product, sqm] = latest.product.split(" · ");
+    state.gen = { requestId: latest.requestId, product, sqm: parseInt(sqm, 10), service: reqById(latest.requestId)?.service === "Solo fornitura" ? "Solo fornitura" : "Fornitura + posa" };
+    state.editing = latest.author === state.user ? { number: latest.number, rev: latest.rev } : null;
+    go("generator");
+    if (!state.editing) toast("Preventivo di un collega: lo riapri come copia, al salvataggio avrà un numero nuovo tuo.");
+  }
+  else if (a === "duplicate") {
+    const [product, sqm] = latest.product.split(" · ");
+    state.gen = { requestId: latest.requestId, product, sqm: parseInt(sqm, 10), service: "Fornitura + posa" };
+    state.editing = null; go("generator"); toast("Copia aperta nel generatore: al salvataggio avrà un numero nuovo.");
+  }
+  else if (a === "share") { state.quotes.filter((q) => q.number === num).forEach((q) => { q.shared = true; }); render(); toast(`${num} ora è visibile a tutto l'ufficio`); }
+  else if (a === "unshare") { state.quotes.filter((q) => q.number === num).forEach((q) => { q.shared = false; }); render(); toast(`${num} ora è privato`); }
+  else if (a === "add-doc") { const list = (state.docs[state.selected] = state.docs[state.selected] || []); list.push({ name: `documento-${list.length + 1}.pdf`, kind: "PDF", by: state.user, date: "oggi" }); render(); toast("Documento aggiunto alla cartella (visibile a tutto l'ufficio)"); }
+  else if (a === "remove-doc") { state.docs[state.selected].splice(Number(el.dataset.i), 1); render(); }
+  else if (a === "open-folder") { state.selected = el.dataset.req; state.showDetail = true; state.tab = "folder"; go("requests"); }
+  else if (a === "mine-filter") { state.mineFilter = el.dataset.f; render(); }
+  else if (a === "unlink") { state.gen.requestId = null; state.editing = null; render(); }
+  else if (a === "stop-edit") { state.editing = null; render(); }
+  else if (a === "open-save") openSave();
+  else if (a === "close-save") closeSave();
+  else if (a === "confirm-save") confirmSave();
+  else if (a === "save-change-req") { Object.assign(state.save, { requestId: null, base: null, mode: "new" }); renderSave(); }
+  else if (a === "save-pick-req") {
+    const prev = latestByNumber(state.quotes.filter((q) => q.requestId === el.dataset.id && q.author === state.user))[0];
+    Object.assign(state.save, { requestId: el.dataset.id, base: prev ? { number: prev.number, rev: prev.rev } : null, mode: prev ? "revision" : "new" });
+    renderSave();
+  }
+  else if (a === "save-new-client") {
+    const id = `R-${1049 + state.requests.length}`;
+    state.requests.unshift({ id, name: "Nuovo cliente (dal preventivo)", city: "—", region: "—", phone: "—", email: "", sqm: state.gen.sqm, height: "", service: state.gen.service, surface: "Da definire", stage: "quoted", assignee: state.user, reseller: "", source: "✏️ manuale", arrived: "oggi", lastContactDays: 0, note: "" });
+    Object.assign(state.save, { requestId: id, base: null, mode: "new" }); renderSave();
+  }
+});
+
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  const r = reqById(state.selected);
+  if (el.dataset.action === "set-status") {
+    const num = el.dataset.num;
+    const latest = latestByNumber(state.quotes.filter((q) => q.number === num))[0];
+    latest.status = el.value;
+    if (el.value === "Accettato") {
+      const req = reqById(latest.requestId);
+      req.stage = "won";
+      render();
+      toast(`${num} accettato: richiesta segnata come Confermata`, "Crea ordine", () => { state.orders[req.id] = "#2795 · " + latest.product + " · da preparare"; render(); });
+    } else render();
+    return;
+  }
+  if (el.dataset.field && r) {
+    const k = el.dataset.field;
+    r[k] = k === "sqm" ? Number(el.value) || 0 : el.value;
+    if (k === "assignee" && el.value && r.stage === "unassigned") r.stage = "new";
+    render(); return;
+  }
+  if (el.dataset.input === "assign") { state.assignFilter = el.value; render(); return; }
+  if (el.dataset.input === "sort") { state.sort = el.value; render(); return; }
+  if (el.dataset.bulk) {
+    state.bulk.forEach((id) => { const rr = reqById(id); if (el.dataset.bulk === "assign") { rr.assignee = el.value; if (rr.stage === "unassigned") rr.stage = "new"; } else rr.stage = el.value; });
+    toast(`${state.bulk.size} richieste aggiornate`); state.bulk.clear(); render(); return;
+  }
+  if (el.dataset.gen) { state.gen[el.dataset.gen] = el.dataset.gen === "sqm" ? Math.max(1, Number(el.value) || 1) : el.value; render(); return; }
+  if (el.dataset.save === "mode") { state.save.mode = el.value; renderSave(); return; }
+  if (el.dataset.save === "shared") { state.save.shared = el.checked; renderSave(); return; }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.dataset.input === "search") { state.search = e.target.value; render(); return; }
+  if (e.target.dataset.save === "search") {
+    state.save.search = e.target.value;
+    const pos = e.target.selectionStart;
+    renderSave();
+    const input = document.querySelector('[data-save="search"]');
+    input.focus(); input.setSelectionRange(pos, pos);
+  }
+});
+
+render();
+</script>
+</body>
+</html>

@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261021-inglese-integrale";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261021-inglese-integrale";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261021-inglese-integrale";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261021-inglese-integrale";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261021-inglese-integrale";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261021-inglese-integrale";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261021-inglese-integrale';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261022-richieste-cartella-5";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261022-richieste-cartella-5";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261022-richieste-cartella-5";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261022-richieste-cartella-5";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261022-richieste-cartella-5";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261022-richieste-cartella-5";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261022-richieste-cartella-5';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261021-inglese-integrale";
+} from "./lib/order-money.js?v=20261022-richieste-cartella-5";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261021-inglese-integrale";
+import { regionForCity } from "./lib/geo.js?v=20261022-richieste-cartella-5";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261021-inglese-integrale";
+} from "./lib/shipping-eligibility.js?v=20261022-richieste-cartella-5";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261021-inglese-integrale";
+} from "./lib/profit-split.js?v=20261022-richieste-cartella-5";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,7 +66,7 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261021-inglese-integrale";
+} from "./lib/preventivo-pricing.js?v=20261022-richieste-cartella-5";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -74,13 +74,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261021-inglese-integrale";
+} from "./lib/sales-assignment.js?v=20261022-richieste-cartella-5";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261021-inglese-integrale";
+} from "./lib/surveys.js?v=20261022-richieste-cartella-5";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -94,7 +94,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261021-inglese-integrale";
+const APP_SHELL_VERSION = "20261022-richieste-cartella-5";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -706,7 +706,7 @@ const translations = {
     warehouseGuideCopy: "Seleziona un modello o un articolo, inserisci quanti pezzi fisici hai in magazzino e, per i prati, indica larghezza e lunghezza del rotolo o del residuo. Gli ordini Shopify scaleranno il fabbisogno aperto per aiutarti a capire cosa manca.",
     shippingTitle: "Spedizioni, DDT e bancali",
     shippingSearch: "Cerca ordine, cliente, vettore o tipo spedizione",
-    salesRequestsTitle: "Richieste Preventivo",
+    salesRequestsTitle: "Richieste",
     salesRequestsSubtitle: "Gestisci richieste commerciali e prepara il passaggio verso il generatore.",
     salesGeneratorTitle: "Generatore Preventivi",
     salesGeneratorSubtitle: "Usa il preventivatore integrato e precompila i dati partendo da una richiesta selezionata.",
@@ -970,7 +970,7 @@ const translations = {
     warehouseGuideCopy: "Select a model or item, enter how many physical pieces are in stock and, for turf, specify roll or offcut width and length. Shopify orders will subtract open demand so you can understand what is missing.",
     shippingTitle: "Logistics, DDT and pallets",
     shippingSearch: "Search order, customer, carrier or shipment type",
-    salesRequestsTitle: "Quote Requests",
+    salesRequestsTitle: "Requests",
     salesRequestsSubtitle: "Manage sales requests and move them into the quote generator.",
     salesGeneratorTitle: "Quote Generator",
     salesGeneratorSubtitle: "Use the integrated quote tool and prefill it from a selected request.",
@@ -2861,7 +2861,7 @@ function openCrmDrawer() {
   section.classList.add("crm-detail-open");
   // 2) Body lock solo su mobile/tablet (drawer overlay).
   //    Su desktop il pannello è nel layout: bloccare lo scroll sarebbe sbagliato.
-  if (window.innerWidth < 860) {
+  if (window.innerWidth < 981) {
     document.body.classList.add("crm-drawer-body-lock");
   }
   // 3) Reset scroll ora che visibility è garantita.
@@ -4928,6 +4928,62 @@ function renderSalesRequestDetailMeta(item = {}) {
   `;
 }
 
+// Riga contatti in testa alla scheda richiesta: chiama, WhatsApp, email, città.
+function renderSalesRequestContactRow(item = null) {
+  const row = document.getElementById("sales-request-contact-row");
+  if (!row) return;
+  if (!item?.id) {
+    row.innerHTML = "";
+    return;
+  }
+  const phone = String(item.phone || "").trim();
+  const waPhone = normalizePhoneForWhatsApp(phone).replace(/^\+/, "");
+  const email = String(item.email || "").trim();
+  const city = String(item.city || "").trim();
+  const region = city ? regionForCity(city) : "";
+  row.innerHTML = [
+    phone ? `<a class="srq-contact" href="tel:${escapeAttr(phone.replace(/[^\d+]/g, ""))}">📞 ${escapeHtml(phone)}</a>` : "",
+    waPhone ? `<a class="srq-contact is-wa" href="https://wa.me/${escapeAttr(waPhone)}" target="psi_sales_request_whatsapp" rel="noopener">WhatsApp</a>` : "",
+    email ? `<a class="srq-contact" href="mailto:${escapeAttr(email)}">✉ ${escapeHtml(email)}</a>` : "",
+    city ? `<span class="srq-contact is-static">${escapeHtml(city)}${region ? ` · ${escapeHtml(region)}` : ""}</span>` : "",
+  ].join("");
+}
+
+// "Prossimo passo" della scheda: cosa fare adesso con questa richiesta.
+function getSalesRequestNextStep(item = {}) {
+  const it = state.lang === "it";
+  const tone = getCrmV2StatusTone(item);
+  if (tone === "is-won") return { tone: "green", text: it ? "Confermata: verifica l'ordine collegato" : "Won: check the linked order" };
+  if (tone === "is-lost") return { tone: "slate", text: it ? "Richiesta chiusa" : "Request closed" };
+  if (!normalizeSalesRequestAssignment(item.assignment || "")) {
+    return { tone: "blue", text: it ? "Assegna la richiesta a chi la segue" : "Assign the request to an owner" };
+  }
+  if (tone === "is-quoted") {
+    const quotedAt = item.quotedAt ? new Date(item.quotedAt).getTime() : NaN;
+    const days = Number.isFinite(quotedAt) ? Math.max(0, Math.floor((Date.now() - quotedAt) / 86400000)) : null;
+    if (days == null) return { tone: "amber", text: it ? "Preventivo inviato: fai il follow-up" : "Quote sent: follow up" };
+    const when = days === 0 ? (it ? "oggi" : "today") : it ? `${days} giorn${days === 1 ? "o" : "i"} fa` : `${days} day${days === 1 ? "" : "s"} ago`;
+    return { tone: "amber", text: it ? `Preventivo inviato ${when}: fai il follow-up` : `Quote sent ${when}: follow up` };
+  }
+  if (tone === "is-contacted") return { tone: "", text: it ? "Cliente contattato: prepara il preventivo" : "Customer contacted: prepare the quote" };
+  const waitingDays = getSalesRequestStaleDays(item);
+  return {
+    tone: "blue",
+    text: it
+      ? `Primo contatto${waitingDays >= 1 ? ` · arrivata ${waitingDays} giorn${waitingDays === 1 ? "o" : "i"} fa` : ""}`
+      : `First contact${waitingDays >= 1 ? ` · arrived ${waitingDays} day${waitingDays === 1 ? "" : "s"} ago` : ""}`,
+  };
+}
+
+function renderSalesRequestNextStep(item = null) {
+  const box = document.getElementById("sales-request-next-step");
+  const text = document.getElementById("sales-request-next-step-text");
+  if (!box || !text) return;
+  const step = item?.id ? getSalesRequestNextStep(item) : { tone: "", text: "" };
+  box.dataset.tone = step.tone;
+  text.textContent = step.text;
+}
+
 function isSalesRequestClosedStatus(status = "") {
   return getSalesRequestStatusCode(status) === "closed";
 }
@@ -5156,7 +5212,6 @@ function renderSalesRequestWorkflow() {
   const stats = state.salesRequestsStats && typeof state.salesRequestsStats === "object" ? state.salesRequestsStats : {};
   const pipeline = stats.pipeline && typeof stats.pipeline === "object" ? stats.pipeline : {};
   const quick = String(state.filters.salesRequestQuick || "all");
-  const currentSort = String(state.salesRequestSort || "recent");
   const isLoading = Boolean(state.crmServerPage?.loading);
   const count = (key) => Math.max(0, Number(pipeline[key] ?? stats[key] ?? 0));
   const steps = [
@@ -5238,51 +5293,36 @@ function renderSalesRequestWorkflow() {
       tone: "slate",
     },
   ];
-  const activeStep = steps.find((step) => step.key === quick) || null;
   const total = Math.max(0, Number(stats.total || 0));
   const pipelineTotal = steps.reduce((sum, step) => sum + Number(step.count || 0), 0);
   const missing = Math.max(0, total - pipelineTotal);
-  const currentLabel = activeStep?.title
-    || (quick === "all"
-      ? (state.lang === "it" ? "Tutte le richieste" : "All requests")
-      : (state.lang === "it" ? "Filtro attivo" : "Active filter"));
+  // Una sola riga di fasi (con i conteggi) al posto della griglia a 8 caselle
+  // e dei riquadri KPI: stessi filtri, stessi data-action.
+  const stageButton = ({ key, title, count: stepCount, tone = "", sort = "", hint = "" }) => `
+    <button
+      type="button"
+      class="srq-stage ${tone ? `tone-${escapeAttr(tone)}` : ""} ${quick === key ? "is-active" : ""}"
+      data-action="set-sales-request-quick-filter"
+      data-value="${escapeAttr(key)}"
+      ${sort ? `data-sort="${escapeAttr(sort)}"` : ""}
+      ${hint ? `title="${escapeAttr(hint)}"` : ""}
+      ${isLoading ? "disabled" : ""}
+      aria-pressed="${quick === key ? "true" : "false"}"
+    >
+      ${tone ? `<span class="srq-stage-dot" aria-hidden="true"></span>` : ""}
+      <span>${escapeHtml(title)}</span>
+      <strong>${Number(stepCount || 0).toLocaleString("it-IT")}</strong>
+    </button>`;
   ui.salesRequestWorkflow.innerHTML = `
-    <div class="sales-request-workflow-head">
-      <div>
-        <p class="panel-eyebrow">${state.lang === "it" ? "Percorso richieste" : "Request path"}</p>
-        <strong>${escapeHtml(currentLabel)}</strong>
-      </div>
-      <span class="sales-request-workflow-meta">${state.lang === "it"
-        ? `${pipelineTotal.toLocaleString("it-IT")} / ${total.toLocaleString("it-IT")} classificat${pipelineTotal === 1 ? "a" : "e"} · ${currentSort === "urgent" ? "urgenza" : "recenti"}`
-        : `${pipelineTotal.toLocaleString("it-IT")} / ${total.toLocaleString("it-IT")} classified · ${currentSort === "urgent" ? "urgency" : "recent"}`}</span>
-    </div>
-    <div class="sales-request-workflow-steps">
-      ${steps.map((step) => `
-        <button
-          type="button"
-          class="sales-request-workflow-step tone-${escapeAttr(step.tone)} ${quick === step.key ? "is-active" : ""}"
-          data-action="set-sales-request-quick-filter"
-          data-value="${escapeAttr(step.key)}"
-          ${step.sort ? `data-sort="${escapeAttr(step.sort)}"` : ""}
-          ${isLoading ? "disabled" : ""}
-          aria-pressed="${quick === step.key ? "true" : "false"}"
-        >
-          <span class="sales-request-workflow-index">${escapeHtml(step.index)}</span>
-          <span class="sales-request-workflow-copy">
-            <strong>${escapeHtml(step.title)}</strong>
-            <small>${escapeHtml(step.note)}</small>
-          </span>
-          <span class="sales-request-workflow-count">${step.count.toLocaleString("it-IT")}</span>
-          <span class="sales-request-workflow-next">${escapeHtml(step.next)}</span>
-        </button>
-      `).join("")}
+    <div class="srq-pipeline" role="group" aria-label="${state.lang === "it" ? "Fasi delle richieste" : "Request stages"}">
+      ${stageButton({ key: "all", title: state.lang === "it" ? "Tutte" : "All", count: total })}
+      ${steps.map((step) => stageButton({ ...step, hint: `${step.note} · ${step.next}` })).join("")}
     </div>
     ${missing > 0 ? `<p class="sales-request-workflow-foot">${state.lang === "it"
       ? `${missing.toLocaleString("it-IT")} richieste hanno uno stato non riconosciuto: apri "Tutte" e normalizzale.`
       : `${missing.toLocaleString("it-IT")} requests have an unknown status: open "All" and normalize them.`}</p>` : ""}
   `;
 }
-
 function renderSalesRequestToolbar(baseItems = [], filteredItems = []) {
   syncSalesRequestWriteControls();
   renderSalesRequestWorkflow();
@@ -14934,17 +14974,17 @@ function renderSalesRequestsDetailPanel(selected = null) {
       _panel.scrollTop = 0;
       // Nuova selezione: riparti sempre dalla tab Panoramica, non restare
       // bloccati su "Storia" della richiesta precedente.
-      state.salesRequestDetailTab = "overview";
-      _panel.querySelectorAll("#sales-request-detail-tabs .crm-detail-tab").forEach((btn) => {
-        const isActive = btn.dataset.tab === "overview";
-        btn.classList.toggle("is-active", isActive);
-        btn.setAttribute("aria-selected", isActive ? "true" : "false");
-      });
-      _panel.querySelectorAll(".crm-tab-panel").forEach((panel) => {
-        panel.classList.toggle("is-active", panel.dataset.tabPanel === "overview");
-      });
+      activateSalesRequestDetailTab("overview");
+      if (_newId) void loadSalesRequestFolder(_newId);
+    }
+    // Aperta da "Apri cartella" (elenco preventivi): mostra subito la Cartella.
+    if (state.salesRequestPendingTab && state.salesRequestPendingTab.requestId === _newId) {
+      const pendingTab = state.salesRequestPendingTab.tab;
+      state.salesRequestPendingTab = null;
+      activateSalesRequestDetailTab(pendingTab);
     }
   }
+  renderSalesRequestFolderUi(selected?.id || "");
   ensureSalesRequestWhatsAppActionUi();
   ui.salesRequestForm.querySelectorAll("input, select, textarea, button").forEach((field) => {
     if (field.type === "hidden") return;
@@ -14974,6 +15014,8 @@ function renderSalesRequestsDetailPanel(selected = null) {
     if (ui.salesRequestWhatsAppButton) ui.salesRequestWhatsAppButton.classList.add("hidden");
     if (ui.salesRequestFollowUpButton) ui.salesRequestFollowUpButton.classList.add("hidden");
     if (ui.salesRequestWhatsAppHint) ui.salesRequestWhatsAppHint.textContent = getSalesRequestsDbUnavailableMessage();
+    renderSalesRequestContactRow(null);
+    renderSalesRequestNextStep(null);
     return;
   }
   const preserveFormValues = shouldPreserveSalesRequestFormValues(selected);
@@ -15043,11 +15085,749 @@ function renderSalesRequestsDetailPanel(selected = null) {
   if (ui.salesRequestDetailMeta) {
     ui.salesRequestDetailMeta.innerHTML = renderSalesRequestDetailMeta(effectiveSelected || {});
   }
+  renderSalesRequestContactRow(effectiveSelected);
+  renderSalesRequestNextStep(effectiveSelected);
   if (ui.salesRequestDeleteButton) ui.salesRequestDeleteButton.disabled = !effectiveSelected;
   if (ui.salesRequestUseGeneratorButton) ui.salesRequestUseGeneratorButton.disabled = !effectiveSelected;
   if (ui.salesRequestVcardButton) ui.salesRequestVcardButton.disabled = !effectiveSelected || !hasSalesRequestContactInfo(effectiveSelected);
   if (selected?.id) {
     void loadAuditTrail("sales_request", selected.id, "sales-request-audit-trail");
+  }
+}
+
+// ── Cartella cliente e preventivi salvati (ottobre 2026) ──────────────────
+// La cartella vive nella scheda della richiesta: preventivi salvati dal
+// generatore (con revisioni, privati o condivisi), sopralluoghi collegati,
+// documenti caricati a mano e ordine collegato. Solo ufficio.
+const QUOTE_STATUS_LABELS = {
+  sent: ["Inviato", "Sent"],
+  accepted: ["Accettato", "Accepted"],
+  rejected: ["Rifiutato", "Rejected"],
+  expired: ["Scaduto", "Expired"],
+};
+const QUOTE_FOLDER_CACHE_MS = 30000;
+const QUOTE_DOCUMENT_MAX_BYTES = 15 * 1024 * 1024;
+
+function quoteStatusLabel(status = "sent") {
+  const labels = QUOTE_STATUS_LABELS[status] || QUOTE_STATUS_LABELS.sent;
+  return state.lang === "it" ? labels[0] : labels[1];
+}
+
+function quoteNumberLabel(quote = {}) {
+  return `${quote.number || ""}${Number(quote.revision) > 1 ? ` rev.${quote.revision}` : ""}`;
+}
+
+function canUseQuoteFolder() {
+  return state.currentUser?.role === "office";
+}
+
+function getSalesRequestFolderEntry(requestId = "") {
+  return (state.salesRequestFolders || {})[requestId] || null;
+}
+
+async function loadSalesRequestFolder(requestId = "", { force = false } = {}) {
+  if (!requestId || !canUseQuoteFolder() || isSalesRequestsDbUnavailable()) return null;
+  state.salesRequestFolders = state.salesRequestFolders || {};
+  const entry = state.salesRequestFolders[requestId];
+  if (!force && entry && (entry.loading || Date.now() - entry.loadedAt < QUOTE_FOLDER_CACHE_MS)) return entry.data;
+  state.salesRequestFolders[requestId] = { ...(entry || {}), loading: true };
+  try {
+    const data = await apiFetch(`/api/sales/requests/${encodeURIComponent(requestId)}/folder`);
+    state.salesRequestFolders[requestId] = { data, loadedAt: Date.now(), loading: false, error: "" };
+  } catch (error) {
+    state.salesRequestFolders[requestId] = { data: entry?.data || null, loadedAt: Date.now(), loading: false, error: error?.message || "errore" };
+  }
+  if (state.selectedSalesRequestId === requestId) renderSalesRequestFolderUi(requestId);
+  return state.salesRequestFolders[requestId].data;
+}
+
+function activateSalesRequestDetailTab(tab = "overview") {
+  state.salesRequestDetailTab = tab;
+  const detailPanel = document.querySelector(".sales-request-detail-panel");
+  if (!detailPanel) return;
+  detailPanel.querySelectorAll("#sales-request-detail-tabs .crm-detail-tab").forEach((btn) => {
+    const isActive = btn.dataset.tab === tab;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  detailPanel.querySelectorAll(".crm-tab-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.tabPanel === tab);
+  });
+  const requestId = state.selectedSalesRequestId;
+  if (tab === "history" && requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
+  if (tab === "folder" && requestId) void loadSalesRequestFolder(requestId);
+}
+
+function folderDateLabel(value) {
+  return value ? formatDate(value) : "—";
+}
+
+function renderQuoteVisibilityBadge(quote = {}) {
+  const it = state.lang === "it";
+  if (quote.shared) return `<span class="srq-badge is-shared">${it ? "Condiviso" : "Shared"}</span>`;
+  if (quote.mine) return `<span class="srq-badge is-private">${it ? "Privato · solo tu" : "Private · only you"}</span>`;
+  return `<span class="srq-badge is-owner">${it ? `Privato di ${escapeHtml(quote.authorName || "un collega")}` : `Private (${escapeHtml(quote.authorName || "colleague")})`}</span>`;
+}
+
+function renderQuoteStatusBadge(status = "sent") {
+  return `<span class="srq-badge is-status-${escapeAttr(status)}">${escapeHtml(quoteStatusLabel(status))}</span>`;
+}
+
+function renderFolderQuote(quote = {}, canSeeAll = false) {
+  const it = state.lang === "it";
+  if (!quote.visible) {
+    return `<article class="srq-quote is-ghost">
+      <div class="srq-quote-main">
+        <div class="srq-quote-copy"><strong>${escapeHtml(quote.number)}</strong>
+          <small>${it ? `Preventivo di ${escapeHtml(quote.authorName || "un collega")} · ${folderDateLabel(quote.createdAt)} · privato` : `Quote by ${escapeHtml(quote.authorName || "a colleague")} · ${folderDateLabel(quote.createdAt)} · private`}</small></div>
+        <span class="srq-badge is-private">${it ? "Privato" : "Private"}</span>
+      </div>
+    </article>`;
+  }
+  const canEdit = quote.mine || canSeeAll;
+  const previous = Array.isArray(quote.previous) ? quote.previous : [];
+  return `<article class="srq-quote">
+    <div class="srq-quote-main">
+      <div class="srq-quote-copy">
+        <strong>${escapeHtml(quote.number)}${quote.revision > 1 ? ` <span class="srq-rev">· rev.${quote.revision}</span>` : ""}</strong>
+        <small>${escapeHtml(quote.summary || "")}${quote.summary ? " · " : ""}${folderDateLabel(quote.createdAt)} · ${it ? "di" : "by"} ${escapeHtml(quote.authorName || "—")}</small>
+      </div>
+      <strong class="srq-quote-total">${quote.total ? escapeHtml(formatCurrency(quote.total)) : "—"}</strong>
+    </div>
+    <div class="srq-quote-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)}</div>
+    <div class="srq-quote-actions">
+      ${quote.hasPdf ? `<a class="ghost-button small-button" href="/api/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">${it ? "Apri PDF" : "Open PDF"}</a>` : ""}
+      <button type="button" class="ghost-button small-button" data-action="quote-reopen" data-id="${escapeAttr(quote.id)}">${quote.mine ? (it ? "Riapri nel generatore" : "Reopen in generator") : (it ? "Riapri come copia" : "Reopen as copy")}</button>
+      <button type="button" class="ghost-button small-button" data-action="quote-duplicate" data-id="${escapeAttr(quote.id)}">${it ? "Duplica" : "Duplicate"}</button>
+      ${canEdit ? `<select class="srq-quote-status" data-action="quote-status" data-id="${escapeAttr(quote.id)}" aria-label="${it ? "Esito del preventivo" : "Quote outcome"}">
+        ${Object.keys(QUOTE_STATUS_LABELS).map((key) => `<option value="${key}" ${key === quote.status ? "selected" : ""}>${escapeHtml(quoteStatusLabel(key))}</option>`).join("")}
+      </select>` : ""}
+      ${quote.mine ? `<button type="button" class="ghost-button small-button ${quote.shared ? "" : "is-primary"}" data-action="quote-share" data-id="${escapeAttr(quote.id)}" data-shared="${quote.shared ? "false" : "true"}">${quote.shared ? (it ? "Rendi privato" : "Make private") : (it ? "Condividi con l'ufficio" : "Share with the office")}</button>` : ""}
+    </div>
+    ${previous.length ? `<details class="srq-quote-previous">
+      <summary>${it ? (previous.length === 1 ? "Versione precedente" : `${previous.length} versioni precedenti`) : (previous.length === 1 ? "Previous version" : `${previous.length} previous versions`)}</summary>
+      ${previous.map((older) => `<div class="srq-quote-older">
+        <span>${escapeHtml(quoteNumberLabel(older))} · ${folderDateLabel(older.createdAt)}${older.summary ? ` · ${escapeHtml(older.summary)}` : ""}</span>
+        <strong>${older.total ? escapeHtml(formatCurrency(older.total)) : "—"}</strong>
+        ${older.hasPdf ? `<a class="ghost-button small-button" href="/api/quotes/${encodeURIComponent(older.id)}/pdf" target="_blank" rel="noopener">PDF</a>` : ""}
+      </div>`).join("")}
+    </details>` : ""}
+  </article>`;
+}
+
+function renderSalesRequestFolderUi(requestId = state.selectedSalesRequestId) {
+  const it = state.lang === "it";
+  const container = document.getElementById("sales-request-folder");
+  const countBadge = document.getElementById("sales-request-folder-count");
+  const lastQuoteBox = document.getElementById("sales-request-last-quote");
+  const tabButton = document.getElementById("sales-request-folder-tab-btn");
+  if (tabButton) tabButton.hidden = !canUseQuoteFolder();
+  if (!container) return;
+  const entry = getSalesRequestFolderEntry(requestId);
+  const data = entry?.data || null;
+  const quotes = Array.isArray(data?.quotes) ? data.quotes : [];
+  const documents = Array.isArray(data?.documents) ? data.documents : [];
+  const surveys = Array.isArray(data?.surveys) ? data.surveys : [];
+  const count = quotes.length + documents.length + surveys.length + (data?.order ? 1 : 0);
+  if (countBadge) {
+    countBadge.hidden = !count;
+    countBadge.textContent = String(count);
+  }
+  const lastVisible = quotes.find((quote) => quote.visible);
+  if (lastQuoteBox) {
+    lastQuoteBox.hidden = !lastVisible;
+    lastQuoteBox.innerHTML = lastVisible ? `
+      <p class="crm-detail-section-label">${it ? "Ultimo preventivo" : "Latest quote"}</p>
+      <button type="button" class="srq-last-quote-row" data-action="open-folder-tab">
+        <strong>${escapeHtml(quoteNumberLabel(lastVisible))}</strong>
+        <span>${escapeHtml(lastVisible.summary || "")} · ${folderDateLabel(lastVisible.createdAt)} · ${escapeHtml(lastVisible.authorName || "")}</span>
+        ${renderQuoteStatusBadge(lastVisible.status)}
+        <em>${lastVisible.total ? escapeHtml(formatCurrency(lastVisible.total)) : ""}</em>
+      </button>` : "";
+  }
+  if (!requestId) {
+    container.innerHTML = "";
+    return;
+  }
+  if (!data) {
+    container.innerHTML = `<p class="srq-folder-empty">${entry?.error
+      ? escapeHtml(it ? `Cartella non disponibile: ${entry.error}` : `Folder unavailable: ${entry.error}`)
+      : (it ? "Caricamento cartella…" : "Loading folder…")}</p>`;
+    return;
+  }
+  const order = data.order;
+  container.innerHTML = `
+    <section class="srq-folder-sec">
+      <header><h4>${it ? "Preventivi" : "Quotes"}</h4>
+        <button type="button" class="ghost-button small-button" data-action="folder-new-quote">${it ? "+ Nuovo preventivo" : "+ New quote"}</button></header>
+      ${quotes.length ? quotes.map((quote) => renderFolderQuote(quote, Boolean(data.canSeeAll))).join("")
+        : `<p class="srq-folder-empty">${it ? "Nessun preventivo salvato. Quelli fatti dal generatore con \"Salva PDF\" arrivano qui." : "No saved quotes yet. Quotes saved from the generator with \"Save PDF\" appear here."}</p>`}
+    </section>
+    <section class="srq-folder-sec">
+      <header><h4>${it ? "Sopralluoghi" : "Site surveys"}</h4></header>
+      ${surveys.length ? surveys.map((survey) => `<div class="srq-folder-item">
+          <span class="srq-folder-ico">SO</span>
+          <span class="srq-folder-copy"><strong>${escapeHtml(survey.id)} · ${escapeHtml(survey.status || "")}</strong>
+            <small>${[survey.crewName, survey.scheduledDate ? formatDate(survey.scheduledDate) : "", survey.measuredSqm ? `${survey.measuredSqm} mq` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</small></span>
+          <button type="button" class="ghost-button small-button" data-action="folder-open-survey" data-id="${escapeAttr(survey.id)}">${it ? "Apri" : "Open"}</button>
+        </div>`).join("")
+        : `<p class="srq-folder-empty">${it ? "Nessun sopralluogo collegato a questa richiesta." : "No site survey linked to this request."}</p>`}
+    </section>
+    <section class="srq-folder-sec">
+      <header><h4>${it ? "Documenti" : "Documents"}</h4></header>
+      ${documents.map((doc) => `<div class="srq-folder-item">
+          <span class="srq-folder-ico">${doc.type === "application/pdf" ? "PDF" : doc.type.startsWith("image/") ? "IMG" : "DOC"}</span>
+          <span class="srq-folder-copy"><a href="/api/sales/requests/${encodeURIComponent(requestId)}/documents/${encodeURIComponent(doc.id)}/file" target="_blank" rel="noopener">${escapeHtml(doc.name)}</a>
+            <small>${it ? "caricato da" : "uploaded by"} ${escapeHtml(doc.uploadedByName || "—")} · ${folderDateLabel(doc.createdAt)}</small></span>
+          <button type="button" class="ghost-button small-button" data-action="folder-delete-document" data-id="${escapeAttr(doc.id)}" aria-label="${it ? "Elimina" : "Delete"} ${escapeAttr(doc.name)}">${it ? "Elimina" : "Delete"}</button>
+        </div>`).join("")}
+      <label class="srq-drop" data-folder-drop>
+        <input type="file" multiple hidden data-folder-upload />
+        <span>${it ? "＋ Trascina qui un file o clicca (planimetrie, foto, contratti firmati) · max 15 MB" : "＋ Drop a file here or click (plans, photos, signed contracts) · max 15 MB"}</span>
+      </label>
+      <p class="srq-folder-status" data-folder-status role="status"></p>
+    </section>
+    <section class="srq-folder-sec">
+      <header><h4>${it ? "Ordine" : "Order"}</h4></header>
+      ${order ? `<div class="srq-folder-item"><span class="srq-folder-ico">OR</span>
+          <span class="srq-folder-copy"><strong>${it ? "Ordine" : "Order"} ${escapeHtml(order.label)}</strong><small>${escapeHtml(order.status || "")}</small></span>
+          <button type="button" class="ghost-button small-button" data-action="folder-open-order" data-id="${escapeAttr(order.id)}">${it ? "Apri ordine" : "Open order"}</button></div>`
+        : `<p class="srq-folder-empty">${it ? "Nessun ordine collegato ancora." : "No linked order yet."}</p>`}
+    </section>`;
+}
+
+async function uploadSalesRequestFolderFiles(files = []) {
+  const it = state.lang === "it";
+  const requestId = state.selectedSalesRequestId;
+  const status = document.querySelector("[data-folder-status]");
+  const setFolderStatus = (text, tone = "") => {
+    if (!status) return;
+    status.textContent = text;
+    status.dataset.tone = tone;
+  };
+  const list = [...files].filter(Boolean);
+  if (!requestId || !list.length) return;
+  for (const file of list) {
+    if (file.size > QUOTE_DOCUMENT_MAX_BYTES) {
+      setFolderStatus(it ? `"${file.name}" supera 15 MB.` : `"${file.name}" is over 15 MB.`, "error");
+      continue;
+    }
+    setFolderStatus(it ? `Caricamento di “${file.name}”…` : `Uploading “${file.name}”…`);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("read_failed"));
+        reader.readAsDataURL(file);
+      });
+      await apiFetch(`/api/sales/requests/${encodeURIComponent(requestId)}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ name: file.name, dataUrl }),
+      });
+      setFolderStatus(it ? `✓ “${file.name}” caricato` : `✓ “${file.name}” uploaded`, "success");
+    } catch (error) {
+      setFolderStatus(it ? `Caricamento non riuscito: ${error.message}` : `Upload failed: ${error.message}`, "error");
+    }
+  }
+  await loadSalesRequestFolder(requestId, { force: true });
+}
+
+async function handleSalesRequestFolderAction(button) {
+  const it = state.lang === "it";
+  const action = button.dataset.action;
+  const requestId = state.selectedSalesRequestId;
+  const id = button.dataset.id || "";
+  if (action === "open-folder-tab") {
+    activateSalesRequestDetailTab("folder");
+    return;
+  }
+  if (action === "folder-new-quote") {
+    state.quoteEditing = null;
+    useSelectedSalesRequestInGenerator();
+    return;
+  }
+  if (action === "quote-reopen" || action === "quote-duplicate") {
+    await reopenSavedQuote(id, { duplicate: action === "quote-duplicate" });
+    return;
+  }
+  if (action === "quote-share") {
+    const shared = button.dataset.shared === "true";
+    button.disabled = true;
+    try {
+      await apiFetch(`/api/quotes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ shared }) });
+      showToast(shared ? (it ? "Ora lo vede tutto l'ufficio" : "Now visible to the whole office") : (it ? "Ora è privato" : "Now private"), "success");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+    await loadSalesRequestFolder(requestId, { force: true });
+    return;
+  }
+  if (action === "folder-delete-document") {
+    if (!confirm(it ? "Eliminare il documento dalla cartella?" : "Delete the document from the folder?")) return;
+    try {
+      await apiFetch(`/api/sales/requests/${encodeURIComponent(requestId)}/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+    await loadSalesRequestFolder(requestId, { force: true });
+    return;
+  }
+  if (action === "folder-open-order") {
+    if (typeof openOrderFromSalesRequest === "function") {
+      openOrderFromSalesRequest(id);
+    } else {
+      state.selectedOrderId = id;
+      setView("orders");
+    }
+    return;
+  }
+  if (action === "folder-open-survey") {
+    state.selectedSurveyId = id;
+    setView("sopralluoghi");
+  }
+}
+
+async function setSavedQuoteStatus(quoteId = "", status = "sent") {
+  const it = state.lang === "it";
+  try {
+    await apiFetch(`/api/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    showToast(it ? `Esito aggiornato: ${quoteStatusLabel(status)}` : `Outcome updated: ${quoteStatusLabel(status)}`, "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+  if (state.selectedSalesRequestId) await loadSalesRequestFolder(state.selectedSalesRequestId, { force: true });
+  if (document.getElementById("quote-list-dialog")?.open) void renderSavedQuotesDialog();
+}
+
+function openSalesRequestFolder(requestId = "") {
+  if (!requestId) return;
+  state.selectedSalesRequestId = requestId;
+  state.salesRequestPendingTab = { requestId, tab: "folder" };
+  state.filters.salesRequestQuick = "all";
+  state.filters.salesRequestStatus = "all";
+  state.filters.salesRequestAssignment = "all";
+  state.search.salesRequests = "";
+  state.salesRequestPage = 1;
+  state.crmViewMode = "list";
+  state.crmFocusedRequestId = requestId;
+  if (state.currentView === "sales-requests") {
+    loadCrmPage({ page: 1, forceReload: true, requestId });
+  } else {
+    setView("sales-requests");
+  }
+}
+
+// ── Generatore: riaprire un preventivo salvato e archiviarlo ──────────────
+async function fetchSalesRequestById(requestId = "") {
+  const cached = findSalesRequestById(requestId);
+  if (cached) return cached;
+  try {
+    const result = await apiFetch(`/api/sales/requests?id=${encodeURIComponent(requestId)}&limit=1&includeStats=0`);
+    const item = Array.isArray(result?.items) ? result.items[0] : null;
+    return item ? normalizeSalesRequestRecord(item) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function reopenSavedQuote(quoteId = "", { duplicate = false } = {}) {
+  const it = state.lang === "it";
+  let quote;
+  try {
+    quote = (await apiFetch(`/api/quotes/${encodeURIComponent(quoteId)}`))?.quote;
+  } catch (error) {
+    showToast(error.message, "error");
+    return;
+  }
+  const form = quote?.payload?.form;
+  if (!form || typeof form !== "object") {
+    showToast(it ? "Questo preventivo non ha i dati per essere riaperto." : "This quote has no data to reopen.", "warning");
+    return;
+  }
+  const request = await fetchSalesRequestById(quote.requestId);
+  if (request) {
+    persistSalesGeneratorLinkedRequest(request);
+    // Il prefill della richiesta non deve sovrascrivere i dati del preventivo riaperto.
+    state.lastSalesGeneratorSignature = JSON.stringify(buildSalesRequestPrefill(request));
+  }
+  state.salesGeneratorFreeMode = false;
+  state.salesGeneratorPlannerMode = false;
+  // Un preventivo di un collega si riapre sempre come copia con un numero nuovo.
+  const asCopy = duplicate || !quote.mine;
+  state.preventivoForm = { ...defaultPreventivoForm(), ...JSON.parse(JSON.stringify(form)), quoteNumber: asCopy ? "" : quote.number };
+  state.quoteEditing = asCopy ? null : { quoteId: quote.id, number: quote.number, revision: quote.revision, requestId: quote.requestId };
+  previewSuggestedSlug = String(quote.payload?.suggestedSlug || "");
+  const p2 = document.getElementById("quote-include-p2");
+  if (p2 && typeof quote.payload?.includeP2 === "boolean") p2.checked = quote.payload.includeP2;
+  const planner = document.getElementById("quote-include-planner");
+  if (planner && typeof quote.payload?.includePlanner === "boolean") planner.checked = quote.payload.includePlanner;
+  document.getElementById("quote-list-dialog")?.close?.();
+  hidePreventivoPreview();
+  if (state.currentView === "sales-generator") renderSalesGenerator();
+  else setView("sales-generator");
+  renderNativePreventivoForm();
+  renderQuoteEditBanner();
+  showToast(asCopy
+    ? (it ? "Copia aperta nel generatore: al salvataggio avrà un numero nuovo." : "Copy opened in the generator: it will get a new number when saved.")
+    : (it ? `Stai modificando ${quoteNumberLabel(quote)}: al salvataggio diventa rev.${quote.revision + 1}.` : `Editing ${quoteNumberLabel(quote)}: it becomes rev.${quote.revision + 1} when saved.`), "info", 4500);
+}
+
+function renderQuoteEditBanner() {
+  const banner = document.getElementById("sales-generator-quote-edit");
+  if (!banner) return;
+  const editing = state.quoteEditing;
+  const number = ensurePreventivoForm().quoteNumber;
+  const active = Boolean(editing && editing.number === number);
+  banner.hidden = !active;
+  if (!active) return;
+  const it = state.lang === "it";
+  banner.innerHTML = `<span>${it
+    ? `Stai modificando <strong>${escapeHtml(quoteNumberLabel(editing))}</strong>: al salvataggio diventa rev.${editing.revision + 1}, la versione precedente resta nella cartella.`
+    : `Editing <strong>${escapeHtml(quoteNumberLabel(editing))}</strong>: it becomes rev.${editing.revision + 1} when saved; the previous version stays in the folder.`}</span>
+    <button type="button" class="ghost-button small-button" data-action="quote-edit-new-number">${it ? "Fanne uno nuovo" : "Make a new one"}</button>`;
+}
+
+// Numero stampato sul PDF: con la revisione quando si modifica un preventivo salvato.
+function getQuotePrintNumber(revision = 0) {
+  const number = ensurePreventivoForm().quoteNumber || "F-0000-00";
+  const editing = state.quoteEditing;
+  const next = revision || (editing && editing.number === number ? editing.revision + 1 : 1);
+  return next > 1 ? `${number} rev.${next}` : number;
+}
+
+function getLinkedRequestForQuote() {
+  if (state.quoteEditing?.requestId) return findSalesRequestById(state.quoteEditing.requestId) || { id: state.quoteEditing.requestId };
+  if (state.salesGeneratorPlannerMode) return resolvePlannerLinkedRequest() || null;
+  if (state.salesGeneratorFreeMode) return null;
+  return restoreSalesGeneratorLinkedRequest() || null;
+}
+
+async function openQuoteSaveDialog() {
+  const dialog = document.getElementById("quote-save-dialog");
+  const iframe = document.getElementById("psi-preview-iframe")?.contentWindow;
+  if (!canUseQuoteFolder() || !dialog?.showModal) {
+    if (iframe && typeof iframe.psiDownloadPdf === "function") iframe.psiDownloadPdf();
+    else iframe?.print();
+    return;
+  }
+  const form = ensurePreventivoForm();
+  const linked = getLinkedRequestForQuote();
+  state.quoteSave = {
+    number: form.quoteNumber,
+    request: linked?.id ? linked : null,
+    previous: null,
+    blocked: "",
+    shared: false,
+    searching: !linked?.id,
+    results: [],
+    busy: false,
+    status: "",
+  };
+  renderQuoteSaveDialog();
+  dialog.showModal();
+  try {
+    const result = await apiFetch(`/api/quotes?number=${encodeURIComponent(form.quoteNumber)}`);
+    if (result?.quote && result.quote.mine) {
+      state.quoteSave.previous = result.quote;
+      state.quoteSave.shared = Boolean(result.quote.shared);
+      if (!state.quoteSave.request || state.quoteSave.request.id !== result.quote.requestId) {
+        state.quoteSave.request = (await fetchSalesRequestById(result.quote.requestId)) || { id: result.quote.requestId, name: result.quote.customerName };
+        state.quoteSave.searching = false;
+      }
+    } else if (result?.exists) {
+      state.quoteSave.blocked = state.lang === "it"
+        ? "Questo numero è già usato da un preventivo di un collega. Genera un numero nuovo dal modulo (pulsante \"Nuovo\") e riprova."
+        : "This number is already used by a colleague's quote. Generate a new number in the form (\"New\" button) and try again.";
+    }
+  } catch {}
+  renderQuoteSaveDialog();
+}
+
+function renderQuoteSaveDialog() {
+  const it = state.lang === "it";
+  const save = state.quoteSave;
+  if (!save) return;
+  const requestBox = document.getElementById("quote-save-request");
+  const searchWrap = document.getElementById("quote-save-search-wrap");
+  const results = document.getElementById("quote-save-results");
+  const revision = document.getElementById("quote-save-revision");
+  const shared = document.getElementById("quote-save-shared");
+  const sharedHint = document.getElementById("quote-save-shared-hint");
+  const status = document.getElementById("quote-save-status");
+  const confirmButton = document.getElementById("quote-save-confirm");
+  const request = save.request;
+  if (requestBox) {
+    requestBox.hidden = save.searching;
+    requestBox.innerHTML = request ? `<div class="srq-linked">
+      <span>${it ? "Cartella di" : "Folder of"} <strong>${escapeHtml(getSalesRequestDisplayName(request) || request.name || request.id)}</strong>${request.city ? ` · ${escapeHtml(request.city)}` : ""}</span>
+      ${save.previous ? "" : `<button type="button" class="ghost-button small-button" data-action="quote-save-change-request">${it ? "Cambia" : "Change"}</button>`}
+    </div>` : "";
+  }
+  if (searchWrap) searchWrap.hidden = !save.searching;
+  if (results) {
+    results.innerHTML = save.results.map((item) => `<button type="button" data-action="quote-save-pick-request" data-id="${escapeAttr(item.id)}">
+      <strong>${escapeHtml(getSalesRequestDisplayName(item))}</strong><span>${escapeHtml([item.city, item.phone].filter(Boolean).join(" · "))}</span></button>`).join("")
+      + `<button type="button" class="srq-new-client" data-action="quote-save-new-request">${it ? "+ Crea una nuova scheda cliente con i dati del preventivo" : "+ Create a new customer record from the quote data"}</button>`;
+  }
+  if (revision) {
+    revision.innerHTML = save.blocked
+      ? `<span class="is-warning">${escapeHtml(save.blocked)}</span>`
+      : save.previous
+        ? (it ? `Hai già salvato <strong>${escapeHtml(quoteNumberLabel(save.previous))}</strong> per questo cliente: questo diventa la <strong>rev.${save.previous.revision + 1}</strong> e la versione precedente resta consultabile.`
+          : `You already saved <strong>${escapeHtml(quoteNumberLabel(save.previous))}</strong> for this customer: this becomes <strong>rev.${save.previous.revision + 1}</strong> and the previous version stays available.`)
+        : (it ? `Numero: <strong>${escapeHtml(save.number)}</strong>` : `Number: <strong>${escapeHtml(save.number)}</strong>`);
+  }
+  if (shared) shared.checked = save.shared;
+  if (sharedHint) {
+    sharedHint.textContent = save.shared
+      ? (it ? "Lo vede tutto l'ufficio. Puoi cambiarlo quando vuoi dalla cartella." : "The whole office can see it. You can change this any time from the folder.")
+      : (it ? "Spento: lo vedi solo tu (e chi vede tutti i preventivi). I colleghi vedono solo che esiste." : "Off: only you can see it (and whoever can see all quotes). Colleagues only see that it exists.");
+  }
+  if (status) status.textContent = save.status || "";
+  if (confirmButton) confirmButton.disabled = save.busy || Boolean(save.blocked) || !request?.id;
+}
+
+async function searchQuoteSaveRequests(query = "") {
+  const save = state.quoteSave;
+  if (!save) return;
+  const q = String(query || "").trim();
+  if (q.length < 2) {
+    save.results = [];
+    renderQuoteSaveDialog();
+    return;
+  }
+  try {
+    const result = await apiFetch(`/api/sales/requests?q=${encodeURIComponent(q)}&limit=8&includeStats=0`);
+    if (state.quoteSave !== save) return;
+    save.results = (Array.isArray(result?.items) ? result.items : []).map(normalizeSalesRequestRecord);
+  } catch {
+    save.results = [];
+  }
+  renderQuoteSaveDialog();
+}
+
+async function createSalesRequestFromQuoteForm() {
+  const it = state.lang === "it";
+  const f = ensurePreventivoForm();
+  const name = String(f.nome || "").trim() || String(f.ragione || "").trim();
+  if (!name) {
+    showToast(it ? "Compila almeno il nome del cliente nel modulo." : "Fill in at least the customer name in the form.", "warning");
+    return null;
+  }
+  const record = await apiFetch("/api/sales/requests", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      surname: f.nome ? String(f.cognome || "").trim() : "",
+      city: String(f.citta || "").trim(),
+      phone: String(f.tel || "").trim(),
+      email: String(f.email || "").trim(),
+      sqm: Number(f.sqm) || 0,
+      service: f.quoteType === "posa" ? "posa" : "fornitura",
+      surface: f.quoteType === "posa" ? f.surface : "",
+      status: "new",
+      assignment: getSalesRequestOperatorFromCurrentUser() || "",
+      source: "manual",
+      note: it ? "Creata dal generatore al salvataggio del preventivo." : "Created from the generator when saving the quote.",
+    }),
+  });
+  return record?.id ? normalizeSalesRequestRecord(record) : null;
+}
+
+// Il PDF deve riportare il numero con la revisione: aggiorna l'anteprima,
+// poi genera e scarica il file e restituisce il Blob per archiviarlo.
+async function generateQuotePdfBlob(printNumber = "") {
+  const iframe = document.getElementById("psi-preview-iframe")?.contentWindow;
+  if (!iframe || typeof iframe.psiDownloadPdf !== "function") throw new Error(state.lang === "it" ? "Anteprima non pronta, riprova." : "Preview not ready, try again.");
+  const payload = buildNativePreventivoPayload();
+  if (payload) {
+    payload.suggestedSlug = previewSuggestedSlug || "";
+    if (printNumber) payload.quoteNumber = printNumber;
+    try { window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload)); } catch {}
+    iframe.postMessage({ type: "psi:preventivo-v2:data", payload }, window.location.origin);
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+  }
+  const result = await iframe.psiDownloadPdf();
+  if (!result?.blob) throw new Error(state.lang === "it" ? "PDF non generato." : "PDF not generated.");
+  return result;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("read_failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function buildQuoteArchiveSummary() {
+  const f = ensurePreventivoForm();
+  const input = nfComputeInput();
+  const cq = computeQuotePure(input);
+  const options = f.options
+    .map((option, index) => (nfOptionHasProduct(option) && cq.options[index] ? { name: nfOptionName(option), total: cq.options[index].grandGross } : null))
+    .filter(Boolean);
+  const suggested = options.find((option, index) => f.options[index]?.slug === previewSuggestedSlug) || options[0] || null;
+  const names = options.map((option) => option.name);
+  const summary = `${names.length > 1 ? `${names.length} ${state.lang === "it" ? "opzioni" : "options"}: ${names.join(", ")}` : names[0] || ""}${Number(f.sqm) ? ` · ${f.sqm} mq` : ""}`;
+  return { summary, total: suggested ? Math.round(suggested.total * 100) / 100 : 0, options };
+}
+
+async function confirmQuoteSave({ archive = true } = {}) {
+  const it = state.lang === "it";
+  const save = state.quoteSave;
+  const dialog = document.getElementById("quote-save-dialog");
+  if (!save) return;
+  if (!archive) {
+    dialog?.close();
+    try { await generateQuotePdfBlob(getQuotePrintNumber()); } catch (error) { showToast(error.message, "error"); }
+    return;
+  }
+  if (!save.request?.id || save.blocked) return;
+  save.busy = true;
+  save.status = it ? "Preparo il PDF…" : "Preparing the PDF…";
+  renderQuoteSaveDialog();
+  const revision = save.previous ? save.previous.revision + 1 : 1;
+  try {
+    const pdf = await generateQuotePdfBlob(getQuotePrintNumber(revision));
+    save.status = it ? "Archivio nella cartella…" : "Saving to the folder…";
+    renderQuoteSaveDialog();
+    const f = ensurePreventivoForm();
+    const archiveSummary = buildQuoteArchiveSummary();
+    const result = await apiFetch("/api/quotes", {
+      method: "POST",
+      body: JSON.stringify({
+        requestId: save.request.id,
+        number: save.number,
+        shared: save.shared,
+        fileName: pdf.filename,
+        pdfDataUrl: await blobToDataUrl(pdf.blob),
+        total: archiveSummary.total,
+        summary: archiveSummary.summary,
+        customer: {
+          name: [f.nome, f.cognome].filter(Boolean).join(" ") || f.ragione || "",
+          phone: f.tel || "",
+          email: f.email || "",
+          city: f.citta || "",
+        },
+        payload: {
+          form: JSON.parse(JSON.stringify(f)),
+          suggestedSlug: previewSuggestedSlug || "",
+          includeP2: getIncludeP2(),
+          includePlanner: getIncludeGardenPlanner(),
+          options: archiveSummary.options,
+        },
+      }),
+    });
+    const saved = result?.quote;
+    state.quoteEditing = saved ? { quoteId: saved.id, number: saved.number, revision: saved.revision, requestId: saved.requestId } : null;
+    dialog?.close();
+    renderQuoteEditBanner();
+    showToast(it
+      ? `${quoteNumberLabel(saved)} salvato ${saved.shared ? "nella cartella comune" : "come privato"} di ${getSalesRequestDisplayName(save.request) || "cliente"}`
+      : `${quoteNumberLabel(saved)} saved ${saved.shared ? "to the shared folder" : "as private"} of ${getSalesRequestDisplayName(save.request) || "customer"}`, "success", 4500);
+    if (state.salesRequestFolders) delete state.salesRequestFolders[save.request.id];
+    if (result?.requestMovedToQuoted) void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
+  } catch (error) {
+    save.busy = false;
+    save.status = it ? `Salvataggio non riuscito: ${error.message}` : `Save failed: ${error.message}`;
+    renderQuoteSaveDialog();
+  }
+}
+
+async function handleQuoteSaveDialogClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button || !state.quoteSave) return;
+  const action = button.dataset.action;
+  if (action === "quote-save-cancel") {
+    document.getElementById("quote-save-dialog")?.close();
+  } else if (action === "quote-save-download-only") {
+    await confirmQuoteSave({ archive: false });
+  } else if (action === "quote-save-confirm") {
+    await confirmQuoteSave({ archive: true });
+  } else if (action === "quote-save-change-request") {
+    state.quoteSave.searching = true;
+    renderQuoteSaveDialog();
+    document.getElementById("quote-save-search")?.focus();
+  } else if (action === "quote-save-pick-request") {
+    state.quoteSave.request = state.quoteSave.results.find((item) => item.id === button.dataset.id) || null;
+    state.quoteSave.searching = !state.quoteSave.request;
+    renderQuoteSaveDialog();
+  } else if (action === "quote-save-new-request") {
+    button.disabled = true;
+    try {
+      const created = await createSalesRequestFromQuoteForm();
+      if (created) {
+        state.quoteSave.request = created;
+        state.quoteSave.searching = false;
+      }
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+    renderQuoteSaveDialog();
+  }
+}
+
+// ── Elenco "I miei preventivi" (e "Tutto l'ufficio" per chi ha il permesso) ──
+async function openSavedQuotesDialog() {
+  const dialog = document.getElementById("quote-list-dialog");
+  if (!dialog?.showModal) return;
+  state.savedQuotesFilter = state.savedQuotesFilter || "mine";
+  dialog.showModal();
+  await renderSavedQuotesDialog();
+}
+
+async function renderSavedQuotesDialog() {
+  const it = state.lang === "it";
+  const body = document.getElementById("quote-list-body");
+  const filters = document.getElementById("quote-list-filters");
+  const title = document.getElementById("quote-list-title");
+  if (!body || !filters) return;
+  const filter = state.savedQuotesFilter || "mine";
+  const scope = filter === "office" ? "all" : "mine";
+  body.innerHTML = `<p class="srq-folder-empty">${it ? "Caricamento…" : "Loading…"}</p>`;
+  let result;
+  try {
+    result = await apiFetch(`/api/quotes?scope=${scope}`);
+  } catch (error) {
+    body.innerHTML = `<p class="srq-folder-empty">${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  const canSeeAll = Boolean(result?.canSeeAll);
+  const options = [["mine", it ? "Tutti i miei" : "All mine"], ["private", it ? "Privati" : "Private"], ["shared", it ? "Condivisi" : "Shared"]];
+  if (canSeeAll) options.push(["office", it ? "Tutto l'ufficio" : "Whole office"]);
+  filters.innerHTML = options.map(([key, label]) => `<button type="button" class="${filter === key ? "is-active" : ""}" data-action="quote-list-filter" data-value="${key}">${escapeHtml(label)}</button>`).join("");
+  if (title) title.textContent = filter === "office" ? (it ? "Tutti i preventivi" : "All quotes") : (it ? "I miei preventivi" : "My quotes");
+  let quotes = Array.isArray(result?.quotes) ? result.quotes : [];
+  if (filter === "private") quotes = quotes.filter((quote) => !quote.shared);
+  if (filter === "shared") quotes = quotes.filter((quote) => quote.shared);
+  body.innerHTML = quotes.length ? `<div class="srq-quote-table">${quotes.map((quote) => `
+    <div class="srq-quote-line">
+      <span class="srq-ql-number"><strong>${escapeHtml(quoteNumberLabel(quote))}</strong><small>${folderDateLabel(quote.createdAt)}${filter === "office" ? ` · ${escapeHtml(quote.authorName)}` : ""}</small></span>
+      <span class="srq-ql-customer"><strong>${escapeHtml(quote.customerName || "—")}</strong><small>${escapeHtml(quote.summary || "")}</small></span>
+      <span class="srq-ql-total">${quote.total ? escapeHtml(formatCurrency(quote.total)) : "—"}</span>
+      <span class="srq-ql-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)}</span>
+      <span class="srq-ql-actions">
+        ${quote.hasPdf ? `<a class="ghost-button small-button" href="/api/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>` : ""}
+        <button type="button" class="ghost-button small-button" data-action="quote-list-open-folder" data-id="${escapeAttr(quote.requestId)}">${it ? "Apri cartella" : "Open folder"}</button>
+      </span>
+    </div>`).join("")}</div>`
+    : `<p class="srq-folder-empty">${it ? "Nessun preventivo salvato con questo filtro." : "No saved quotes with this filter."}</p>`;
+}
+
+function handleSavedQuotesDialogClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  const dialog = document.getElementById("quote-list-dialog");
+  if (button.dataset.action === "quote-list-close") dialog?.close();
+  if (button.dataset.action === "quote-list-filter") {
+    state.savedQuotesFilter = button.dataset.value || "mine";
+    void renderSavedQuotesDialog();
+  }
+  if (button.dataset.action === "quote-list-open-folder") {
+    dialog?.close();
+    openSalesRequestFolder(button.dataset.id || "");
   }
 }
 
@@ -15098,6 +15878,9 @@ function renderSalesGenerator() {
     ui.nativeForm.hidden = false;
     if (!ui.nativeForm.contains(document.activeElement)) renderNativePreventivoForm();
   }
+  renderQuoteEditBanner();
+  const savedQuotesButton = document.getElementById("sales-generator-saved-quotes-button");
+  if (savedQuotesButton) savedQuotesButton.hidden = !canUseQuoteFolder();
   const generatorOnlyMode = state.currentUser?.role === "crew";
   const plannerBridge = !generatorOnlyMode ? getGardenPlannerQuoteBridge() : null;
   const plannerMode = !generatorOnlyMode && state.salesGeneratorPlannerMode && Boolean(plannerBridge?.payload);
@@ -26778,6 +27561,8 @@ async function loadAuditTrail(entityType, entityId, containerId) {
       let description = "";
       if (entry.action === "create") {
         description = `Creato — stato: <strong>${entry.diff?.status || ""}</strong>`;
+      } else if (typeof entry.diff?.text === "string") {
+        description = escapeHtml(entry.diff.text);
       } else if (diffEntries.length) {
         description = diffEntries.map(([field, change]) => {
           const label = fieldLabels[field] || field;
@@ -26958,6 +27743,7 @@ function buildAccountsManagerSignature() {
         role: user.role,
         status: user.status,
         mustChangePassword: Boolean(user.mustChangePassword),
+        canSeeAllQuotes: Boolean(user.canSeeAllQuotes),
         crewName: user.crewName || "",
         dailyCapacity: Number(user.dailyCapacity || 0),
         crewLogoDataUrl: String(user.crewLogoDataUrl || ""),
@@ -27074,6 +27860,10 @@ function renderAccountsManager() {
           <input type="checkbox" name="mustChangePassword" ${user.mustChangePassword ? "checked" : ""} />
           <span>Richiedi cambio password al prossimo accesso</span>
         </label>
+        ${user.role === "office" ? `<label class="checkline field-full">
+          <input type="checkbox" name="canSeeAllQuotes" ${user.canSeeAllQuotes ? "checked" : ""} />
+          <span>Vede tutti i preventivi, anche quelli privati dei colleghi</span>
+        </label>` : ""}
         <div class="inline-actions field-full">
           <button type="submit" class="ghost-button small-button">Salva account</button>
         </div>
@@ -27215,6 +28005,11 @@ function applySessionPayload(session = {}) {
     state.salesGeneratorFreeMode = false;
     state.usageReport = null;
     state.usageEventSessionKeys = new Set();
+    // Cartelle e preventivi salvati dipendono da chi è collegato (privati).
+    state.salesRequestFolders = {};
+    state.quoteEditing = null;
+    state.quoteSave = null;
+    state.salesRequestPendingTab = null;
     state.pendingCurrentViewRefresh = false;
     // Pulisce dati preventivo condivisi per evitare leakage cross-account
     try { window.localStorage.removeItem("psi:preventivo-v2:data"); } catch {}
@@ -33116,6 +33911,7 @@ async function updateManagedAccount(event) {
         role: nextRole,
         status: data.get("status"),
         mustChangePassword: data.get("mustChangePassword") === "on",
+        ...(form.querySelector("[name='canSeeAllQuotes']") ? { canSeeAllQuotes: data.get("canSeeAllQuotes") === "on" } : {}),
         password: data.get("password"),
         crewName: nextRole === "crew" ? nextCrewName : "",
         dailyCapacity: nextRole === "crew" ? nextDailyCapacity : 0,
@@ -35849,22 +36645,65 @@ bindEvent(ui.salesRequestVcardButton, "click", saveSalesRequestVCard);
 bindEvent(document.getElementById("sales-request-detail-tabs"), "click", (event) => {
   const button = event.target.closest("[data-action='set-sales-request-detail-tab']");
   if (!button) return;
-  const tab = button.dataset.tab || "overview";
-  state.salesRequestDetailTab = tab;
-  const detailPanel = document.querySelector(".sales-request-detail-panel");
-  if (!detailPanel) return;
-  detailPanel.querySelectorAll("#sales-request-detail-tabs .crm-detail-tab").forEach((btn) => {
-    const isActive = btn.dataset.tab === tab;
-    btn.classList.toggle("is-active", isActive);
-    btn.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
-  detailPanel.querySelectorAll(".crm-tab-panel").forEach((panel) => {
-    panel.classList.toggle("is-active", panel.dataset.tabPanel === tab);
-  });
-  if (tab === "history") {
-    const requestId = state.selectedSalesRequestId;
-    if (requestId) void loadAuditTrail("sales_request", requestId, "sales-request-audit-trail");
+  activateSalesRequestDetailTab(button.dataset.tab || "overview");
+});
+// Cartella cliente: azioni su preventivi, documenti, sopralluoghi e ordine.
+const salesRequestDetailPanelEl = document.querySelector("#sales-requests .sales-request-detail-panel");
+bindEvent(salesRequestDetailPanelEl, "click", (event) => {
+  const button = event.target.closest("[data-action^='quote-'], [data-action^='folder-'], [data-action='open-folder-tab']");
+  if (!button || button.dataset.action === "quote-status") return;
+  event.preventDefault();
+  void handleSalesRequestFolderAction(button);
+});
+bindEvent(salesRequestDetailPanelEl, "change", (event) => {
+  const statusSelect = event.target.closest("[data-action='quote-status']");
+  if (statusSelect) {
+    void setSavedQuoteStatus(statusSelect.dataset.id || "", statusSelect.value);
+    return;
   }
+  const upload = event.target.closest("[data-folder-upload]");
+  if (upload) {
+    void uploadSalesRequestFolderFiles(upload.files || []);
+    upload.value = "";
+  }
+});
+bindEvent(salesRequestDetailPanelEl, "dragover", (event) => {
+  const drop = event.target.closest("[data-folder-drop]");
+  if (!drop) return;
+  event.preventDefault();
+  drop.classList.add("is-dragging");
+});
+bindEvent(salesRequestDetailPanelEl, "dragleave", (event) => {
+  event.target.closest("[data-folder-drop]")?.classList.remove("is-dragging");
+});
+bindEvent(salesRequestDetailPanelEl, "drop", (event) => {
+  const drop = event.target.closest("[data-folder-drop]");
+  if (!drop) return;
+  event.preventDefault();
+  drop.classList.remove("is-dragging");
+  void uploadSalesRequestFolderFiles(event.dataTransfer?.files || []);
+});
+// Generatore: archivio del preventivo e elenco dei preventivi salvati.
+bindEvent(document.getElementById("quote-save-dialog"), "click", (event) => { void handleQuoteSaveDialogClick(event); });
+bindEvent(document.getElementById("quote-save-shared"), "change", (event) => {
+  if (!state.quoteSave) return;
+  state.quoteSave.shared = event.target.checked;
+  renderQuoteSaveDialog();
+});
+let quoteSaveSearchTimer = 0;
+bindEvent(document.getElementById("quote-save-search"), "input", (event) => {
+  window.clearTimeout(quoteSaveSearchTimer);
+  const value = event.target.value;
+  quoteSaveSearchTimer = window.setTimeout(() => { void searchQuoteSaveRequests(value); }, 250);
+});
+bindEvent(document.getElementById("quote-list-dialog"), "click", handleSavedQuotesDialogClick);
+bindEvent(document.getElementById("sales-generator-saved-quotes-button"), "click", () => { void openSavedQuotesDialog(); });
+bindEvent(document.getElementById("sales-requests-saved-quotes-button"), "click", () => { void openSavedQuotesDialog(); });
+bindEvent(document.getElementById("sales-generator-quote-edit"), "click", (event) => {
+  if (!event.target.closest("[data-action='quote-edit-new-number']")) return;
+  state.quoteEditing = null;
+  document.getElementById("nf-new-number")?.click();
+  renderQuoteEditBanner();
 });
 bindEvent(ui.salesRequestServiceAccountButton, "click", () => ui.salesRequestServiceAccountInput?.click());
 bindEvent(ui.salesRequestServiceAccountInput, "change", handleSalesRequestServiceAccountSelection);
@@ -37566,6 +38405,7 @@ function showPreventivoPreview() {
   if (payload) {
     populatePreviewRecoSelect(payload.options || []);
     payload.suggestedSlug = previewSuggestedSlug || "";
+    payload.quoteNumber = getQuotePrintNumber();
   }
   try {
     if (payload) window.localStorage.setItem("psi:preventivo-v2:data", JSON.stringify(payload));
@@ -37625,11 +38465,9 @@ bindEvent(ui.brandLogoClear, "click", handleBrandLogoClear);
 document.addEventListener("click", (e) => {
   if (e.target.closest("#psi-preview-back")) hidePreventivoPreview();
   if (e.target.closest("#psi-preview-print")) {
-    // Download diretto del PDF (1 click). Fallback a print() se la funzione
-    // non è disponibile nell'iframe.
-    const w = document.getElementById("psi-preview-iframe")?.contentWindow;
-    if (w && typeof w.psiDownloadPdf === "function") w.psiDownloadPdf();
-    else w?.print();
+    // L'ufficio sceglie dove archiviarlo (o lo scarica soltanto); gli altri
+    // ruoli scaricano direttamente come prima.
+    void openQuoteSaveDialog();
   }
 });
 // Cambio del prodotto "Consigliato": rigenera l'anteprima evidenziando la card scelta
