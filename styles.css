@@ -30331,3 +30331,6 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 }
 /* Le descrizioni sotto i titoli dei riquadri: testo semplice, non un riquadro. */
 #settings .panel > p.panel-note { margin: 2px 0 12px; padding: 0; color: var(--ui-muted); font-size: 12.5px; }
+/* Invio dal computer: scelta se mettere il link al PDF nel messaggio. */
+.srq-send-option { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 0; color: var(--ui-text); font-size: 13px; cursor: pointer; }
+.srq-send-option input { margin-top: 2px; accent-color: var(--brand, #2f7a55); }

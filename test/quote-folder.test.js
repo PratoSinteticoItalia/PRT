@@ -56,3 +56,18 @@ test('riaprire un preventivo aggiorna il modulo esistente, non lo sostituisce', 
   const assignments=app.match(/state\.preventivoForm = /g)||[];
   assert.equal(assignments.length,1,'solo ensurePreventivoForm crea il modulo');
 });
+
+test('invio preventivo: la condivisione col PDF solo su telefono e tablet, sul computer la chat', () => {
+  const appSource = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  const start = appSource.indexOf('function isPhoneOrTabletDevice(');
+  const end = appSource.indexOf('\nasync function openQuoteSendDialog(', start);
+  const detect = (userAgent, maxTouchPoints = 0) => vm.runInNewContext(
+    `${appSource.slice(start, end)};isPhoneOrTabletDevice()`,
+    { navigator: { userAgent, maxTouchPoints } },
+  );
+  assert.equal(detect('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 5), true);
+  assert.equal(detect('Mozilla/5.0 (Linux; Android 14; Pixel 8)', 5), true);
+  assert.equal(detect('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15', 5), true); // iPad
+  assert.equal(detect('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15', 0), false); // Mac
+  assert.equal(detect('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0', 0), false);
+});
