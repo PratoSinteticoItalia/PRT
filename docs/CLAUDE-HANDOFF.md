@@ -457,3 +457,11 @@ Richiesta dell'utente: "le ricerche nelle liste di contatti sono un po lente… 
 - **Link preventivo**: il controllo del dominio `preventivi.` gira in sottofondo (avvio + ogni 10 min), la creazione del link non aspetta più fino a 4 s.
 - **Grafica**: tolta la vecchia barretta `::before` della riga selezionata (passava sopra il pallino, la correzione c'era solo su telefono), freccia dell'esito del preventivo staccata dal testo, "Versione precedente" con freccina e senza riquadro di focus al clic, segnaposto della ricerca corretto ("Nome, telefono, città, email…").
 - Giro su tutte le 29 pagine in locale: nessun errore JS né del server. `npm run check` verde (329).
+
+## Generatore leggibile e utile spiegato — 24 ottobre
+
+L'utente: il generatore era "leggermente confusionario, un po flat", "la parte degli utili è importante e da esplicare meglio".
+
+- **Due colonne** da 1180 px (`.nf-main` + `aside.nf-aside` in index.html, CSS "Generatore leggibile"): a destra, ferma mentre si scorre, totale per il cliente (`#nf-summary`), utile (`#nf-margin`) e "Genera preventivo" (fisso in fondo al riepilogo solo sul computer). Sotto i 1180 px tutto in colonna.
+- **Sezioni**: intestazione su fondo `#f5f8f5`, numero in pallino verde pieno, titolo normale 14,5 px (prima maiuscoletto grigio 11,5 px della versione "piatta"), etichette più scure. Richiesta collegata su una riga.
+- **Utile** (`renderNfMargin`): numero grande + % + giudizio (Ottimo ≥ goodPct, Nella media, Basso < lowPct, In perdita, Parziale senza costo prato); barra a pezzi "dove vanno i soldi" (prato, materiali, spedizione/accessori, posatore = spese + quota, utile) con legenda; "Come si arriva all'utile" riga per riga (aperto per la prima opzione, stato ricordato in `nfMarginCalcOpen`/`nfMarginCalcTouched`); sconto massimo sul prato; "Costi di questo preventivo" per i campi a mano.

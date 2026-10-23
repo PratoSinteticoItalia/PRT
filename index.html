@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261024-blindatura-richieste" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261024-blindatura-richieste" />
+    <link rel="preload" href="./styles.css?v=20261024-generatore-leggibile" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261024-generatore-leggibile" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -859,6 +859,7 @@
 
               <!-- ── Form preventivo NATIVA — unico generatore (vanilla) ── -->
               <div id="sales-generator-native-form" class="native-form" hidden>
+                <div class="nf-main">
                 <details class="nf-section" open>
                   <summary class="nf-section-head"><span class="nf-legend-txt">Dati preventivo</span></summary>
                   <div class="nf-row">
@@ -968,11 +969,18 @@
                   </div>
                 </details>
 
-                <div class="nf-summary" id="nf-summary"></div>
-                <div class="nf-margin" id="nf-margin" hidden></div>
-                <div class="nf-actions">
-                  <button type="button" id="nf-generate" class="primary-button">Genera preventivo →</button>
                 </div>
+                <!-- Riepilogo sempre a vista sul computer: totale per il cliente, utile, genera. -->
+                <aside class="nf-aside" aria-label="Riepilogo del preventivo">
+                  <div class="nf-aside-block">
+                    <p class="nf-aside-title">Totale per il cliente <small>IVA inclusa</small></p>
+                    <div class="nf-summary" id="nf-summary"></div>
+                  </div>
+                  <div class="nf-margin" id="nf-margin" hidden></div>
+                  <div class="nf-actions">
+                    <button type="button" id="nf-generate" class="primary-button">Genera preventivo →</button>
+                  </div>
+                </aside>
               </div>
 
               <div id="psi-preview-section" class="psi-preview-section" hidden>
@@ -2745,7 +2753,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261024-blindatura-richieste" defer></script>
-    <script src="./app.js?v=20261024-blindatura-richieste" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261024-generatore-leggibile" defer></script>
+    <script src="./app.js?v=20261024-generatore-leggibile" type="module"></script>
   </body>
 </html>
