@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261023-barra-utile-finale" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261023-barra-utile-finale" />
+    <link rel="preload" href="./styles.css?v=20261023-invio-preventivo-controllato" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261023-invio-preventivo-controllato" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -800,10 +800,12 @@
                     </label>
                   </div>
                 </div>
-                <div class="crm-tab-panel" data-tab-panel="folder" id="sales-request-folder-panel">
-                  <div class="field-full" id="sales-request-folder"></div>
-                </div>
               </form>
+              <!-- Fuori dal modulo: le azioni sui preventivi (esito, file) non devono far
+                   partire il salvataggio automatico della richiesta con i valori del modulo. -->
+              <div class="crm-tab-panel panel-section" data-tab-panel="folder" id="sales-request-folder-panel">
+                <div id="sales-request-folder"></div>
+              </div>
               <div class="panel-section crm-tab-panel" data-tab-panel="history" id="sales-request-storia-panel">
                 <div class="subsection-head">
                   <h4>Storia modifiche</h4>
@@ -2709,6 +2711,23 @@
         </footer>
       </div>
     </dialog>
+    <!-- Invio del preventivo su WhatsApp dal telefono/PC, con il PDF allegato -->
+    <dialog id="quote-send-dialog" class="srq-dialog" aria-labelledby="quote-send-title">
+      <div class="srq-dialog-body">
+        <header class="srq-dialog-head">
+          <div>
+            <h2 id="quote-send-title">Invia il preventivo</h2>
+            <p>Su WhatsApp, con il PDF già pronto. Dopo l'invio il preventivo risulta inviato e il follow-up parte da oggi.</p>
+          </div>
+        </header>
+        <div id="quote-send-body" class="srq-dialog-section"></div>
+        <footer class="srq-dialog-actions">
+          <button type="button" class="ghost-button small-button" data-action="quote-send-cancel">Annulla</button>
+          <button type="button" class="ghost-button small-button" data-action="quote-send-manual">Segna come inviato</button>
+          <button type="button" class="primary-button small-button" data-action="quote-send-open" id="quote-send-open">Apri WhatsApp con il PDF</button>
+        </footer>
+      </div>
+    </dialog>
     <!-- Preventivi salvati: i miei (privati e condivisi) e, con il permesso, tutto l'ufficio -->
     <dialog id="quote-list-dialog" class="srq-dialog is-wide" aria-labelledby="quote-list-title">
       <div class="srq-dialog-body">
@@ -2722,7 +2741,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261023-barra-utile-finale" defer></script>
-    <script src="./app.js?v=20261023-barra-utile-finale" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261023-invio-preventivo-controllato" defer></script>
+    <script src="./app.js?v=20261023-invio-preventivo-controllato" type="module"></script>
   </body>
 </html>

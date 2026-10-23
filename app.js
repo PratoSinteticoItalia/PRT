@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-barra-utile-finale";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261023-barra-utile-finale";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-barra-utile-finale";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-barra-utile-finale";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-barra-utile-finale";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-barra-utile-finale";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-barra-utile-finale';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261023-invio-preventivo-controllato";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261023-invio-preventivo-controllato";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261023-invio-preventivo-controllato";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261023-invio-preventivo-controllato";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261023-invio-preventivo-controllato";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261023-invio-preventivo-controllato";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261023-invio-preventivo-controllato';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261023-barra-utile-finale";
+} from "./lib/order-money.js?v=20261023-invio-preventivo-controllato";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261023-barra-utile-finale";
+import { regionForCity } from "./lib/geo.js?v=20261023-invio-preventivo-controllato";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261023-barra-utile-finale";
+} from "./lib/shipping-eligibility.js?v=20261023-invio-preventivo-controllato";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261023-barra-utile-finale";
+} from "./lib/profit-split.js?v=20261023-invio-preventivo-controllato";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261023-barra-utile-finale";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-barra-utile-finale";
+} from "./lib/preventivo-pricing.js?v=20261023-invio-preventivo-controllato";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261023-invio-preventivo-controllato";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261023-barra-utile-finale";
+} from "./lib/sales-assignment.js?v=20261023-invio-preventivo-controllato";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261023-barra-utile-finale";
+} from "./lib/surveys.js?v=20261023-invio-preventivo-controllato";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261023-barra-utile-finale";
+const APP_SHELL_VERSION = "20261023-invio-preventivo-controllato";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -4950,6 +4950,11 @@ function renderSalesRequestContactRow(item = null) {
   ].join("");
 }
 
+// Preventivo salvato ma non ancora mandato al cliente.
+function isSalesRequestQuoteToSend(item = {}) {
+  return normalizeLooseString(item.status || "").includes("da inviare");
+}
+
 // "Prossimo passo" della scheda: cosa fare adesso con questa richiesta.
 function getSalesRequestNextStep(item = {}) {
   const it = state.lang === "it";
@@ -4958,6 +4963,9 @@ function getSalesRequestNextStep(item = {}) {
   if (tone === "is-lost") return { tone: "slate", text: it ? "Richiesta chiusa" : "Request closed" };
   if (!normalizeSalesRequestAssignment(item.assignment || "")) {
     return { tone: "blue", text: it ? "Assegna la richiesta a chi la segue" : "Assign the request to an owner" };
+  }
+  if (isSalesRequestQuoteToSend(item)) {
+    return { tone: "blue", text: it ? "Preventivo pronto: invialo dalla Cartella" : "Quote ready: send it from the Folder" };
   }
   if (tone === "is-quoted") {
     const quotedAt = item.quotedAt ? new Date(item.quotedAt).getTime() : NaN;
@@ -6360,6 +6368,14 @@ function markSelectedSalesRequestQuoteSent(requestIdOverride = "") {
     : getSelectedSalesRequest();
   const requestId = String(request?.id || "").trim();
   if (!request || !requestId || salesGeneratorQuoteStatusInFlight.has(requestId)) return;
+  // Se il preventivo nel generatore è già archiviato per questa richiesta,
+  // risulta inviato anche nella Cartella (stessa regola di "Invia preventivo").
+  const editing = state.quoteEditing;
+  if (editing?.quoteId && editing.requestId === requestId && canUseQuoteFolder()) {
+    apiFetch(`/api/quotes/${encodeURIComponent(editing.quoteId)}/send`, { method: "POST", body: JSON.stringify({ channel: "manual" }) })
+      .then(() => { if (state.salesRequestFolders) delete state.salesRequestFolders[requestId]; })
+      .catch(() => {});
+  }
   const previousRecord = state.salesRequests.find((item) => item.id === requestId) || request;
   const nowIso = new Date().toISOString();
   const patch = {
@@ -14512,6 +14528,9 @@ function getCrmV2PrimaryAction(item = {}) {
   if (tone === "is-contacted") {
     return { label: state.lang === "it" ? "Invia preventivo" : "Send quote", tone: "" };
   }
+  if (tone === "is-quoted" && isSalesRequestQuoteToSend(item)) {
+    return { label: state.lang === "it" ? "Invia preventivo" : "Send quote", tone: "is-blue" };
+  }
   if (tone === "is-quoted") {
     return { label: state.lang === "it" ? "Follow-up" : "Follow-up", tone: "is-ghost" };
   }
@@ -15063,7 +15082,7 @@ function renderSalesRequestsDetailPanel(selected = null) {
       : (state.lang === "it" ? "Primo contatto WhatsApp" : "First WhatsApp contact");
   }
   if (ui.salesRequestFollowUpButton) {
-    const showFollowUp = Boolean(effectiveSelected && getSalesRequestStatusCode(effectiveSelected.status || "") === "quoted");
+    const showFollowUp = Boolean(effectiveSelected && getSalesRequestStatusCode(effectiveSelected.status || "") === "quoted" && !isSalesRequestQuoteToSend(effectiveSelected));
     const followUpUrl = showFollowUp ? buildSalesRequestFollowUpWhatsAppUrl(effectiveSelected) : "";
     ui.salesRequestFollowUpButton.classList.toggle("hidden", !showFollowUp || !followUpUrl);
     ui.salesRequestFollowUpButton.href = followUpUrl || "#";
@@ -15101,6 +15120,7 @@ function renderSalesRequestsDetailPanel(selected = null) {
 // generatore (con revisioni, privati o condivisi), sopralluoghi collegati,
 // documenti caricati a mano e ordine collegato. Solo ufficio.
 const QUOTE_STATUS_LABELS = {
+  to_send: ["Da inviare", "To send"],
   sent: ["Inviato", "Sent"],
   accepted: ["Accettato", "Accepted"],
   rejected: ["Rifiutato", "Rejected"],
@@ -15109,7 +15129,7 @@ const QUOTE_STATUS_LABELS = {
 const QUOTE_FOLDER_CACHE_MS = 30000;
 const QUOTE_DOCUMENT_MAX_BYTES = 15 * 1024 * 1024;
 
-function quoteStatusLabel(status = "sent") {
+function quoteStatusLabel(status = "to_send") {
   const labels = QUOTE_STATUS_LABELS[status] || QUOTE_STATUS_LABELS.sent;
   return state.lang === "it" ? labels[0] : labels[1];
 }
@@ -15198,12 +15218,13 @@ function renderFolderQuote(quote = {}, canSeeAll = false) {
     <div class="srq-quote-main">
       <div class="srq-quote-copy">
         <strong>${escapeHtml(quote.number)}${quote.revision > 1 ? ` <span class="srq-rev">· rev.${quote.revision}</span>` : ""}</strong>
-        <small>${escapeHtml(quote.summary || "")}${quote.summary ? " · " : ""}${folderDateLabel(quote.createdAt)} · ${it ? "di" : "by"} ${escapeHtml(quote.authorName || "—")}</small>
+        <small>${escapeHtml(quote.summary || "")}${quote.summary ? " · " : ""}${folderDateLabel(quote.createdAt)} · ${it ? "di" : "by"} ${escapeHtml(quote.authorName || "—")}${quote.sentAt ? ` · ${it ? "inviato il" : "sent on"} ${folderDateLabel(quote.sentAt)}` : ""}</small>
       </div>
       <strong class="srq-quote-total">${quote.total ? escapeHtml(formatCurrency(quote.total)) : "—"}</strong>
     </div>
     <div class="srq-quote-badges">${renderQuoteVisibilityBadge(quote)} ${renderQuoteStatusBadge(quote.status)} ${renderQuoteMarginBadge(quote)}</div>
     <div class="srq-quote-actions">
+      ${canEdit && quote.hasPdf ? `<button type="button" class="ghost-button small-button ${quote.status === "to_send" ? "is-primary" : ""}" data-action="quote-send" data-id="${escapeAttr(quote.id)}">${quote.status === "to_send" ? (it ? "Invia preventivo" : "Send quote") : (it ? "Invia di nuovo" : "Send again")}</button>` : ""}
       ${quote.hasPdf ? `<a class="ghost-button small-button" href="/api/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">${it ? "Apri PDF" : "Open PDF"}</a>` : ""}
       <button type="button" class="ghost-button small-button" data-action="quote-reopen" data-id="${escapeAttr(quote.id)}">${quote.mine ? (it ? "Riapri nel generatore" : "Reopen in generator") : (it ? "Riapri come copia" : "Reopen as copy")}</button>
       <button type="button" class="ghost-button small-button" data-action="quote-duplicate" data-id="${escapeAttr(quote.id)}">${it ? "Duplica" : "Duplicate"}</button>
@@ -15255,8 +15276,15 @@ function renderSalesRequestFolderUi(requestId = state.selectedSalesRequestId) {
   }
   if (!requestId) {
     container.innerHTML = "";
+    container.dataset.signature = "";
     return;
   }
+  if (!entry) void loadSalesRequestFolder(requestId);
+  // Ridisegna solo quando cambiano dati o lingua: i render automatici della
+  // pagina non devono chiudere il menu dell'esito o le versioni precedenti.
+  const signature = `${requestId}|${state.lang}|${entry?.loadedAt || 0}|${entry?.error || ""}|${data ? "1" : "0"}`;
+  if (container.dataset.signature === signature) return;
+  container.dataset.signature = signature;
   if (!data) {
     container.innerHTML = `<p class="srq-folder-empty">${entry?.error
       ? escapeHtml(it ? `Cartella non disponibile: ${entry.error}` : `Folder unavailable: ${entry.error}`)
@@ -15302,6 +15330,24 @@ function renderSalesRequestFolderUi(requestId = state.selectedSalesRequestId) {
           <button type="button" class="ghost-button small-button" data-action="folder-open-order" data-id="${escapeAttr(order.id)}">${it ? "Apri ordine" : "Open order"}</button></div>`
         : `<p class="srq-folder-empty">${it ? "Nessun ordine collegato ancora." : "No linked order yet."}</p>`}
     </section>`;
+}
+
+// Il server ha cambiato lo stato della richiesta (preventivo salvato, inviato,
+// accettato): aggiorna subito la copia nel browser e il modulo aperto, così un
+// salvataggio successivo della scheda (es. una nota) non lo riporta indietro.
+function applyServerSalesRequestUpdate(update = null) {
+  const requestId = String(update?.id || "").trim();
+  if (!requestId) return;
+  const patch = { status: update.status };
+  if (update.quotedAt) patch.quotedAt = update.quotedAt;
+  const apply = (item) => (item?.id === requestId ? normalizeSalesRequestRecord({ ...item, ...patch }) : item);
+  state.salesRequests = (state.salesRequests || []).map(apply);
+  if (state.crmServerPage?.items) state.crmServerPage.items = state.crmServerPage.items.map(apply);
+  if (state.selectedSalesRequestSnapshot?.id === requestId) state.selectedSalesRequestSnapshot = apply(state.selectedSalesRequestSnapshot);
+  invalidateSalesRequestsFilterCache();
+  if (state.selectedSalesRequestId === requestId && ui.salesRequestForm?.id?.value === requestId) syncSalesRequestStatusField(update.status);
+  if (state.currentView === "sales-requests") renderSalesRequests();
+  void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
 }
 
 async function uploadSalesRequestFolderFiles(files = []) {
@@ -15358,6 +15404,10 @@ async function handleSalesRequestFolderAction(button) {
     await reopenSavedQuote(id, { duplicate: action === "quote-duplicate" });
     return;
   }
+  if (action === "quote-send") {
+    await openQuoteSendDialog(id);
+    return;
+  }
   if (action === "quote-share") {
     const shared = button.dataset.shared === "true";
     button.disabled = true;
@@ -15395,10 +15445,155 @@ async function handleSalesRequestFolderAction(button) {
   }
 }
 
-async function setSavedQuoteStatus(quoteId = "", status = "sent") {
+// ── Invio del preventivo su WhatsApp dal telefono/PC ──────────────────────
+// Dove il browser può condividere file (iPhone, Mac) si apre il pannello di
+// condivisione con il PDF già allegato: scegli WhatsApp e la chat. Altrove si
+// apre la chat con il messaggio e un link privato al PDF. Il PDF e il link si
+// preparano all'apertura della finestra: la condivisione deve partire subito
+// dal clic, senza attese, altrimenti Safari la blocca.
+async function openQuoteSendDialog(quoteId = "") {
+  const it = state.lang === "it";
+  const dialog = document.getElementById("quote-send-dialog");
+  if (!dialog?.showModal) return;
+  let quote;
+  try {
+    quote = (await apiFetch(`/api/quotes/${encodeURIComponent(quoteId)}`))?.quote;
+  } catch (error) {
+    showToast(error.message, "error");
+    return;
+  }
+  if (!quote) return;
+  const request = await fetchSalesRequestById(quote.requestId);
+  const phone = normalizePhoneForWhatsApp(request?.phone || quote.customerPhone || "").replace(/^\+/, "");
+  state.quoteSend = {
+    quote,
+    request,
+    phone,
+    message: request ? buildSalesRequestQuoteWhatsAppMessage(request) : (it ? "Ciao, ti inoltro il preventivo che abbiamo valutato." : "Hello, here is the quote we discussed."),
+    file: null,
+    canShareFiles: false,
+    shareLink: "",
+    preparing: true,
+    awaitingConfirm: false,
+    busy: false,
+    status: "",
+  };
+  renderQuoteSendDialog();
+  dialog.showModal();
+  const send = state.quoteSend;
+  try {
+    const response = await fetch(`/api/quotes/${encodeURIComponent(quote.id)}/pdf`, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(it ? "PDF non disponibile" : "PDF unavailable");
+    const blob = await response.blob();
+    const fileName = `Preventivo ${quoteNumberLabel(quote)}${quote.customerName ? ` - ${quote.customerName}` : ""}.pdf`.replace(/[\\/:*?"<>|]+/g, " ");
+    send.file = new File([blob], fileName, { type: "application/pdf" });
+    send.canShareFiles = Boolean(navigator.canShare && navigator.share && navigator.canShare({ files: [send.file] }));
+    if (!send.canShareFiles) {
+      const link = await apiFetch(`/api/quotes/${encodeURIComponent(quote.id)}/share-link`, { method: "POST", body: "{}" });
+      send.shareLink = link?.path ? `${window.location.origin}${link.path}` : "";
+    }
+  } catch (error) {
+    send.status = it ? `Preparazione non riuscita: ${error.message}` : `Preparation failed: ${error.message}`;
+  }
+  send.preparing = false;
+  if (state.quoteSend === send) renderQuoteSendDialog();
+}
+
+function renderQuoteSendDialog() {
+  const it = state.lang === "it";
+  const send = state.quoteSend;
+  const body = document.getElementById("quote-send-body");
+  if (!send || !body) return;
+  const name = send.request ? getSalesRequestDisplayName(send.request) : (send.quote.customerName || "");
+  const messageField = body.querySelector("#quote-send-message");
+  const message = messageField ? messageField.value : send.message;
+  send.message = message;
+  const how = send.preparing
+    ? (it ? "Preparo il PDF…" : "Preparing the PDF…")
+    : send.canShareFiles
+      ? (it ? "Si apre la condivisione con il PDF già allegato: scegli WhatsApp e la chat del cliente. Il messaggio viene copiato: incollalo nella chat se WhatsApp non lo riporta." : "The share panel opens with the PDF attached: choose WhatsApp and the customer's chat. The message is copied: paste it in the chat if WhatsApp drops it.")
+      : (it ? "Su questo dispositivo il PDF non si può allegare in automatico: si apre la chat con il messaggio e un link privato al PDF (valido 60 giorni)." : "This device can't attach the PDF automatically: the chat opens with the message and a private link to the PDF (valid 60 days).");
+  body.innerHTML = `
+    <div class="srq-linked"><span>${escapeHtml(quoteNumberLabel(send.quote))} · <strong>${escapeHtml(name || "—")}</strong>${send.phone ? ` · +${escapeHtml(send.phone)}` : ""}</span></div>
+    ${send.phone ? "" : `<p class="srq-dialog-note"><span class="is-warning">${it ? "Il cliente non ha un numero di telefono: aggiungilo nella scheda Cliente." : "The customer has no phone number: add it in the Customer tab."}</span></p>`}
+    <label class="srq-dialog-section"><span class="srq-dialog-label">${it ? "Messaggio" : "Message"}</span>
+      <textarea id="quote-send-message" class="text-input" rows="5">${escapeHtml(message)}</textarea></label>
+    <p class="srq-dialog-note">${escapeHtml(how)}</p>
+    ${send.awaitingConfirm ? `<div class="srq-send-confirm"><span>${it ? "Hai inviato il preventivo nella chat?" : "Did you send the quote in the chat?"}</span>
+      <button type="button" class="primary-button small-button" data-action="quote-send-confirm" data-channel="whatsapp-link">${it ? "Sì, segna come inviato" : "Yes, mark as sent"}</button></div>` : ""}
+    <p class="srq-dialog-status" role="status">${escapeHtml(send.status || "")}</p>`;
+  const openButton = document.getElementById("quote-send-open");
+  if (openButton) openButton.disabled = send.preparing || send.busy || !send.phone || (!send.canShareFiles && !send.shareLink);
+}
+
+function openQuoteWhatsApp() {
+  const it = state.lang === "it";
+  const send = state.quoteSend;
+  if (!send || send.preparing) return;
+  const message = String(document.getElementById("quote-send-message")?.value || send.message || "").trim();
+  send.message = message;
+  if (send.canShareFiles && send.file) {
+    // Nessun await prima di share(): deve partire nello stesso clic.
+    if (!send.skipClipboard) navigator.clipboard?.writeText?.(message).catch(() => {});
+    navigator.share({ files: [send.file], text: message, title: send.file.name })
+      .then(() => markQuoteSent("whatsapp-share"))
+      .catch((error) => {
+        if (error?.name === "AbortError") return;
+        if (error?.name === "NotAllowedError" && !send.skipClipboard) {
+          // Alcuni browser non permettono appunti e condivisione nello stesso
+          // clic: al prossimo clic si condivide e basta.
+          send.skipClipboard = true;
+          send.status = it ? "Clicca di nuovo \"Apri WhatsApp con il PDF\"." : "Click \"Open WhatsApp with the PDF\" again.";
+        } else {
+          send.status = it ? `Condivisione non riuscita: ${error.message}` : `Sharing failed: ${error.message}`;
+        }
+        renderQuoteSendDialog();
+      });
+    return;
+  }
+  const text = `${message}\n\n${it ? "Il preventivo" : "The quote"}: ${send.shareLink}`;
+  window.open(`https://wa.me/${encodeURIComponent(send.phone)}?text=${encodeURIComponent(text)}`, "psi_sales_request_whatsapp", "noopener");
+  send.awaitingConfirm = true;
+  renderQuoteSendDialog();
+}
+
+async function markQuoteSent(channel = "manual") {
+  const it = state.lang === "it";
+  const send = state.quoteSend;
+  if (!send || send.busy) return;
+  send.busy = true;
+  try {
+    const result = await apiFetch(`/api/quotes/${encodeURIComponent(send.quote.id)}/send`, { method: "POST", body: JSON.stringify({ channel }) });
+    document.getElementById("quote-send-dialog")?.close();
+    showToast(it ? `${quoteNumberLabel(send.quote)} inviato: la richiesta è "Preventivo inviato", il follow-up parte da oggi.` : `${quoteNumberLabel(send.quote)} sent: the request is now "Quote sent", follow-up starts today.`, "success", 5000);
+    applyServerSalesRequestUpdate(result?.request);
+    await loadSalesRequestFolder(send.quote.requestId, { force: true });
+  } catch (error) {
+    send.busy = false;
+    send.status = error.message;
+    renderQuoteSendDialog();
+  }
+}
+
+function handleQuoteSendDialogClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === "quote-send-cancel") document.getElementById("quote-send-dialog")?.close();
+  if (action === "quote-send-open") openQuoteWhatsApp();
+  if (action === "quote-send-confirm") void markQuoteSent(button.dataset.channel || "manual");
+  if (action === "quote-send-manual") void markQuoteSent("manual");
+}
+
+async function setSavedQuoteStatus(quoteId = "", status = "to_send") {
   const it = state.lang === "it";
   try {
-    await apiFetch(`/api/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    // "Inviato" scelto dal menu vale come invio: aggiorna anche la richiesta
+    // e fa partire il follow-up, come "Segna come inviato".
+    const result = status === "sent"
+      ? await apiFetch(`/api/quotes/${encodeURIComponent(quoteId)}/send`, { method: "POST", body: JSON.stringify({ channel: "manual" }) })
+      : await apiFetch(`/api/quotes/${encodeURIComponent(quoteId)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    applyServerSalesRequestUpdate(result?.request);
     showToast(it ? `Esito aggiornato: ${quoteStatusLabel(status)}` : `Outcome updated: ${quoteStatusLabel(status)}`, "success");
   } catch (error) {
     showToast(error.message, "error");
@@ -15743,10 +15938,10 @@ async function confirmQuoteSave({ archive = true } = {}) {
     dialog?.close();
     renderQuoteEditBanner();
     showToast(it
-      ? `${quoteNumberLabel(saved)} salvato ${saved.shared ? "nella cartella comune" : "come privato"} di ${getSalesRequestDisplayName(save.request) || "cliente"}`
-      : `${quoteNumberLabel(saved)} saved ${saved.shared ? "to the shared folder" : "as private"} of ${getSalesRequestDisplayName(save.request) || "customer"}`, "success", 4500);
+      ? `${quoteNumberLabel(saved)} salvato ${saved.shared ? "nella cartella comune" : "come privato"} di ${getSalesRequestDisplayName(save.request) || "cliente"}: è da inviare, lo mandi dalla Cartella`
+      : `${quoteNumberLabel(saved)} saved ${saved.shared ? "to the shared folder" : "as private"} of ${getSalesRequestDisplayName(save.request) || "customer"}: send it from the Folder`, "success", 5000);
     if (state.salesRequestFolders) delete state.salesRequestFolders[save.request.id];
-    if (result?.requestMovedToQuoted) void loadCrmPage({ page: state.crmServerPage?.page || 1, forceReload: true });
+    applyServerSalesRequestUpdate(result?.request);
   } catch (error) {
     save.busy = false;
     save.status = it ? `Salvataggio non riuscito: ${error.message}` : `Save failed: ${error.message}`;
@@ -34688,7 +34883,10 @@ function handleGlobalClick(event) {
     // Comportamento contestuale in base al label del bottone
     const actionLabel = String(button?.textContent || "").trim().toLowerCase();
     window.setTimeout(() => {
-      if (actionLabel.includes("assegna") || actionLabel.includes("assign")) {
+      if (actionLabel.includes("invia preventivo") || actionLabel.includes("send quote")) {
+        // Preventivo salvato da inviare: si apre la Cartella della richiesta.
+        activateSalesRequestDetailTab("folder");
+      } else if (actionLabel.includes("assegna") || actionLabel.includes("assign")) {
         // Focus + apre la select assignment
         const sel = document.querySelector("#sales-request-form select[name='assignment']");
         if (sel) { sel.focus(); try { sel.click(); } catch {} }
@@ -36717,8 +36915,12 @@ bindEvent(document.getElementById("quote-save-search"), "input", (event) => {
   quoteSaveSearchTimer = window.setTimeout(() => { void searchQuoteSaveRequests(value); }, 250);
 });
 bindEvent(document.getElementById("quote-list-dialog"), "click", handleSavedQuotesDialogClick);
+bindEvent(document.getElementById("quote-send-dialog"), "click", handleQuoteSendDialogClick);
 bindEvent(document.getElementById("nf-margin"), "input", handleNfMarginInput);
 bindEvent(document.getElementById("quote-costs-editor"), "submit", (event) => { void saveQuoteCostsConfig(event); });
+["input", "change"].forEach((eventName) => bindEvent(document.getElementById("quote-costs-editor"), eventName, (event) => {
+  if (event.target.closest("#quote-costs-form")) event.currentTarget.dataset.dirty = "1";
+}));
 bindEvent(document.getElementById("sales-generator-saved-quotes-button"), "click", () => { void openSavedQuotesDialog(); });
 bindEvent(document.getElementById("sales-requests-saved-quotes-button"), "click", () => { void openSavedQuotesDialog(); });
 bindEvent(document.getElementById("sales-generator-quote-edit"), "click", (event) => {
@@ -37621,14 +37823,22 @@ function nfEffectiveMaterials() {
 // Solo ufficio, mai nel PDF. Costi dall'ultima fattura fornitore collegata in
 // Impostazioni → "Costi per la barra dell'utile"; la posa segue il riparto
 // dell'utile con il posatore come in Conti posa. Calcolo in lib/preventivo-margin.js.
+const QUOTE_COSTS_REFRESH_MS = 5 * 60 * 1000;
+const QUOTE_COSTS_RETRY_MS = 60 * 1000;
+
 async function loadQuoteCosts({ force = false } = {}) {
   if (state.currentUser?.role !== "office") return null;
-  if (!force && (state.quoteCosts?.loading || state.quoteCosts?.data)) return state.quoteCosts?.data || null;
-  state.quoteCosts = { ...(state.quoteCosts || {}), loading: true };
+  const current = state.quoteCosts;
+  if (current?.loading) return current.data || null;
+  // Fresco: niente richiesta. Dopo un errore si riprova dopo un minuto; i
+  // costi si rinfrescano ogni 5 minuti (nuove fatture registrate in Fornitori).
+  const age = Date.now() - (current?.loadedAt || 0);
+  if (!force && current && (current.error ? age < QUOTE_COSTS_RETRY_MS : age < QUOTE_COSTS_REFRESH_MS)) return current.data || null;
+  state.quoteCosts = { ...(current || {}), loading: true };
   try {
-    state.quoteCosts = { data: await apiFetch("/api/quote-costs"), loading: false };
+    state.quoteCosts = { data: await apiFetch("/api/quote-costs"), loading: false, loadedAt: Date.now() };
   } catch (error) {
-    state.quoteCosts = { data: null, loading: false, error: error?.message || "errore" };
+    state.quoteCosts = { data: current?.data || null, loading: false, loadedAt: Date.now(), error: error?.message || "errore" };
   }
   if (ui.nativeForm && !ui.nativeForm.hidden) updateNativeFormTotals();
   if (state.currentView === "settings") renderQuoteCostsEditor();
@@ -37752,7 +37962,7 @@ function renderNfMargin(cq) {
     box.hidden = true;
     return;
   }
-  if (!state.quoteCosts) void loadQuoteCosts();
+  void loadQuoteCosts();
   const it = state.lang === "it";
   const f = ensurePreventivoForm();
   const config = quoteCostConfig();
@@ -37859,12 +38069,16 @@ function renderQuoteCostsEditor() {
   const isOffice = state.currentUser?.role === "office";
   if (panel) panel.hidden = !isOffice;
   if (!isOffice) return;
-  if (!state.quoteCosts) {
+  if (!state.quoteCosts?.data && !state.quoteCosts?.error) {
     container.innerHTML = `<p class="panel-note">${state.lang === "it" ? "Caricamento…" : "Loading…"}</p>`;
     void loadQuoteCosts();
     return;
   }
-  if (container.contains(document.activeElement)) return;
+  // Scelte non ancora salvate: i render automatici non le devono cancellare.
+  if (container.contains(document.activeElement) || container.dataset.dirty === "1") return;
+  const signature = `${state.lang}|${state.quoteCosts.loadedAt || 0}|${state.quoteCosts.error || ""}`;
+  if (container.dataset.signature === signature) return;
+  container.dataset.signature = signature;
   const it = state.lang === "it";
   const data = state.quoteCosts.data;
   if (!data) {
@@ -37916,7 +38130,12 @@ async function saveQuoteCostsConfig(event) {
   const status = document.getElementById("quote-costs-status");
   try {
     const result = await apiFetch("/api/quote-costs", { method: "PUT", body: JSON.stringify(payload) });
-    state.quoteCosts = { data: result, loading: false };
+    state.quoteCosts = { data: result, loading: false, loadedAt: Date.now() };
+    const editor = document.getElementById("quote-costs-editor");
+    if (editor) {
+      editor.dataset.dirty = "";
+      editor.dataset.signature = "";
+    }
     if (status) setStatus(status, "success", it ? "Costi salvati: la barra dell'utile li usa subito." : "Costs saved: the profit bar uses them right away.");
     document.activeElement?.blur?.();
     renderQuoteCostsEditor();
