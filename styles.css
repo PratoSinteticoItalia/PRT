@@ -30498,4 +30498,94 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 @media (min-width: 981px) {
   :is(#orders, #ddt, #sopralluoghi, #warehouse) .detail-panel { grid-auto-rows: max-content; align-content: start; }
   :is(#orders, #ddt, #sopralluoghi, #warehouse) .detail-panel > * { flex-shrink: 0; }
+/* ── Pose: calendario squadre e bacheca con azioni rapide (ottobre 2026) ──── */
+/* La settimana sta su una riga (prima la domenica andava a capo). */
+@media (min-width: 981px) {
+  #installations #installation-calendar { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+  #installations #installation-calendar .cal-day { min-width: 0; min-height: 132px; padding: 10px 9px; }
+  #installations #installation-calendar .cal-day-date { font-size: 13.5px; }
+}
+#installations .cal-day-capacity small { display: block; color: #6b4fa0; font-size: 11px; font-weight: 600; }
+#installations .cal-item { display: grid; gap: 1px; width: 100%; min-width: 0; margin-top: 6px; padding: 6px 8px; border-radius: 7px; background: #fff; text-align: left; }
+#installations .cal-item strong { overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+#installations .cal-item strong em { color: var(--brand-strong, #276647); font-style: normal; font-variant-numeric: tabular-nums; }
+#installations .cal-item span { overflow: hidden; color: var(--ui-muted, #66716a); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+/* Sopralluogo: fondo viola tenue, si distingue a colpo d'occhio dalla posa. */
+#installations .cal-item-survey { background: #f4f0fb; }
+#installations .cal-item-survey strong { color: #4b3a78; }
+#installations .cal-item-survey.is-done { opacity: .6; }
+
+/* Scheda della bacheca: nome intero, numero e data sotto, squadra e data cliccabili. */
+#installations .inst-card .sv2-head { padding-right: 22px; }
+#installations .inst-card .sv2-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; line-height: 1.3; }
+#installations .inst-card-sub { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 2px 0 3px; }
+#installations .inst-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 9px; border: 1px solid var(--ui-line-strong, #d5dbd3); border-radius: 999px; background: #fff; color: #2f3d34; font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+#installations .inst-chip::after { content: "▾"; color: var(--ui-muted, #8a948c); font-size: 10px; }
+#installations .inst-chip:hover { border-color: var(--brand, #2f7a55); background: var(--brand-soft, #e8f2ec); }
+#installations .inst-chip.is-warn { border-style: dashed; border-color: #d9b46b; background: #fdf8ec; color: #8a6212; }
+#installations .inst-chip.is-overdue { border-color: #e2a59e; background: #fdf1ef; color: #a3352c; }
+#installations .inst-chip .crew-dot { width: 8px; height: 8px; border-radius: 50%; }
+#installations .inst-card .sv2-foot .is-alert { color: #a3352c; font-size: 12px; font-weight: 650; }
+#installations .shp-show-all-done { width: 100%; margin-top: 8px; }
+
+/* Menu squadra/data sotto il pulsante della scheda. */
+.install-quick-panel { min-width: 220px; }
+.install-quick-panel button { display: flex; align-items: center; gap: 8px; }
+.install-quick-panel button[disabled] { color: #a0a8a2; cursor: not-allowed; }
+.install-quick-panel button small { margin-left: auto; color: var(--ui-muted, #66716a); font-size: 11.5px; font-weight: 500; }
+.install-quick-panel button.is-current { background: var(--brand-soft, #e8f2ec); }
+.install-quick-panel button.is-muted { color: #8a6212; font-weight: 600; }
+.install-quick-panel .crew-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; }
+.install-quick-fields { display: grid; grid-template-columns: 1fr 96px; gap: 8px; padding: 2px 8px 8px; }
+.install-quick-fields label { display: grid; gap: 4px; color: var(--ui-muted, #66716a); font-size: 12px; }
+.install-quick-fields input { min-height: 34px; padding: 4px 8px; border: 1px solid var(--ui-line-strong, #d5dbd3); border-radius: 7px; font: inherit; font-size: 13px; }
+.install-quick-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 0 8px 6px; }
+.install-quick-actions button { justify-content: center; min-height: 32px; padding: 5px 12px; border-radius: 7px; }
+.install-quick-actions button.is-primary { background: var(--brand, #2f7a55); color: #fff; }
+.install-quick-actions button.is-primary:hover { background: var(--brand-strong, #276647); color: #fff; }
+@media (min-width: 981px) {
+  /* Giorni stretti: mq su una riga, il colore della barra dice già quanto è pieno. */
+  #installations #installation-calendar .cal-day-meta { flex-wrap: wrap; gap: 2px 6px; }
+  #installations #installation-calendar .cal-day-capacity { white-space: nowrap; }
+  #installations #installation-calendar .cal-capacity-pill { display: none; }
+}
+
+/* Giorno della settimana sopra la data; "Libero" solo nell'agenda. */
+#installations .cal-day-weekday { display: block; color: var(--ui-muted, #66716a); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+#installations .cal-day-free { display: none; }
+/* Agenda della squadra sul telefono: un giorno per riga, data a sinistra,
+   pose e sopralluoghi a destra; mq e barra non servono a chi è in cantiere. */
+@media (max-width: 760px) {
+  body.mobile-safe-mode #installation-calendar.is-agenda { display: grid !important; grid-auto-flow: row; grid-template-columns: 1fr !important; grid-auto-columns: auto; gap: 6px; overflow: visible; padding-bottom: 0; }
+  #installation-calendar.is-agenda .cal-day { display: grid !important; grid-template-columns: 72px minmax(0, 1fr); align-items: start; gap: 6px 12px; min-width: 0 !important; min-height: 0; padding: 10px 12px; }
+  #installation-calendar.is-agenda .cal-day-top { grid-column: 1; grid-row: 1 / span 6; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  #installation-calendar.is-agenda .cal-day-date { font-size: 14px; line-height: 1.2; }
+  #installation-calendar.is-agenda :is(.cal-day-meta, .cal-gauge) { display: none; }
+  #installation-calendar.is-agenda .cal-item, #installation-calendar.is-agenda .cal-unavail-tag, #installation-calendar.is-agenda .cal-day-free { grid-column: 2; margin-top: 0; }
+  #installation-calendar.is-agenda .cal-item strong, #installation-calendar.is-agenda .cal-item span { white-space: normal; }
+  #installation-calendar.is-agenda .cal-day-free { display: block; align-self: center; color: var(--ui-muted, #8a948c); font-size: 13px; }
+  #installation-calendar.is-agenda .cal-day-today { box-shadow: inset 3px 0 var(--brand, #2f7a55); }
+}
+
+/* Sopralluoghi: gruppi Da fissare / In programma / Fatti, squadra e data sulla scheda. */
+#sopralluoghi .survey-group + .survey-group { margin-top: 14px; }
+#sopralluoghi .survey-group .shp-group-label { margin: 0 0 6px; }
+#sopralluoghi .survey-card-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+#sopralluoghi .inst-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 3px 9px; border: 1px solid var(--ui-line-strong, #d5dbd3); border-radius: 999px; background: #fff; color: #2f3d34; font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+#sopralluoghi .inst-chip::after { content: "▾"; color: var(--ui-muted, #8a948c); font-size: 10px; }
+#sopralluoghi .inst-chip:hover { border-color: var(--brand, #2f7a55); background: var(--brand-soft, #e8f2ec); }
+#sopralluoghi .inst-chip.is-warn { border-style: dashed; border-color: #d9b46b; background: #fdf8ec; color: #8a6212; }
+#sopralluoghi .inst-chip.is-overdue { border-color: #e2a59e; background: #fdf1ef; color: #a3352c; }
+#sopralluoghi .inst-chip .crew-dot { width: 8px; height: 8px; border-radius: 50%; }
+#sopralluoghi .survey-show-done { width: 100%; margin-top: 6px; }
+/* Finestra "Fissa il sopralluogo". */
+.survey-schedule-grid { display: grid; grid-template-columns: 1fr 110px 1fr; gap: 10px 12px; margin-top: 12px; }
+.survey-schedule-grid .survey-schedule-wide { grid-column: 1 / -1; }
+.survey-schedule-grid .field { display: grid; gap: 4px; }
+.survey-schedule-grid .field > span { color: #2f3d34; font-size: 12.5px; font-weight: 600; }
+@media (max-width: 560px) { .survey-schedule-grid { grid-template-columns: 1fr 1fr; } }
+/* Sopralluoghi: elenco e dettaglio affiancati anche sotto i 1320 px (prima
+   da lì in giù il dettaglio finiva sotto tutto l'elenco). */
+@media (min-width: 1101px) {
+  #sopralluoghi .order-grid { grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr); }
 }

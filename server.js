@@ -770,7 +770,13 @@ function queuePostgresMirrorWrite(path, value) {
 async function getPgPool() {
   if (!USE_POSTGRES) return null;
   if (pgPool) return pgPool;
-  const { Pool } = await import("pg");
+  const pgModule = await import("pg");
+  const { Pool } = pgModule;
+  // Le colonne DATE (giorno del sopralluogo, turno, sistemazione) arrivano
+  // come testo "2026-10-21": convertite in Date diventavano la mezzanotte
+  // locale e, ritrascritte in UTC, slittavano al giorno prima con l'ora
+  // italiana (visto sul calendario delle squadre, ottobre 2026).
+  (pgModule.types || pgModule.default?.types)?.setTypeParser(1082, (value) => value);
   pgPool = new Pool({
     connectionString: DATABASE_URL,
     max: 4,
@@ -18158,7 +18164,7 @@ async function handleApi(req, res, url) {
       const [quoteRows, documentRows, surveyRows, requestRows] = await Promise.all([
         pool.query("SELECT * FROM sales_quotes WHERE request_id = $1 ORDER BY created_at DESC, revision DESC", [requestId]),
         pool.query("SELECT id, name, type, size, uploaded_by_name, created_at FROM sales_request_documents WHERE request_id = $1 ORDER BY created_at DESC", [requestId]),
-        pool.query("SELECT id, status, crew_name, scheduled_date, measured_sqm, updated_at FROM site_surveys WHERE sales_request_id = $1 ORDER BY created_at DESC", [requestId]),
+        pool.query("SELECT id, status, crew_name, scheduled_date, scheduled_time, measured_sqm, updated_at FROM site_surveys WHERE sales_request_id = $1 ORDER BY created_at DESC", [requestId]),
         pool.query("SELECT linked_order_id FROM sales_requests WHERE id = $1", [requestId]),
       ]);
       const byNumber = new Map();
@@ -18181,7 +18187,7 @@ async function handleApi(req, res, url) {
         canSeeAll: seeAll,
         quotes,
         documents: documentRows.rows.map((row) => ({ id: row.id, name: row.name, type: row.type, size: Number(row.size || 0), uploadedByName: row.uploaded_by_name || "", createdAt: row.created_at })),
-        surveys: surveyRows.rows.map((row) => ({ id: row.id, status: row.status, crewName: row.crew_name || "", scheduledDate: row.scheduled_date, measuredSqm: row.measured_sqm == null ? null : Number(row.measured_sqm) })),
+        surveys: surveyRows.rows.map((row) => ({ id: row.id, status: row.status, crewName: row.crew_name || "", scheduledDate: row.scheduled_date, scheduledTime: row.scheduled_time || "", measuredSqm: row.measured_sqm == null ? null : Number(row.measured_sqm) })),
         order: order ? { id: order.id, label: String(order.name || order.orderNumber || order.id), status: order.operations?.warehouse?.status || order.fulfillmentStatus || "" } : (linkedOrderId ? { id: linkedOrderId, label: linkedOrderId, status: "" } : null),
       });
     }
