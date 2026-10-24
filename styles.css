@@ -30489,3 +30489,13 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 #sales-generator .native-form .field:has(> .nf-seg) { flex: 1 0 auto; min-width: fit-content; }
 #sales-generator .native-form .nf-seg { max-width: 100%; }
 #sales-generator .native-form .nf-seg button { flex: 1 0 auto; }
+
+/* Colonne di dettaglio ad altezza fissa (Inbox Ordini, DDT, Sopralluoghi,
+   Inventario): le sezioni tengono la loro altezza e la colonna scorre. Prima
+   la griglia le schiacciava per farle stare nell'altezza: di "Apri l'ordine
+   in", "Materiali da preparare" e "Allegati ordine" restava solo il titolo
+   (segnalato dall'utente, ottobre 2026). */
+@media (min-width: 981px) {
+  :is(#orders, #ddt, #sopralluoghi, #warehouse) .detail-panel { grid-auto-rows: max-content; align-content: start; }
+  :is(#orders, #ddt, #sopralluoghi, #warehouse) .detail-panel > * { flex-shrink: 0; }
+}
