@@ -8038,9 +8038,13 @@ function extractBillingMetadata(...inputs) {
   };
 }
 
+// Fattura e non corrispettivo: chiesta dall'ufficio, oppure dal checkout
+// arrivano dati da fattura. Anche la sola ragione sociale conta: un'azienda
+// vuole la fattura, e se mancano P.IVA o SDI la scheda lo segnala.
 function inferInvoiceRequired(accounting = {}, billing = {}) {
   return Boolean(
     accounting?.invoiceRequired
+    || String(billing?.company || "").trim()
     || billing?.invoiceRequested
     || billing?.vatNumber
     || billing?.taxCode
@@ -11180,6 +11184,12 @@ function normalizeQuoteCostConfig(config = {}) {
     const key = String(slug || "").trim().slice(0, 80);
     if (key && cleanRef(ref)) products[key] = cleanRef(ref);
   });
+  // Altri articoli dell'inventario (solo per il valore di magazzino).
+  const inventory = {};
+  Object.entries(config.inventory && typeof config.inventory === "object" ? config.inventory : {}).slice(0, 300).forEach(([itemKey, ref]) => {
+    const key = String(itemKey || "").trim().slice(0, 80);
+    if (key && cleanRef(ref)) inventory[key] = cleanRef(ref);
+  });
   const materials = {};
   QUOTE_COST_MATERIAL_KEYS.forEach((key) => {
     const item = config.materials?.[key];
@@ -11192,10 +11202,15 @@ function normalizeQuoteCostConfig(config = {}) {
   return {
     products,
     materials,
+    inventory,
     wastePct: bounded(config.wastePct, 8, 50),
     partnerSharePct: bounded(config.partnerSharePct, 50),
     lowPct,
     goodPct: Math.max(lowPct, bounded(config.goodPct, 30)),
+    // Spedizione gratis per il cliente da questa soglia di imponibile merce;
+    // il costo medio vale per l'utile quando non c'è la tariffa del bancale.
+    freeShippingFrom: bounded(config.freeShippingFrom, 1000, 1000000),
+    freeShippingCost: bounded(config.freeShippingCost, null, 100000),
     updatedAt: String(config.updatedAt || ""),
     updatedBy: String(config.updatedBy || ""),
   };

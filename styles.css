@@ -28645,8 +28645,20 @@ body.mobile-safe-mode .main-content {
 .acw-dialog .acw-checklist{max-height:200px;overflow:auto;border:1px solid var(--acw-line);border-radius:8px;padding:6px 10px;margin-top:8px}
 .acw-dialog .acw-checklist label{display:flex;gap:8px;align-items:center;font-weight:500;margin:0;padding:7px 0;border-bottom:1px solid #f0f2ee}
 .acw-dialog .acw-checklist label[hidden]{display:none}
-body:not([data-drill-module="accounting"]) #accounting.acw-active:not(.acw-on-payments) .accounting-legacy{display:none}
-#accounting.acw-on-payments #accounting-workspace{margin-bottom:0}
+/* "Pagamenti ordini" è confluita in "Ordini e incassi": della sezione storica
+   resta solo la scheda dell'ordine, il drawer a destra (su mobile il drill). */
+body:not([data-drill-module="accounting"]) #accounting.acw-active .accounting-legacy > :not(.acl-panel),
+body:not([data-drill-module="accounting"]) #accounting.acw-active .accounting-legacy .acl-panel > :not(.order-grid),
+body:not([data-drill-module="accounting"]) #accounting.acw-active .accounting-legacy .order-grid > :not(.accounting-detail-panel):not(.accounting-drawer-scrim){display:none}
+body:not([data-drill-module="accounting"]) #accounting.acw-active .accounting-legacy,
+body:not([data-drill-module="accounting"]) #accounting.acw-active .accounting-legacy .acl-panel,
+body:not([data-drill-module="accounting"]) #accounting.acw-active .accounting-legacy .order-grid{display:contents}
+#accounting-workspace .acw-order-open{text-align:left;font-weight:500}
+#accounting-workspace .acw-order-open strong{font-weight:750;margin-right:4px}
+#accounting-workspace td.acw-open{color:#a5521b;font-weight:650}
+#accounting-workspace .acw-list-count{margin:-6px 0 10px;font-size:12.5px;color:var(--acw-muted)}
+#accounting-workspace .acw-explain{margin:8px 0 0;padding-left:18px}
+#accounting-workspace .acw-explain li{margin:3px 0}
 /* Pagamenti ordini (sezione storica per ordine, ultima scheda della Contabilità):
    stesso linguaggio del pannello contabile. Niente container query qui: il
    containment renderebbe questo blocco il riferimento del drawer position:fixed. */
@@ -30589,3 +30601,14 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 @media (min-width: 1101px) {
   #sopralluoghi .order-grid { grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr); }
 }
+
+/* Valore di magazzino al costo d'acquisto (ottobre 2026): sulla riga della
+   lista, nella scheda dell'articolo e nel riepilogo in alto (solo ufficio). */
+#warehouse .iv-row-value { flex: none; margin-left: auto; color: var(--oi-text); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.inv-value { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; margin-top: 10px; padding: 9px 12px; border: 1px solid #dfe8df; border-radius: 9px; background: #f6faf5; }
+.inv-value span { font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: #5a6e63; }
+.inv-value strong { font-size: 17px; font-weight: 720; font-variant-numeric: tabular-nums; color: #1b4332; }
+.inv-value small { grid-column: 1 / -1; font-size: 12px; color: #6b7b72; line-height: 1.4; }
+.inv-value.is-missing { background: #fbf8f0; border-color: #ecdfc2; }
+.inv-value.is-missing strong { color: #8a9690; }
+.inv-kpi-money .inv-kpi-value { color: #1b4332; }

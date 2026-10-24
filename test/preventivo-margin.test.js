@@ -75,3 +75,22 @@ test('sconto massimo: nessuna indicazione se si resta sopra soglia anche regalan
   });
   assert.equal(maxTurfDiscountForMargin(margin, { pricePerSqm: 10, sqm: 10, targetPct: 15 }), null);
 });
+
+test('spedizione gratis per il cliente senza costo noto: manca, non vale zero di nascosto', () => {
+  const margin = computeQuoteMargin({
+    option: { pratoNet: 1200, materialsNet: 0, posaNet: 0, shippingNet: 0 }, quote: {}, sqm: 50,
+    turfCostPerSqm: 10, wastePct: 0, materialCosts: [], shippingCost: null, shippingMissing: true,
+  });
+  assert.deepEqual(margin.missing, ['spedizione']);
+  assert.equal(margin.supply.shippingCost, 0);
+});
+
+test('spedizione gratis con costo stimato: il costo scende dall\'utile', () => {
+  const margin = computeQuoteMargin({
+    option: { pratoNet: 1200, materialsNet: 0, posaNet: 0, shippingNet: 0 }, quote: {}, sqm: 50,
+    turfCostPerSqm: 10, wastePct: 0, materialCosts: [], shippingCost: 140, shippingMissing: true,
+  });
+  assert.deepEqual(margin.missing, []);
+  assert.equal(margin.supply.shippingCost, 140);
+  assert.equal(margin.profit, 1200 - 500 - 140);
+});
