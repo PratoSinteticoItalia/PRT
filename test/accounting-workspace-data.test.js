@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   orderDate, orderDisplayNumber, orderCustomerName, orderPaymentState,
-  pendingOrderIncome, suggestEntryFromPending, registeredCentsByOrder, totalsByMethod, entryIssue,
+  pendingOrderIncome, suggestEntryFromPending, registeredCentsByOrder, totalsByMethod, entryIssue, orderDocumentState,
 } from "../lib/accounting-workspace-data.js";
 
 const shopifyPaid = { id: "gid://shopify/Order/1", orderNumber: "#2777", firstName: "Mario", lastName: "Rossi", source: "shopify-live", financialStatus: "PAID", total: "1220.00", createdAt: "2026-10-03T10:00:00Z", accounting: { payments: [] } };
@@ -70,4 +70,12 @@ test("totali e anomalie", () => {
   assert.equal(registeredCentsByOrder([income(), { orderId: shopifyPaid.id, type: "expense", cents: 50 }]).get(shopifyPaid.id), 122000);
   assert.match(entryIssue({ document: "pending" }), /corrispettivo/);
   assert.match(entryIssue({ document: "receipt", vatRate: null }), /aliquota/);
+});
+
+test("fattura: chi indica azienda, P.IVA o codice fiscale la riceve sempre", () => {
+  assert.equal(orderDocumentState({ accounting: {} }).key, "receipt");
+  assert.equal(orderDocumentState({ accounting: {}, billing: { taxCode: "RSSMRA80A01H501U" } }).key, "invoice-open");
+  assert.equal(orderDocumentState({ accounting: {}, billing: { company: "Rossi Srl" } }).key, "invoice-open");
+  assert.equal(orderDocumentState({ accounting: { invoiceRequired: true, invoiceIssued: true } }).key, "invoice-done");
+  assert.equal(suggestEntryFromPending({ order: { id: "o1", billing: { vatNumber: "01234567897" } }, date: "2026-10-20", cents: 100, method: "PayPal" }).document, "invoice");
 });
