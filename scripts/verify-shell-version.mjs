@@ -21,6 +21,35 @@ function assertMatches(source, regex, message, errors) {
   if (!regex.test(source)) errors.push(message);
 }
 
+// sw.js serve i moduli non-shell in cache-first: un import relativo senza
+// ?v= può arrivare dalla versione precedente mentre chi lo importa è nuovo →
+// export mancante → l'app non parte (successo il 21 ott 2026). Segue gli import
+// da app.js: ognuno deve portare la versione corrente ed essere nel precache.
+const IMPORT_RE = /(?:import|export)\s[^"';]*?from\s*["'](\.[^"']+)["']|import\(\s*["'](\.[^"']+)["']\s*\)/g;
+
+async function checkClientModuleGraph(shellVersion, swJs, errors) {
+  const seen = new Set();
+  const walk = async (relPath) => {
+    if (seen.has(relPath)) return;
+    seen.add(relPath);
+    const source = await readText(resolve(ROOT, relPath));
+    for (const match of source.matchAll(IMPORT_RE)) {
+      const spec = match[1] || match[2];
+      const [pathPart, query = ""] = spec.split("?");
+      const target = resolve(ROOT, dirname(relPath), pathPart).slice(ROOT.length + 1);
+      if (new URLSearchParams(query).get("v") !== shellVersion) {
+        errors.push(`${relPath}: import "${spec}" senza ?v=${shellVersion} (aggiungi la versione e metti ${relPath} in FILES_TO_BUMP)`);
+      }
+      if (!swJs.includes(`"/${target}?v=${shellVersion}"`)) {
+        errors.push(`sw.js: manca "/${target}?v=${shellVersion}" nel precache APP_SHELL`);
+      }
+      await walk(target);
+    }
+  };
+  await walk("app.js");
+  return seen.size;
+}
+
 async function main() {
   const appJsPath = resolve(ROOT, "app.js");
   const indexPath = resolve(ROOT, "index.html");
@@ -135,6 +164,8 @@ async function main() {
     "app.js garden planner iframe URL is not shell-versioned",
     errors,
   );
+
+  await checkClientModuleGraph(shellVersion, swJs, errors);
 
   if (errors.length) {
     console.error(`Shell version checks failed for: ${shellVersion}`);

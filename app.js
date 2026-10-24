@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-pose-sopralluoghi";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261024-pose-sopralluoghi";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-pose-sopralluoghi";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-pose-sopralluoghi";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-pose-sopralluoghi";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-pose-sopralluoghi";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-pose-sopralluoghi';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-utile-magazzino-contabilita";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261025-utile-magazzino-contabilita";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-utile-magazzino-contabilita";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-utile-magazzino-contabilita";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-utile-magazzino-contabilita";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-utile-magazzino-contabilita";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-utile-magazzino-contabilita';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261024-pose-sopralluoghi";
+} from "./lib/order-money.js?v=20261025-utile-magazzino-contabilita";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261024-pose-sopralluoghi";
+import { regionForCity } from "./lib/geo.js?v=20261025-utile-magazzino-contabilita";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261024-pose-sopralluoghi";
+} from "./lib/shipping-eligibility.js?v=20261025-utile-magazzino-contabilita";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261024-pose-sopralluoghi";
+} from "./lib/profit-split.js?v=20261025-utile-magazzino-contabilita";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,9 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261024-pose-sopralluoghi";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-pose-sopralluoghi";
+} from "./lib/preventivo-pricing.js?v=20261025-utile-magazzino-contabilita";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-utile-magazzino-contabilita";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-utile-magazzino-contabilita";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +76,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261024-pose-sopralluoghi";
+} from "./lib/sales-assignment.js?v=20261025-utile-magazzino-contabilita";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261024-pose-sopralluoghi";
+} from "./lib/surveys.js?v=20261025-utile-magazzino-contabilita";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +96,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261024-pose-sopralluoghi";
+const APP_SHELL_VERSION = "20261025-utile-magazzino-contabilita";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -13447,14 +13448,15 @@ function renderDashboard() {
 function exportInventoryCSV() {
   const groups = getInventorySummary();
   const rows = [
-    ["Prodotto", "Tipo", "Totale (mq/u)", "Impegnato", "Disponibile", "Valore disponibile", "Deficit", "N. pezzi"],
+    ["Prodotto", "Tipo", "Totale (mq/u)", "Impegnato", "Disponibile", "Valore in magazzino", "Deficit", "N. pezzi"],
   ];
   for (const g of groups) {
     const isMeasured = Boolean(g.isMeasured || g.isModel);
     const total = isMeasured ? `${Math.round(g.totalSqm)} mq` : `${g.totalUnits} u`;
     const committed = isMeasured ? `${Math.round(g.committedSqm || 0)} mq` : `${g.committedUnits || 0} u`;
     const available = isMeasured ? `${Math.round(Math.max(0, g.availableSqm))} mq` : `${Math.max(0, g.availableUnits)} u`;
-    const value = g.isModel && g.grossPriceConfigured ? formatCurrency(g.availableGrossValue) : "—";
+    const stockValue = getInventoryGroupValue(g);
+    const value = stockValue?.value != null ? formatCurrency(stockValue.value) : g.isModel && g.grossPriceConfigured ? formatCurrency(g.availableGrossValue) : "—";
     const pendingDemand = Math.max(0, (isMeasured ? g.demandSqm || 0 : g.demandUnits || 0) - (isMeasured ? g.committedSqm || 0 : g.committedUnits || 0));
     const deficit = pendingDemand > (isMeasured ? g.availableSqm : g.availableUnits) ? "SÌ" : "no";
     rows.push([g.product, g.isModel ? "Prato" : "Materiale", total, committed, available, value, deficit, g.pieces.length]);
@@ -13788,8 +13790,9 @@ function openDashboardViewTarget(target) {
     }
   }
   if (nextView === "accounting") {
-    showAccountingPane("payments");
-    state.filters.accounting = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
+    const accountingFilter = dataset.dashboardAccountingFilter || dataset.accountingFilter || "all";
+    showAccountingOrders({ filter: accountingFilter === "settled" ? "paid" : accountingFilter, scope: "all" });
+    state.filters.accounting = accountingFilter;
     state.filters.accountingPeriod = "all";
     state.filters.accountingSource = "all";
     state.search.accounting = "";
@@ -19755,6 +19758,16 @@ function renderInventoryCard(group) {
     ? `<div class="inv-deficit">⚠ ${group.demandOrders.length} ${state.lang === "it" ? "ordini richiedono" : "orders require"} ${demandLabel} — ${hasStock ? `${state.lang === "it" ? "disponibili solo" : "only"} ${availableMeasureLabel}` : (state.lang === "it" ? "nessun pezzo disponibile" : "no pieces available")}</div>`
     : "";
 
+  // Valore della merce ancora in magazzino (disponibile + impegnata), al costo.
+  const stockValueResult = (isMeasured ? group.totalSqm : group.totalUnits) > 0 ? getInventoryGroupValue(group) : null;
+  const valueLine = stockValueResult
+    ? `<div class="inv-value ${stockValueResult.value == null ? "is-missing" : ""}">
+        <span>${state.lang === "it" ? "Valore in magazzino" : "Stock value"}</span>
+        <strong>${stockValueResult.value == null ? "—" : formatCurrency(stockValueResult.value)}</strong>
+        <small>${escapeHtml(describeInventoryValue(stockValueResult))}</small>
+      </div>`
+    : "";
+
   const totalCountLabel = isMeasured
     ? `${totalPieces} ${state.lang === "it" ? "pezzi" : "pieces"}`
     : `${group.totalUnits} ${unitDetailLabel}`;
@@ -19776,6 +19789,7 @@ function renderInventoryCard(group) {
         ${committedDisplay > 0 ? `<span><span class="ld" style="background:#f59e0b"></span>${state.lang === "it" ? "Impegnato" : "Committed"} ${committedDisplay.toLocaleString("it-IT")} ${unitSuffix}</span>` : ""}
         <span class="inv-legend-right">${totalCountLabel}${demandOrdersLabel}</span>
       </div>
+      ${valueLine}
       ${deficitLine}
       ${isMeasured ? `<div class="inv-pieces">${rollsHtml}${residuesHtml}${singlesHtml || `<div class="inv-empty">${state.lang === "it" ? "Nessun pezzo caricato." : "No pieces loaded."}</div>`}</div>` : `<div class="inv-pieces">${materialHtml}</div>`}
       <div class="inv-tools">
@@ -19827,6 +19841,7 @@ function renderInventoryRow(group, selected) {
     : [`${group.totalUnits} ${inferCatalogEntry(group.product)?.unitLabel || (it ? "unità" : "units")}`];
   if (committed > 0) composition.push(`${it ? "impegnati" : "committed"} ${formatInventoryNumber(committed)} ${unit}`);
   const demandUnit = isMeasured ? "mq" : "u";
+  const stockValue = getInventoryGroupValue(group);
   const alert = health.tone === "red" && group.demandOrders.length
     ? (it
       ? `${formatCountLabel(group.demandOrders.length, "ordine richiede", "ordini richiedono")} ${formatInventoryNumber(health.pending)} ${demandUnit}${available > 0 ? ` — disponibili ${formatInventoryNumber(available)}` : ""}`
@@ -19841,6 +19856,7 @@ function renderInventoryRow(group, selected) {
       <div class="iv-row-line iv-row-sub">
         <span class="oi-row-state tone-${health.tone}">${escapeHtml(health.label)}</span>
         <span class="iv-row-composition">${escapeHtml(composition.join(" · ") || (it ? "Nessun pezzo" : "No pieces"))}</span>
+        ${stockValue?.value > 0 ? `<span class="iv-row-value" title="${escapeAttr(it ? "Valore in magazzino al costo d'acquisto" : "Stock value at purchase cost")}">${formatCurrency(stockValue.value)}</span>` : ""}
       </div>
       ${alert ? `<div class="iv-row-line iv-row-alert">${escapeHtml(alert)}</div>` : ""}
     </article>
@@ -19859,7 +19875,7 @@ function matchesWarehouseInventoryFilter(group, filter = state.filters.warehouse
   if (filter === "turf") return group.isModel;
   if (filter === "materials") return !group.isModel;
   if (filter === "committed") return isMeasured ? (group.committedSqm || 0) > 0 : (group.committedUnits || 0) > 0;
-  if (filter === "valued") return group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0;
+  if (filter === "valued") return (getInventoryGroupValue(group)?.value || 0) > 0 || (group.isModel && group.grossPriceConfigured && group.availableGrossValue > 0);
   if (filter === "full") return group.fullCount > 0;
   if (filter === "residual") return group.residualCount > 0;
   if (filter === "demand") {
@@ -20245,11 +20261,17 @@ function renderWarehouse() {
   if (ui.warehouseKpiStrip) {
     const snapshot = getDashboardInventorySnapshot();
     const turfCount = getInventorySummary().filter((group) => group.isModel).length;
+    const isOffice = state.currentUser?.role === "office";
+    if (isOffice) void loadQuoteCosts();
+    const valueTotals = isOffice ? getInventoryValueTotals() : null;
+    const lastKpi = valueTotals
+      ? `<div class="inv-kpi inv-kpi-money" title="${escapeAttr(valueTotals.missing ? (state.lang === "it" ? `${valueTotals.missing} articoli in magazzino senza costo collegato` : `${valueTotals.missing} items without a linked cost`) : (state.lang === "it" ? "Tutti gli articoli hanno un costo" : "All items have a cost"))}"><span class="inv-kpi-value">${formatCurrency(valueTotals.total)}</span><span class="inv-kpi-label">${state.lang === "it" ? "Valore in magazzino" : "Stock value"}${valueTotals.missing ? ` · ${valueTotals.missing} ${state.lang === "it" ? "senza costo" : "unpriced"}` : ""}</span></div>`
+      : `<div class="inv-kpi"><span class="inv-kpi-value">${turfCount}</span><span class="inv-kpi-label">${state.lang === "it" ? "Prodotti prato" : "Turf products"}</span></div>`;
     ui.warehouseKpiStrip.innerHTML = `
       <div class="inv-kpi"><span class="inv-kpi-value">${Math.round(snapshot.totalAvailableSqm).toLocaleString("it-IT")} <small>mq</small></span><span class="inv-kpi-label">${state.lang === "it" ? "Disponibili" : "Available"}</span></div>
       <div class="inv-kpi"><span class="inv-kpi-value">${Math.round(snapshot.totalCommittedSqm).toLocaleString("it-IT")} <small>mq</small></span><span class="inv-kpi-label">${state.lang === "it" ? "Impegnati" : "Committed"}</span></div>
       <div class="inv-kpi${snapshot.uncovered > 0 ? " warn" : ""}"><span class="inv-kpi-value">${snapshot.uncovered}</span><span class="inv-kpi-label">${state.lang === "it" ? "Sotto scorta" : "Low stock"}</span></div>
-      <div class="inv-kpi"><span class="inv-kpi-value">${turfCount}</span><span class="inv-kpi-label">${state.lang === "it" ? "Prodotti prato" : "Turf products"}</span></div>
+      ${lastKpi}
     `;
   }
   const groups = getInventorySummary().filter((group) => {
@@ -25928,7 +25950,13 @@ document.addEventListener("click", (ev) => {
 });
 
 function renderAccounting() {
-  if (state.currentUser?.role === "office") mountAccountingWorkspace(document.getElementById("accounting-workspace"), state.orders, state.currentUser.id, { toast: showToast, onPaneChange: updateMobileFilterFabVisibility });
+  if (state.currentUser?.role === "office") {
+    mountAccountingWorkspace(document.getElementById("accounting-workspace"), state.orders, state.currentUser.id, {
+      toast: showToast,
+      onPaneChange: updateMobileFilterFabVisibility,
+      exportOrders: (kind, orders) => (kind === "pdf" ? exportAccountingPDF(orders) : exportAccountingCSV(orders)),
+    });
+  }
   const allOrders = filterOrdersForView("accounting");
   ui.accountingFilterTags.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.accountingFilter === state.filters.accounting);
@@ -25986,7 +26014,12 @@ function renderAccounting() {
 
   const orders = allOrders;
 
-  const order = orders.find((item) => item.id === state.selectedOrderId) || orders[0] || null;
+  // La scheda si apre anche da "Ordini e incassi", che non segue i filtri della
+  // vecchia lista: l'ordine scelto va cercato fra tutti.
+  const order = orders.find((item) => item.id === state.selectedOrderId)
+    || (state.orders || []).find((item) => item.id === state.selectedOrderId)
+    || orders[0]
+    || null;
   if (state.currentView === "accounting" && order && order.id !== state.selectedOrderId) state.selectedOrderId = order.id;
   if (!order) {
     ui.accountingDetailTitle.textContent = t("noSelection");
@@ -36618,8 +36651,9 @@ function handleGlobalClick(event) {
     // Logistica kanban: cliccando una card si apre il drawer dettaglio a destra.
     if (nextView === "shipping") state.shippingDrawerOpen = true;
     if (nextView === "accounting") {
-      // Il dettaglio ordine vive nella scheda "Pagamenti ordini" della Contabilità.
-      showAccountingPane("payments");
+      // La scheda dell'ordine si apre a destra di "Ordini e incassi"; dentro la
+      // Contabilità (es. dalla prima nota) resta sulla pagina dov'eri.
+      if (state.currentView !== "accounting") showAccountingPane("orders");
       state.accountingMobilePane = "summary";
       // Desktop/tablet: cliccando una riga si apre il drawer dettaglio a destra
       // (su mobile <=768px resta il layout impilato).
@@ -38685,6 +38719,7 @@ async function loadQuoteCosts({ force = false } = {}) {
   }
   if (ui.nativeForm && !ui.nativeForm.hidden) updateNativeFormTotals();
   if (state.currentView === "settings") renderQuoteCostsEditor();
+  if (state.currentView === "warehouse") renderWarehouse();
   return state.quoteCosts.data;
 }
 
@@ -38696,6 +38731,87 @@ function findQuoteCostOption(ref = "") {
   const key = String(ref || "").trim().toLowerCase();
   if (!key) return null;
   return (state.quoteCosts?.data?.supplierOptions || []).find((option) => option.ref.toLowerCase() === key) || null;
+}
+
+// ── Valore di magazzino al costo d'acquisto (ottobre 2026) ────────────────
+// Stessi collegamenti della barra dell'utile: un prato prende il costo del suo
+// modello nel generatore, i materiali la loro voce; gli altri articoli si
+// collegano in Impostazioni ("Altri articoli del magazzino"). Solo ufficio.
+function findQuoteProductForInventory(entry, label = "") {
+  const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const keys = new Set([entry?.key, entry?.label, label].filter(Boolean).map(norm));
+  return getEffectivePreventivoProducts().find((product) => [product.id, product.slug, product.name].some((value) => value && keys.has(norm(value)))) || null;
+}
+
+// Da dove arriva il costo di un articolo: "inventory" (collegato a mano),
+// "product" (modello del generatore), "material" (voce materiale) o niente.
+function getInventoryCostLink(entry, label = "") {
+  const INVENTORY_QUOTE_MATERIALS = { banda: "bande", bande: "bande", colla: "colla", telo: "telo", picchetti: "picchetti", pietrisco: "pietrisco" };
+  const config = quoteCostConfig();
+  const key = entry?.key || normalizeProductName(label);
+  const own = config.inventory?.[key];
+  if (own) return { ref: own, factor: null, via: "inventory", key };
+  if (entry?.type === "turf") {
+    const product = findQuoteProductForInventory(entry, label);
+    if (product) return { ref: config.products?.[product.slug] || "", factor: null, via: "product", product, key };
+  } else {
+    const materialKey = INVENTORY_QUOTE_MATERIALS[key];
+    if (materialKey) return { ref: config.materials?.[materialKey]?.ref || "", factor: config.materials?.[materialKey]?.factor || null, via: "material", materialKey, key };
+  }
+  return { ref: "", via: "", key };
+}
+
+function getInventoryGroupValue(group) {
+  if (state.currentUser?.role !== "office" || !group) return null;
+  const entry = inferCatalogEntry(group.product);
+  const link = getInventoryCostLink(entry, group.product);
+  const supplier = link.ref ? findQuoteCostOption(link.ref) : null;
+  const stock = {
+    measured: Boolean(group.isMeasured || group.isModel),
+    totalSqm: toNumber(group.totalSqm),
+    pieces: group.pieces.filter((piece) => getInventoryPieceState(piece) !== "evaso").map((piece) => ({
+      units: Math.max(1, Number(piece.units || 1)),
+      // Senza variante salvata vale quella predefinita (es. colla: secchio da 6 kg).
+      variantLabel: entry?.variants?.find((variant) => variant.value === (piece.variant || entry.defaultVariant))?.label || entry?.variantLabel || piece.variant || "",
+    })),
+  };
+  if (supplier) {
+    const result = inventoryStockValue(stock, { unitPrice: supplier.unitPrice, unit: supplier.unit, factor: link.factor });
+    if (result.value != null || !(group.isModel && group.grossPriceConfigured)) return { ...result, source: "supplier", supplier, link };
+  }
+  // Ripiego: il prezzo d'acquisto scritto nel catalogo prati.
+  if (group.isModel && group.grossPriceConfigured) {
+    const sqm = Math.max(0, toNumber(group.totalSqm));
+    return { value: Math.round(sqm * group.grossPricePerSqm * 100) / 100, perUnit: group.grossPricePerSqm, unitLabel: "mq", quantity: sqm, source: "catalog", link };
+  }
+  return { value: null, reason: link.ref ? "missing-entry" : "unlinked", source: "", link };
+}
+
+function describeInventoryValue(result) {
+  const it = state.lang === "it";
+  if (!result) return "";
+  if (result.value == null) {
+    if (result.reason === "unit") return it ? `La fattura collegata è in ${result.supplier?.unit || "?"}: non si converte da sola. Imposta il fattore in Impostazioni → Costi.` : `The linked invoice is in ${result.supplier?.unit || "?"}: set the factor in Settings → Costs.`;
+    return it ? "Costo d'acquisto non collegato: collegalo in Impostazioni → Preventivi → Costi per la barra dell'utile." : "Purchase cost not linked: link it in Settings → Quotes → Costs.";
+  }
+  const quantity = result.unitLabel === "mq" ? `${formatInventoryNumber(result.quantity || 0)} mq` : `${formatInventoryNumber(result.quantity || 0)} ${it ? "pz" : "pcs"}`;
+  const rate = result.perUnit != null ? ` × ${formatCurrency(result.perUnit)}${result.unitLabel === "mq" ? "/mq" : ""}` : "";
+  const origin = result.source === "supplier"
+    ? `${it ? "fattura" : "invoice"} ${result.supplier.supplierName}${result.supplier.invoiceDate ? ` ${it ? "del" : "of"} ${formatDate(result.supplier.invoiceDate)}` : ""}`
+    : (it ? "prezzo del catalogo prati" : "turf catalogue price");
+  return `${quantity}${rate} · ${origin}`;
+}
+
+function getInventoryValueTotals(groups = getInventorySummary()) {
+  let total = 0;
+  let missing = 0;
+  groups.forEach((group) => {
+    const hasStock = (group.isMeasured || group.isModel) ? toNumber(group.totalSqm) > 0 : toNumber(group.totalUnits) > 0;
+    if (!hasStock) return;
+    const result = getInventoryGroupValue(group);
+    if (result?.value != null) total += result.value; else missing += 1;
+  });
+  return { total: Math.round(total * 100) / 100, missing };
 }
 
 function isSqmUnit(unit = "") {
@@ -38732,20 +38848,38 @@ function resolveMaterialCosts(items = []) {
   });
 }
 
-// Costo vero della spedizione: scritto a mano, oppure la tariffa One Express
-// del bancale; senza nessuno dei due resta sconosciuto (spedizione a pareggio).
-function getQuoteShippingCost() {
+// Costo vero della spedizione per l'utile. Il cliente la paga sotto la soglia
+// di imponibile e l'ha gratis sopra, ma per noi resta sempre un costo:
+// scritto a mano → tariffa One Express del bancale → se la paga il cliente, a
+// pareggio (costo = prezzo) → se è gratis, il costo medio di Impostazioni →
+// altrimenti manca e l'utile lo dice.
+function getQuoteShippingInfo() {
   const f = ensurePreventivoForm();
-  if (f.marginShippingCost !== undefined && f.marginShippingCost !== null && f.marginShippingCost !== "") return Number(f.marginShippingCost);
-  if (!(Number(f.shippingCost) > 0)) return 0;
-  if (typeof calculateOneExpressEstimate !== "function" || !f.palletLength) return null;
-  const estimate = calculateOneExpressEstimate({ city: f.citta || "" }, {
-    palletLength: f.palletLength,
-    palletWidth: f.palletWidth,
-    palletHeight: f.palletHeight,
-    palletWeight: f.palletWeight,
-  });
-  return estimate && !estimate.unsupported ? estimate.estimatedCost : null;
+  if (f.marginShippingCost !== undefined && f.marginShippingCost !== null && f.marginShippingCost !== "") return { cost: Number(f.marginShippingCost), source: "manual" };
+  if (f.palletLength && typeof calculateOneExpressEstimate === "function") {
+    const estimate = calculateOneExpressEstimate({ city: f.citta || "" }, {
+      palletLength: f.palletLength,
+      palletWidth: f.palletWidth,
+      palletHeight: f.palletHeight,
+      palletWeight: f.palletWeight,
+    });
+    if (estimate && !estimate.unsupported) return { cost: estimate.estimatedCost, source: "pallet" };
+  }
+  if (Number(f.shippingCost) > 0) return { cost: null, source: "breakeven" };
+  const average = quoteCostConfig().freeShippingCost;
+  if (average !== null && average !== undefined && average !== "" && Number.isFinite(Number(average))) return { cost: Number(average), source: "average" };
+  return { cost: null, source: "missing" };
+}
+
+// Imponibile della merce (prato, materiali, accessori) dell'opzione più
+// economica: è quello che decide se la spedizione è gratis per il cliente.
+function nfLowestGoodsNet(cq) {
+  const f = ensurePreventivoForm();
+  const values = f.options
+    .map((option, index) => (nfOptionHasProduct(option) && cq.options[index] ? cq.options[index] : null))
+    .filter(Boolean)
+    .map((option) => (Number(option.pratoNet) || 0) + (Number(option.materialsNet) || 0) + (Number(cq.accessoriesNet) || 0));
+  return values.length ? Math.min(...values) : 0;
 }
 
 function formatMarginNumber(value, digits = 1) {
@@ -38757,6 +38891,7 @@ function computeNfOptionMargin(cq, index) {
   const config = quoteCostConfig();
   const turf = resolveTurfCost(f.options[index], index);
   const blankOrNumber = (value, fallback) => (value === undefined || value === null || value === "" ? fallback : Number(value));
+  const shipping = getQuoteShippingInfo();
   const margin = computeQuoteMargin({
     option: cq.options[index],
     quote: cq,
@@ -38764,7 +38899,8 @@ function computeNfOptionMargin(cq, index) {
     turfCostPerSqm: turf.cost,
     wastePct: config.wastePct,
     materialCosts: cq.materials?.include === false ? [] : resolveMaterialCosts(nfEffectiveMaterials().items),
-    shippingCost: getQuoteShippingCost(),
+    shippingCost: shipping.cost,
+    shippingMissing: shipping.source === "missing",
     accessoriesCost: blankOrNumber(f.marginAccessoriesCost, null),
     // Spese e quota del posatore valgono solo con la posa: passando a "Solo
     // fornitura" restavano nel conto (e i campi sparivano, quindi non si
@@ -38772,7 +38908,7 @@ function computeNfOptionMargin(cq, index) {
     posaExpenses: f.quoteType === "posa" ? blankOrNumber(f.marginPosaExpenses, 0) : 0,
     partnerSharePct: blankOrNumber(f.marginPartnerSharePct, config.partnerSharePct),
   });
-  return { margin, turf };
+  return { margin, turf, shipping };
 }
 
 function renderNfMarginControls(cq, validIndexes) {
@@ -38784,7 +38920,10 @@ function renderNfMarginControls(cq, validIndexes) {
     const turf = resolveTurfCost(f.options[index], index);
     return turf.source !== "supplier";
   });
-  const shippingUnknown = Number(f.shippingCost) > 0 && getQuoteShippingCost() == null || (f.marginShippingCost !== undefined && f.marginShippingCost !== "" && f.marginShippingCost != null);
+  // Il campo serve sempre, tranne quando il costo arriva dalla tariffa del bancale.
+  const shipping = getQuoteShippingInfo();
+  const shippingFree = !(Number(f.shippingCost) > 0);
+  const shippingField = shipping.source !== "pallet";
   const hasAccessories = (cq.accessoriesNet || 0) > 0;
   const field = (key, label, value, placeholder = "", suffix = "€") => `<label class="nf-margin-field"><span>${escapeHtml(label)}</span>
     <span class="nf-margin-input"><input type="number" step="0.01" min="0" data-margin-field="${escapeAttr(key)}" value="${value === undefined || value === null ? "" : escapeAttr(String(value))}" placeholder="${escapeAttr(placeholder)}" /><em>${suffix}</em></span></label>`;
@@ -38796,9 +38935,15 @@ function renderNfMarginControls(cq, validIndexes) {
     fields.push(field("marginPosaExpenses", it ? "Spese della posa (trasferta, vitto…)" : "Installation expenses (travel, meals…)", f.marginPosaExpenses, "0"));
     fields.push(field("marginPartnerSharePct", it ? "Quota del posatore sull'utile posa" : "Installer share of installation profit", f.marginPartnerSharePct, String(config.partnerSharePct), "%"));
   }
-  if (shippingUnknown) fields.push(field("marginShippingCost", it ? "Costo reale della spedizione" : "Real shipping cost", f.marginShippingCost, ""));
+  if (shippingField) {
+    const average = config.freeShippingCost;
+    const placeholder = shippingFree
+      ? (average !== null && average !== undefined && average !== "" ? `${nfNumVal(average)} ${it ? "(media)" : "(average)"}` : (it ? "da indicare" : "to fill in"))
+      : nfNumVal(f.shippingCost);
+    fields.push(field("marginShippingCost", shippingFree ? (it ? "Costo della spedizione (gratis per il cliente)" : "Shipping cost (free for the customer)") : (it ? "Costo reale della spedizione" : "Real shipping cost"), f.marginShippingCost, placeholder));
+  }
   if (hasAccessories) fields.push(field("marginAccessoriesCost", it ? "Costo degli accessori" : "Accessories cost", f.marginAccessoriesCost, ""));
-  return { signature: `${turfMissing.join(",")}|${isPosa}|${shippingUnknown}|${hasAccessories}`, html: fields.join("") };
+  return { signature: `${turfMissing.join(",")}|${isPosa}|${shippingField}|${shippingFree}|${config.freeShippingCost}|${shippingFree ? "" : f.shippingCost}|${hasAccessories}`, html: fields.join("") };
 }
 
 const nfMarginCalcOpen = new Set();
@@ -38849,11 +38994,12 @@ function renderNfMargin(cq) {
     bande: it ? "bande" : "seaming tape",
     colla: it ? "colla" : "glue",
     picchetti: it ? "picchetti" : "pegs",
+    spedizione: it ? "spedizione" : "shipping",
   };
   const firstIndex = validIndexes[0];
   const money = (value) => formatCurrency(value || 0);
   box.querySelector(".nf-margin-cards").innerHTML = validIndexes.map((index) => {
-    const { margin, turf } = computeNfOptionMargin(cq, index);
+    const { margin, turf, shipping } = computeNfOptionMargin(cq, index);
     const option = f.options[index];
     // Senza il costo del prato il numero non è affidabile: barra grigia, "parziale".
     const incomplete = margin.missing.includes("prato");
@@ -38875,6 +39021,14 @@ function renderNfMargin(cq) {
         : turf.source === "unit" ? (it ? `la voce fornitore è in ${turf.supplier.unit}, non in m²` : `supplier entry is in ${turf.supplier.unit}, not m²`)
           : (it ? "costo non collegato" : "cost not linked");
     const posaCost = (margin.posa.expenses || 0) + (margin.posa.partnerShare || 0);
+    const freeLabel = Number(f.shippingCost) > 0 ? "" : (it ? "gratis per il cliente · " : "free for the customer · ");
+    const shippingNote = `${freeLabel}${{
+      manual: it ? "scritto a mano" : "typed by hand",
+      pallet: it ? "tariffa One Express del bancale" : "One Express pallet rate",
+      breakeven: it ? "a pareggio: costo = prezzo al cliente" : "break-even: cost = customer price",
+      average: it ? "costo medio da Impostazioni" : "average cost from Settings",
+      missing: it ? "costo da indicare" : "cost to fill in",
+    }[shipping.source] || ""}`;
     // Dove va il ricavo: un pezzo di barra per ogni costo, l'ultimo è l'utile.
     const segments = [
       { key: "turf", label: it ? "Prato" : "Turf", value: margin.supply.turfCost || 0 },
@@ -38887,11 +39041,11 @@ function renderNfMargin(cq) {
     const rows = [
       [it ? "Prato" : "Turf", `${formatMarginNumber(margin.supply.turfQty)} m² ${it ? "con" : "incl."} ${formatMarginNumber(config.wastePct)}% ${it ? "di scarto" : "waste"} · ${turfNote}`, margin.supply.turfCost],
       [it ? "Materiali" : "Materials", "", margin.supply.materialsCost],
-      [it ? "Spedizione" : "Shipping", margin.supply.shippingEstimated ? (it ? "tariffa del bancale" : "pallet rate") : (it ? "a pareggio: costo = prezzo al cliente" : "break-even: cost = customer price"), margin.supply.shippingCost],
+      [it ? "Spedizione" : "Shipping", shippingNote, shipping.source === "missing" ? null : margin.supply.shippingCost, Number(f.shippingCost) > 0 || shipping.source === "missing"],
       [it ? "Accessori" : "Accessories", "", margin.supply.accessoriesCost],
       [it ? "Spese della posa" : "Installation expenses", "", margin.posa.expenses],
       [it ? "Quota del posatore" : "Installer share", margin.posa.revenue > 0 ? `${formatMarginNumber(margin.posa.partnerPct)}% ${it ? "dell'utile posa" : "of installation profit"} (${money(margin.posa.profit)})` : "", margin.posa.partnerShare],
-    ].filter(([, , value], position) => position === 0 || Number(value) > 0);
+    ].filter(([, , value, always], position) => position === 0 || always || Number(value) > 0);
     const missing = [...new Set(margin.missing)].map((key) => missingLabels[key] || key);
     const discountHint = incomplete ? ""
       : maxDiscount == null && margin.marginPct >= config.lowPct && !margin.missing.length
@@ -38981,6 +39135,9 @@ function renderQuoteCostsEditor() {
       ${options.map((option) => `<option value="${escapeAttr(option.ref)}" ${option.ref.toLowerCase() === String(selectedRef || "").toLowerCase() ? "selected" : ""}>${escapeHtml(optionLabel(option))}</option>`).join("")}
     </select>`;
   const products = getEffectivePreventivoProducts();
+  // Articoli dell'inventario che non prendono il costo da un prato del
+  // generatore o da un materiale qui sotto: si collegano a parte.
+  const otherArticles = getInventoryCatalog().filter((entry) => entry.key && ["", "inventory"].includes(getInventoryCostLink(entry, entry.label).via));
   container.innerHTML = `<form id="quote-costs-form" class="qc-form">
     ${options.length ? "" : `<p class="panel-note">${it ? "Non ci sono ancora fatture in Fornitori: registra le fatture d'acquisto per poter collegare i costi." : "No invoices in Suppliers yet: record purchase invoices to link costs."}</p>`}
     <h4>${it ? "Prati (costo al m²)" : "Turf (cost per m²)"}</h4>
@@ -38992,13 +39149,19 @@ function renderQuoteCostsEditor() {
         <label class="qc-factor"><small>${it ? `1 ${material.unit} =` : `1 ${material.unit} =`}</small><input class="text-input" type="number" step="0.001" min="0" name="factor:${escapeAttr(material.key)}" value="${mapping.factor ? escapeAttr(String(mapping.factor)) : ""}" placeholder="${it ? "auto" : "auto"}" /><small>${it ? "unità fornitore" : "supplier units"}</small></label></div>`;
     }).join("")}</div>
     <p class="panel-note">${it ? "Il fattore serve solo se l'unità della fattura è diversa (es. telo in metri lineari: 1 mq = 0,5 m con un rotolo largo 2 m). Bande, picchetti e colla in kg si convertono da soli." : "The factor is only needed when the invoice unit differs (e.g. sheet in linear metres: 1 m² = 0.5 m with a 2 m wide roll). Tape, pegs and glue in kg convert automatically."}</p>
+    ${otherArticles.length ? `<h4>${it ? "Altri articoli del magazzino" : "Other warehouse items"}</h4>
+    <p class="panel-note">${it ? "Servono solo per il valore di magazzino in Inventario: i prati e i materiali qui sopra valgono già anche lì." : "Only used for the stock value in Inventory: the turf and materials above already count there."}</p>
+    <div class="qc-rows">${otherArticles.map((entry) => `<label class="qc-row"><span>${escapeHtml(entry.label)} <small>(${escapeHtml(entry.type === "turf" ? "mq" : (entry.unitLabel || (it ? "pezzi" : "pieces")))})</small></span>${select(`inventory:${entry.key}`, config.inventory?.[entry.key])}</label>`).join("")}</div>` : ""}
     <h4>${it ? "Regole" : "Rules"}</h4>
     <div class="qc-rules">
       <label class="field"><span>${it ? "Scarto di taglio del prato" : "Turf cutting waste"} (%)</span><input class="text-input" type="number" step="0.5" min="0" max="50" name="wastePct" value="${escapeAttr(String(config.wastePct))}" /></label>
       <label class="field"><span>${it ? "Quota del posatore sull'utile posa" : "Installer share of installation profit"} (%)</span><input class="text-input" type="number" step="1" min="0" max="100" name="partnerSharePct" value="${escapeAttr(String(config.partnerSharePct))}" /></label>
       <label class="field"><span>${it ? "Rossa sotto il" : "Red below"} (%)</span><input class="text-input" type="number" step="1" min="0" max="100" name="lowPct" value="${escapeAttr(String(config.lowPct))}" /></label>
       <label class="field"><span>${it ? "Verde dal" : "Green from"} (%)</span><input class="text-input" type="number" step="1" min="0" max="100" name="goodPct" value="${escapeAttr(String(config.goodPct))}" /></label>
+      <label class="field"><span>${it ? "Spedizione gratis per il cliente da" : "Free shipping for the customer from"} (€ ${it ? "di imponibile" : "taxable"})</span><input class="text-input" type="number" step="1" min="0" name="freeShippingFrom" value="${escapeAttr(String(config.freeShippingFrom ?? 1000))}" /></label>
+      <label class="field"><span>${it ? "Costo medio di una spedizione" : "Average shipping cost"} (€)</span><input class="text-input" type="number" step="0.01" min="0" name="freeShippingCost" value="${config.freeShippingCost === null || config.freeShippingCost === undefined ? "" : escapeAttr(String(config.freeShippingCost))}" placeholder="${it ? "es. 120" : "e.g. 120"}" /></label>
     </div>
+    <p class="panel-note">${it ? "La spedizione gratis resta un costo nostro: l'utile usa la tariffa One Express quando nel preventivo ci sono le misure del bancale, altrimenti questo costo medio. Nel singolo preventivo puoi sempre scrivere il costo vero." : "Free shipping is still our cost: the profit uses the One Express rate when the quote has the pallet size, otherwise this average. You can always type the real cost in a single quote."}</p>
     <div class="inline-actions"><button type="submit" class="primary-button small-button">${it ? "Salva i costi" : "Save costs"}</button>
       ${config.updatedAt ? `<small class="qc-updated">${it ? "Ultima modifica" : "Last change"}: ${escapeHtml(formatDate(config.updatedAt))}${config.updatedBy ? ` · ${escapeHtml(config.updatedBy)}` : ""}</small>` : ""}</div>
   </form>`;
@@ -39009,12 +39172,13 @@ async function saveQuoteCostsConfig(event) {
   const it = state.lang === "it";
   const form = event.target.closest("form");
   const data = new FormData(form);
-  const payload = { products: {}, materials: {} };
+  const payload = { products: {}, materials: {}, inventory: {} };
   for (const [name, value] of data.entries()) {
     if (name.startsWith("product:") && value) payload.products[name.slice(8)] = value;
+    if (name.startsWith("inventory:") && value) payload.inventory[name.slice(10)] = value;
     if (name.startsWith("material:") && value) payload.materials[name.slice(9)] = { ref: value, factor: Number(data.get(`factor:${name.slice(9)}`)) || null };
   }
-  ["wastePct", "partnerSharePct", "lowPct", "goodPct"].forEach((key) => { payload[key] = data.get(key); });
+  ["wastePct", "partnerSharePct", "lowPct", "goodPct", "freeShippingFrom", "freeShippingCost"].forEach((key) => { payload[key] = data.get(key); });
   const status = document.getElementById("quote-costs-status");
   try {
     const result = await apiFetch("/api/quote-costs", { method: "PUT", body: JSON.stringify(payload) });
@@ -39247,12 +39411,19 @@ function wireNativePreventivoForm() {
     // vanvera invece di un errore chiaro (verificato con un test diretto su
     // calculateOneExpressEstimate prima di pubblicare).
     if (!estimate.unsupported) {
-      f.shippingCost = estimate.estimatedCost;
+      // Sopra la soglia di imponibile la spedizione è gratis per il cliente:
+      // il prezzo resta a zero e la tariffa entra nell'utile come nostro costo.
+      const threshold = Number(quoteCostConfig().freeShippingFrom) || 0;
+      const goodsNet = nfLowestGoodsNet(computeQuotePure(nfComputeInput()));
+      const free = threshold > 0 && goodsNet >= threshold;
+      f.shippingCost = free ? 0 : estimate.estimatedCost;
       const shipEl = document.getElementById("nf-shipping");
-      if (shipEl) shipEl.value = nfNumVal(estimate.estimatedCost);
+      if (shipEl) shipEl.value = free ? "" : nfNumVal(estimate.estimatedCost);
       shippingCalcResult.className = "nf-shipping-calc-result is-ok";
       const destLabel = estimate.province || estimate.provinceCode || "—";
-      shippingCalcResult.textContent = `✓ ${estimate.carrierName} verso ${destLabel} (classe ${estimate.palletClass}): ${formatCurrency(estimate.estimatedCost)}. Puoi comunque correggere il campo sopra a mano.`;
+      shippingCalcResult.textContent = free
+        ? `✓ ${estimate.carrierName} verso ${destLabel} (classe ${estimate.palletClass}): ${formatCurrency(estimate.estimatedCost)}. Sopra ${formatCurrency(threshold)} di imponibile la spedizione è gratis per il cliente: il prezzo resta a zero e i ${formatCurrency(estimate.estimatedCost)} sono tolti dall'utile come nostro costo.`
+        : `✓ ${estimate.carrierName} verso ${destLabel} (classe ${estimate.palletClass}): ${formatCurrency(estimate.estimatedCost)}. Puoi comunque correggere il campo sopra a mano.`;
       updateNativeFormTotals();
     } else {
       const reasons = {
@@ -40475,8 +40646,7 @@ ensureFreshShellVersion().then((resetTriggered) => {
 });
 
 // === EXPORT CSV ===
-function exportAccountingCSV() {
-  const orders = filterOrdersForView("accounting");
+function exportAccountingCSV(orders = filterOrdersForView("accounting")) {
   const rows = [[
     state.lang === "it" ? "Ordine" : "Order",
     state.lang === "it" ? "Cliente" : "Customer",
@@ -40516,8 +40686,7 @@ function exportAccountingCSV() {
   URL.revokeObjectURL(link.href);
 }
 
-function exportAccountingPDF() {
-  const orders = filterOrdersForView("accounting");
+function exportAccountingPDF(orders = filterOrdersForView("accounting")) {
   let html = `<html><head><style>body{font-family:Arial,sans-serif;padding:20px}h1{font-size:18px;color:#1B4332}table{width:100%;border-collapse:collapse;font-size:11px;margin-top:12px}th{background:#1B4332;color:#fff;padding:6px 8px;text-align:left}td{padding:5px 8px;border-bottom:1px solid #ddd}.total{font-weight:bold}.red{color:#dc2626}.green{color:#16a34a}</style></head><body>`;
   html += `<h1>${state.lang === "it" ? "Contabilità" : "Accounting"} — Vertex Ops</h1><p>${state.lang === "it" ? "Esportato il" : "Exported on"} ${new Date().toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB")} · ${orders.length} ${state.lang === "it" ? "ordini" : "orders"}</p>`;
   html += `<table><tr><th>${state.lang === "it" ? "Ordine" : "Order"}</th><th>${state.lang === "it" ? "Cliente" : "Customer"}</th><th>${state.lang === "it" ? "Prodotto" : "Product"}</th><th>${state.lang === "it" ? "Totale" : "Total"}</th><th>${state.lang === "it" ? "Incassato" : "Collected"}</th><th>${state.lang === "it" ? "Residuo" : "Open balance"}</th><th>${state.lang === "it" ? "Metodo" : "Method"}</th><th>${state.lang === "it" ? "Fattura" : "Invoice"}</th></tr>`;
@@ -40534,8 +40703,8 @@ function exportAccountingPDF() {
 
 const exportCsvBtn = document.getElementById("export-csv-button");
 const exportPdfBtn = document.getElementById("export-pdf-button");
-if (exportCsvBtn) exportCsvBtn.addEventListener("click", exportAccountingCSV);
-if (exportPdfBtn) exportPdfBtn.addEventListener("click", exportAccountingPDF);
+if (exportCsvBtn) exportCsvBtn.addEventListener("click", () => exportAccountingCSV());
+if (exportPdfBtn) exportPdfBtn.addEventListener("click", () => exportAccountingPDF());
 
 // --- Catalog form bindings ---
 const crewCatalogForm = document.getElementById("crew-catalog-form");

@@ -37,6 +37,13 @@ const FILES_TO_BUMP = [
   "garden-planner.html",
   "garden-planner-page.js",
   "lib/i18n-en.js",
+  // Moduli client che importano altri moduli: anche i loro import portano ?v=
+  // (vedi checkClientModuleGraph in verify-shell-version.mjs).
+  "lib/accounting-workspace.js",
+  "lib/accounting-workspace-data.js",
+  "lib/geo.js",
+  "lib/shipping-eligibility.js",
+  "lib/profit-split.js",
 ];
 
 function todayStampRome() {
