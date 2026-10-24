@@ -27,6 +27,22 @@ function assertMatches(source, regex, message, errors) {
 // da app.js: ognuno deve portare la versione corrente ed essere nel precache.
 const IMPORT_RE = /(?:import|export)\s[^"';]*?from\s*["'](\.[^"']+)["']|import\(\s*["'](\.[^"']+)["']\s*\)/g;
 
+// Un "@media {" senza la sua "}" non dà errori (i blocchi annidati sono CSS
+// valido) ma porta dentro la media query tutto il resto del file: il 24 ott
+// 2026 metà degli stili nuovi valeva solo sopra i 981 px e sparì dai telefoni.
+function checkCssBalanced(name, css, errors) {
+  const clean = css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " ")).replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (str) => " ".repeat(str.length));
+  const open = [];
+  for (let i = 0; i < clean.length; i += 1) {
+    if (clean[i] === "{") open.push(i);
+    else if (clean[i] === "}") {
+      if (!open.length) { errors.push(`${name}: "}" in più alla riga ${css.slice(0, i).split("\n").length}`); return; }
+      open.pop();
+    }
+  }
+  if (open.length) errors.push(`${name}: blocco aperto e mai chiuso alla riga ${css.slice(0, open[open.length - 1]).split("\n").length}`);
+}
+
 async function checkClientModuleGraph(shellVersion, swJs, errors) {
   const seen = new Set();
   const walk = async (relPath) => {
@@ -166,6 +182,7 @@ async function main() {
   );
 
   await checkClientModuleGraph(shellVersion, swJs, errors);
+  checkCssBalanced("styles.css", await readText(resolve(ROOT, "styles.css")), errors);
 
   if (errors.length) {
     console.error(`Shell version checks failed for: ${shellVersion}`);

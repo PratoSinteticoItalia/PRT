@@ -44,6 +44,7 @@ const FILES_TO_BUMP = [
   "lib/geo.js",
   "lib/shipping-eligibility.js",
   "lib/profit-split.js",
+  "lib/analytics.js",
 ];
 
 function todayStampRome() {

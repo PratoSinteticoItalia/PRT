@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-registra-tutti";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261025-registra-tutti";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-registra-tutti";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-registra-tutti";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-registra-tutti";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-registra-tutti";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-registra-tutti';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-analisi-stili-mobile";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261025-analisi-stili-mobile";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-analisi-stili-mobile";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-analisi-stili-mobile";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-analisi-stili-mobile";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-analisi-stili-mobile";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-analisi-stili-mobile';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261025-registra-tutti";
+} from "./lib/order-money.js?v=20261025-analisi-stili-mobile";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261025-registra-tutti";
+import { regionForCity } from "./lib/geo.js?v=20261025-analisi-stili-mobile";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261025-registra-tutti";
+} from "./lib/shipping-eligibility.js?v=20261025-analisi-stili-mobile";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261025-registra-tutti";
+} from "./lib/profit-split.js?v=20261025-analisi-stili-mobile";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,9 +66,11 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261025-registra-tutti";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-registra-tutti";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-registra-tutti";
+} from "./lib/preventivo-pricing.js?v=20261025-analisi-stili-mobile";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-analisi-stili-mobile";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-analisi-stili-mobile";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261025-analisi-stili-mobile";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261025-analisi-stili-mobile";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -76,13 +78,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261025-registra-tutti";
+} from "./lib/sales-assignment.js?v=20261025-analisi-stili-mobile";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261025-registra-tutti";
+} from "./lib/surveys.js?v=20261025-analisi-stili-mobile";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -96,7 +98,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261025-registra-tutti";
+const APP_SHELL_VERSION = "20261025-analisi-stili-mobile";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -472,7 +474,7 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
   // Il modulo ordini materiale rivenditore resta implementato ma in standby:
@@ -482,7 +484,7 @@ const roleViews = {
   // con un account rivenditore esterno, a differenza dello stato posa base.
   rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "analytics", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -522,6 +524,7 @@ const translations = {
     ddt: "DDT",
     "reseller-report": "Report rivenditori",
     "supplier-prices": "Fornitori",
+    analytics: "Analisi",
     settings: "Impostazioni",
     marketing: "Marketing",
     "garden-planner": "Garden Planner",
@@ -786,6 +789,7 @@ const translations = {
     ddt: "DDT",
     "reseller-report": "Reseller report",
     "supplier-prices": "Suppliers",
+    analytics: "Analytics",
     settings: "Settings",
     marketing: "Marketing",
     "garden-planner": "Garden Planner",
@@ -1419,6 +1423,8 @@ const state = {
   orderPage: 1,
   accountingPage: 1,
   accountingDrawerOpen: false,
+  analytics: { period: "12m", data: null, loading: false, error: "", key: "", loadedAt: 0 },
+  inventoryValueReportedOn: "",
   salesRequestPage: 1,
   salesRequestCompactMode: false,
   salesContentPage: 1,
@@ -16092,16 +16098,21 @@ function buildQuoteArchiveSummary() {
   const suggested = options.find((option, index) => f.options[index]?.slug === previewSuggestedSlug) || options[0] || null;
   const names = options.map((option) => option.name);
   let marginPct = null;
+  let marginProfit = null;
+  let marginRevenueNet = null;
   if (state.currentUser?.role === "office" && state.quoteCosts?.data) {
     const suggestedIndex = f.options.findIndex((option) => nfOptionHasProduct(option) && option.slug === previewSuggestedSlug);
     const index = suggestedIndex >= 0 ? suggestedIndex : f.options.findIndex((option, i) => nfOptionHasProduct(option) && cq.options[i]);
     if (index >= 0) {
       const { margin } = computeNfOptionMargin(cq, index);
       marginPct = margin.missing.length ? null : margin.marginPct;
+      // Anche in euro: la pagina Analisi somma l'utile dei preventivi accettati.
+      marginProfit = margin.missing.length ? null : margin.profit;
+      marginRevenueNet = margin.missing.length ? null : margin.revenueNet;
     }
   }
   const summary = `${names.length > 1 ? `${names.length} ${state.lang === "it" ? "opzioni" : "options"}: ${names.join(", ")}` : names[0] || ""}${Number(f.sqm) ? ` · ${f.sqm} mq` : ""}`;
-  return { summary, total: suggested ? Math.round(suggested.total * 100) / 100 : 0, options, marginPct };
+  return { summary, total: suggested ? Math.round(suggested.total * 100) / 100 : 0, options, marginPct, marginProfit, marginRevenueNet };
 }
 
 async function confirmQuoteSave({ archive = true } = {}) {
@@ -16148,6 +16159,8 @@ async function confirmQuoteSave({ archive = true } = {}) {
           includePlanner: getIncludeGardenPlanner(),
           options: archiveSummary.options,
           marginPct: archiveSummary.marginPct,
+          marginProfit: archiveSummary.marginProfit,
+          marginRevenueNet: archiveSummary.marginRevenueNet,
         },
       }),
     });
@@ -20264,6 +20277,7 @@ function renderWarehouse() {
     const isOffice = state.currentUser?.role === "office";
     if (isOffice) void loadQuoteCosts();
     const valueTotals = isOffice ? getInventoryValueTotals() : null;
+    if (isOffice) reportInventoryValue();
     const lastKpi = valueTotals
       ? `<div class="inv-kpi inv-kpi-money" title="${escapeAttr(valueTotals.missing ? (state.lang === "it" ? `${valueTotals.missing} articoli in magazzino senza costo collegato` : `${valueTotals.missing} items without a linked cost`) : (state.lang === "it" ? "Tutti gli articoli hanno un costo" : "All items have a cost"))}"><span class="inv-kpi-value">${formatCurrency(valueTotals.total)}</span><span class="inv-kpi-label">${state.lang === "it" ? "Valore in magazzino" : "Stock value"}${valueTotals.missing ? ` · ${valueTotals.missing} ${state.lang === "it" ? "senza costo" : "unpriced"}` : ""}</span></div>`
       : `<div class="inv-kpi"><span class="inv-kpi-value">${turfCount}</span><span class="inv-kpi-label">${state.lang === "it" ? "Prodotti prato" : "Turf products"}</span></div>`;
@@ -23063,6 +23077,7 @@ const VIEW_ICONS = {
   "profit-split": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><line x1="12" y1="6" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="18"/></svg>',
   "reseller-report": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
   "supplier-prices": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
+  analytics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.2 15.9A10 10 0 1 1 8 2.8"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   "garden-planner": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12"/><path d="M5 3a7 7 0 0 0 14 0"/><path d="M5 3c0 3.866 3.134 7 7 7s7-3.134 7-7"/></svg>',
   "timesheet-me": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 7 12 12 15 14"/></svg>',
@@ -23097,6 +23112,7 @@ const NAV_SECTIONS = [
     { view: "garden-planner" },
   ] },
   { id: "admin", labelKey: "adminSection", defaultOpen: false, items: [
+    { view: "analytics" },
     { view: "accounting" },
     { view: "ddt" },
     { view: "profit-split" },
@@ -28971,6 +28987,9 @@ function applySessionPayload(session = {}) {
     state.quoteEditing = null;
     state.quoteSave = null;
     state.surveySchedule = null;
+    // Analisi: preventivi visibili e numeri dipendono da chi è collegato.
+    state.analytics = { period: "12m", data: null, loading: false, error: "", key: "", loadedAt: 0 };
+    state.inventoryValueReportedOn = "";
     state.salesRequestPendingTab = null;
     state.pendingCurrentViewRefresh = false;
     // Pulisce dati preventivo condivisi per evitare leakage cross-account
@@ -31004,6 +31023,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "warehouse": renderWarehouse(); break;
       case "installations": renderInstallations(); break;
       case "accounting": renderAccounting(); break;
+      case "analytics": renderAnalytics(); break;
       case "profit-split": renderProfitSplitWorkspace(); break;
       case "shipping": renderShipping(); break;
       case "ddt": renderDdt(); break;
@@ -38720,6 +38740,7 @@ async function loadQuoteCosts({ force = false } = {}) {
   if (ui.nativeForm && !ui.nativeForm.hidden) updateNativeFormTotals();
   if (state.currentView === "settings") renderQuoteCostsEditor();
   if (state.currentView === "warehouse") renderWarehouse();
+  if (state.currentView === "analytics") renderAnalytics();
   return state.quoteCosts.data;
 }
 
@@ -38804,14 +38825,321 @@ function describeInventoryValue(result) {
 
 function getInventoryValueTotals(groups = getInventorySummary()) {
   let total = 0;
+  let turf = 0;
   let missing = 0;
   groups.forEach((group) => {
     const hasStock = (group.isMeasured || group.isModel) ? toNumber(group.totalSqm) > 0 : toNumber(group.totalUnits) > 0;
     if (!hasStock) return;
     const result = getInventoryGroupValue(group);
-    if (result?.value != null) total += result.value; else missing += 1;
+    if (result?.value == null) { missing += 1; return; }
+    total += result.value;
+    if (group.isModel) turf += result.value;
   });
-  return { total: Math.round(total * 100) / 100, missing };
+  const round = (value) => Math.round(value * 100) / 100;
+  return { total: round(total), turf: round(turf), materials: round(total - turf), missing };
+}
+
+// Valore di magazzino del giorno per lo storico della pagina Analisi: lo manda
+// l'ufficio una volta al giorno, solo quando i costi sono caricati (senza, il
+// totale verrebbe più basso del vero).
+function reportInventoryValue() {
+  if (state.currentUser?.role !== "office" || !state.quoteCosts?.data || !(state.inventory || []).length) return;
+  const today = localDateKey();
+  if (state.inventoryValueReportedOn === today) return;
+  state.inventoryValueReportedOn = today;
+  const totals = getInventoryValueTotals();
+  apiFetch("/api/analytics/inventory-value", { method: "POST", body: JSON.stringify(totals) })
+    .catch(() => { state.inventoryValueReportedOn = ""; });
+}
+
+// ── Pagina Analisi (ottobre 2026), solo ufficio ─────────────────────────────
+// Ordini e incassi dal browser (state.orders li ha già tutti), richieste e
+// preventivi dal server (/api/analytics), magazzino dal calcolo di Inventario.
+// Grafici in lib/analytics-charts.js; colori controllati per chi distingue
+// male i colori (blu/arancio validati insieme), testi sempre in grigio/nero.
+const ANALYTICS_COLORS = { gross: "#2a78d6", collected: "#eb6834", profit: "#2f7a55", requests: "#6250d6", stock: "#2a78d6" };
+const ANALYTICS_SOURCE_LABELS = {
+  imap: ["Sito (modulo contatti)", "Website (contact form)"],
+  "google-sheets": ["Foglio Google (storico)", "Google Sheet (history)"],
+  whatsapp: ["WhatsApp", "WhatsApp"],
+  manual: ["Inserite a mano", "Added by hand"],
+  manuale: ["Inserite a mano", "Added by hand"],
+  shopify: ["Shopify", "Shopify"],
+  email: ["Email", "Email"],
+  altro: ["Altro", "Other"],
+};
+
+async function loadAnalytics({ force = false } = {}) {
+  if (state.currentUser?.role !== "office") return;
+  const a = state.analytics;
+  const months = periodMonths(a.period);
+  const key = `${a.period}|${months[0]}|${months[months.length - 1]}`;
+  if (a.loading && a.key === key) return;
+  if (!force && a.key === key && a.data && Date.now() - a.loadedAt < 5 * 60 * 1000) return;
+  if (!force && a.key === key && a.error && Date.now() - a.loadedAt < 60 * 1000) return;
+  a.loading = true;
+  a.key = key;
+  try {
+    a.data = await apiFetch(`/api/analytics?from=${months[0]}&to=${months[months.length - 1]}`);
+    a.error = "";
+  } catch (error) {
+    a.error = error?.message || "errore";
+  } finally {
+    a.loading = false;
+    a.loadedAt = Date.now();
+    if (state.currentView === "analytics") renderAnalytics();
+  }
+}
+
+function computeAnalyticsTopProducts(months) {
+  const inPeriod = new Set(months);
+  const rows = new Map();
+  for (const order of state.orders || []) {
+    if (order.cancelledAt || /void|cancel/i.test(String(order.financialStatus || ""))) continue;
+    if (!inPeriod.has(romeMonthKey(order.createdAt || order.processedAt || order.date))) continue;
+    for (const line of order.lineDetails || []) {
+      const title = String(line.title || "").trim();
+      if (!title || isServiceLine(title)) continue;
+      const entry = inferCatalogEntry(title);
+      const label = entry?.label || title;
+      const row = rows.get(label) || { label, value: 0, sqm: 0, qty: 0, orders: new Set(), turf: entry?.type === "turf" };
+      const qty = Number(line.quantity) || 1;
+      row.value += Number(line.totalPrice) || 0;
+      row.qty += qty;
+      if (row.turf) row.sqm += parseSquareMetersFromTitle(title, qty);
+      row.orders.add(order.id);
+      rows.set(label, row);
+    }
+  }
+  return [...rows.values()].filter((row) => row.value > 0).sort((x, y) => y.value - x.value).slice(0, 8);
+}
+
+function renderAnalytics() {
+  const root = document.getElementById("analytics-root");
+  if (!root) return;
+  if (state.currentUser?.role !== "office") { root.innerHTML = ""; return; }
+  void loadQuoteCosts();
+  void loadAnalytics();
+  reportInventoryValue();
+  bindAnalyticsRoot(root);
+  const it = state.lang === "it";
+  const L = (itText, enText) => (it ? itText : enText);
+  const a = state.analytics;
+  const months = periodMonths(a.period);
+  const data = a.key.endsWith(`${months[0]}|${months[months.length - 1]}`) ? a.data : null;
+  const money = (value) => formatCurrency(value || 0);
+  const pct = (value) => `${(Number(value) || 0).toLocaleString(it ? "it-IT" : "en-GB", { maximumFractionDigits: 1 })}%`;
+  const count = (value) => (Number(value) || 0).toLocaleString(it ? "it-IT" : "en-GB");
+
+  // Larghezza vera dei grafici: due colonne dai 1000 px della pagina.
+  const pageWidth = root.clientWidth || 900;
+  const twoCols = pageWidth >= 1000;
+  const chartWidth = Math.max(260, Math.floor((twoCols ? (pageWidth - 16) / 2 : pageWidth) - 40));
+
+  const orderRows = ordersByMonth(state.orders || [], months);
+  const quoteRows = data?.quotes || [];
+  const requestRows = data?.requests || [];
+  const gross = sumBy(orderRows, "gross");
+  const collected = sumBy(orderRows, "collected");
+  const ordersCount = sumBy(orderRows, "orders");
+  const profit = sumBy(quoteRows, "profit");
+  const profitNet = sumBy(quoteRows, "profitNet");
+  const accepted = sumBy(quoteRows, "accepted");
+  const profitCount = sumBy(quoteRows, "profitCount");
+  const requestsTotal = sumBy(requestRows, "total");
+  const requestsQuoted = sumBy(requestRows, "quoted");
+  const requestsWon = sumBy(requestRows, "won");
+  const stock = state.quoteCosts?.data ? getInventoryValueTotals() : null;
+  const periodLabel = { "12m": L("Ultimi 12 mesi", "Last 12 months"), year: L("Quest'anno", "This year"), "last-year": L("Anno scorso", "Last year") }[a.period];
+  const waiting = !data ? (a.error ? `<p class="an-note is-error">${escapeHtml(L("Richieste e preventivi non disponibili:", "Requests and quotes unavailable:"))} ${escapeHtml(a.error)}</p>` : `<p class="an-note">${escapeHtml(L("Carico richieste e preventivi…", "Loading requests and quotes…"))}</p>`) : "";
+
+  const kpi = (label, value, note, tone = "") => `<div class="an-kpi ${tone}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong><p>${escapeHtml(note)}</p></div>`;
+  const panel = (title, sub, body, extraClass = "") => `<section class="an-panel ${extraClass}"><div class="an-panel-head"><h3>${escapeHtml(title)}</h3>${sub ? `<p>${escapeHtml(sub)}</p>` : ""}</div>${body}</section>`;
+  const legend = (items) => `<div class="an-legend">${items.map(([label, color]) => `<span><i style="background:${color}"></i>${escapeHtml(label)}</span>`).join("")}</div>`;
+  const empty = (text) => `<p class="an-empty">${escapeHtml(text)}</p>`;
+  const monthLong = (month) => monthShort(month, state.lang, true);
+
+  // 1. Fatturato e incassato
+  const salesBody = ordersCount
+    ? `${legend([[L("Fatturato (ordini del mese)", "Sales (orders of the month)"), ANALYTICS_COLORS.gross], [L("Incassato (pagamenti del mese)", "Collected (payments of the month)"), ANALYTICS_COLORS.collected]])}
+      <div class="an-chart">${columnChart({
+        months, width: chartWidth, lang: state.lang, format: money,
+        ariaLabel: L("Fatturato e incassato per mese", "Sales and collections by month"),
+        series: [
+          { label: L("Fatturato", "Sales"), color: ANALYTICS_COLORS.gross, values: orderRows.map((row) => row.gross) },
+          { label: L("Incassato", "Collected"), color: ANALYTICS_COLORS.collected, values: orderRows.map((row) => row.collected) },
+        ],
+        extra: (i) => [[L("Ordini", "Orders"), count(orderRows[i].orders)]],
+      })}</div>
+      ${dataTable({ summary: L("Vedi i numeri", "See the numbers"), head: [L("Mese", "Month"), L("Fatturato", "Sales"), L("Incassato", "Collected"), L("Ordini", "Orders")], rows: orderRows.map((row) => [monthLong(row.month), money(row.gross), money(row.collected), count(row.orders)]) })}`
+    : empty(L("Nessun ordine nel periodo.", "No orders in the period."));
+
+  // 2. Utile stimato dai preventivi accettati
+  const profitBody = !data ? waiting : profitCount
+    ? `<div class="an-chart">${columnChart({
+        months, width: chartWidth, lang: state.lang, format: money,
+        ariaLabel: L("Utile stimato per mese", "Estimated profit by month"),
+        series: [{ label: L("Utile stimato", "Estimated profit"), color: ANALYTICS_COLORS.profit, values: quoteRows.map((row) => row.profit) }],
+        extra: (i) => [[L("Preventivi accettati", "Accepted quotes"), count(quoteRows[i].accepted)], [L("Margine medio", "Average margin"), quoteRows[i].profitNet > 0 ? pct((quoteRows[i].profit / quoteRows[i].profitNet) * 100) : "—"]],
+      })}</div>
+      ${profitCount < accepted ? `<p class="an-note">${escapeHtml(L(`${accepted - profitCount} preventivi accettati non hanno l'utile (costi mancanti al salvataggio) e non sono nel conto.`, `${accepted - profitCount} accepted quotes have no profit (costs missing when saved) and are not counted.`))}</p>` : ""}
+      ${dataTable({ summary: L("Vedi i numeri", "See the numbers"), head: [L("Mese", "Month"), L("Accettati", "Accepted"), L("Valore", "Value"), L("Utile stimato", "Estimated profit")], rows: quoteRows.map((row) => [monthLong(row.month), count(row.accepted), money(row.acceptedTotal), money(row.profit)]) })}`
+    : accepted
+      ? empty(L(`${accepted} preventivi accettati nel periodo, ma senza l'utile: sono stati salvati prima della barra dell'utile o con costi mancanti. Dai prossimi, l'utile si somma qui da solo.`, `${accepted} accepted quotes in the period, but without profit: saved before the profit bar or with missing costs. From the next ones, profit adds up here automatically.`))
+      : empty(L("Nessun preventivo segnato come accettato nel periodo. L'esito si segna dalla Cartella del cliente.", "No quote marked as accepted in the period. Set the outcome from the customer Folder."));
+
+  // 3. Richieste: quante diventano vendite
+  const funnelBody = !data ? waiting : requestsTotal
+    ? `${barList({
+        color: ANALYTICS_COLORS.requests,
+        max: requestsTotal,
+        items: [
+          { label: L("Richieste arrivate", "Requests received"), value: requestsTotal, valueLabel: count(requestsTotal) },
+          { label: L("Con un preventivo", "With a quote"), value: requestsQuoted, valueLabel: `${count(requestsQuoted)} · ${pct((requestsQuoted / requestsTotal) * 100)}` },
+          { label: L("Confermate", "Confirmed"), value: requestsWon, valueLabel: `${count(requestsWon)} · ${pct((requestsWon / requestsTotal) * 100)}` },
+        ],
+      })}
+      <div class="an-chart">${columnChart({
+        months, width: chartWidth, height: 170, lang: state.lang, format: count, integer: true,
+        ariaLabel: L("Richieste per mese", "Requests by month"),
+        series: [{ label: L("Richieste", "Requests"), color: ANALYTICS_COLORS.requests, values: requestRows.map((row) => row.total) }],
+        extra: (i) => [[L("Con preventivo", "With a quote"), count(requestRows[i].quoted)], [L("Confermate", "Confirmed"), count(requestRows[i].won)]],
+      })}</div>
+      ${dataTable({ summary: L("Vedi i numeri", "See the numbers"), head: [L("Mese", "Month"), L("Richieste", "Requests"), L("Con preventivo", "With a quote"), L("Confermate", "Confirmed")], rows: requestRows.map((row) => [monthLong(row.month), count(row.total), count(row.quoted), count(row.won)]) })}`
+    : empty(L("Nessuna richiesta nel periodo.", "No requests in the period."));
+
+  // 4. Prodotti più venduti
+  const products = computeAnalyticsTopProducts(months);
+  const productsBody = products.length
+    ? `${barList({
+        color: ANALYTICS_COLORS.gross,
+        items: products.map((row) => ({
+          label: row.label,
+          note: row.turf && row.sqm > 0 ? `${formatInventoryNumber(row.sqm)} m² · ${count(row.orders.size)} ${L("ordini", "orders")}` : `${count(row.qty)} ${L("pezzi", "pcs")} · ${count(row.orders.size)} ${L("ordini", "orders")}`,
+          value: row.value,
+          valueLabel: money(row.value),
+        })),
+      })}
+      <p class="an-note">${escapeHtml(L("Valore delle righe degli ordini, IVA inclusa.", "Order line value, VAT included."))}</p>`
+    : empty(L("Nessun prodotto venduto nel periodo.", "No products sold in the period."));
+
+  // 5. Da dove arrivano le richieste
+  const sources = data?.sources || [];
+  const sourcesBody = !data ? waiting : sources.length
+    ? barList({
+        color: ANALYTICS_COLORS.requests,
+        items: sources.map((row) => {
+          const labels = ANALYTICS_SOURCE_LABELS[String(row.source).toLowerCase()];
+          return { label: labels ? labels[it ? 0 : 1] : row.source, value: row.count, valueLabel: `${count(row.count)} · ${pct((row.count / Math.max(1, requestsTotal)) * 100)}` };
+        }),
+      })
+    : empty(L("Nessuna richiesta nel periodo.", "No requests in the period."));
+
+  // 6. Valore di magazzino
+  const history = (data?.inventoryHistory || []).map((item) => ({ date: item.date, value: item.total }));
+  const stockBody = stock
+    ? `<div class="an-stock"><strong>${escapeHtml(money(stock.total))}</strong><span>${escapeHtml(L(`Prati ${money(stock.turf)} · materiali ${money(stock.materials)}`, `Turf ${money(stock.turf)} · materials ${money(stock.materials)}`))}${stock.missing ? escapeHtml(L(` · ${stock.missing} articoli senza costo`, ` · ${stock.missing} items without cost`)) : ""}</span></div>
+      ${history.length > 1
+        ? `<div class="an-chart">${lineChart({ points: history, width: chartWidth, color: ANALYTICS_COLORS.stock, format: money, ariaLabel: L("Valore di magazzino nel tempo", "Stock value over time"), dateLabel: (date) => formatDate(date) })}</div>`
+        : `<p class="an-note">${escapeHtml(L(`Lo storico si costruisce da solo: il valore si salva ogni giorno che l'ufficio apre Inventario o Analisi${history[0] ? ` (primo giorno: ${formatDate(history[0].date)})` : ""}.`, `History builds up by itself: the value is saved every day the office opens Inventory or Analytics${history[0] ? ` (first day: ${formatDate(history[0].date)})` : ""}.`))}</p>`}`
+    : `<p class="an-note">${escapeHtml(L("Carico i costi…", "Loading costs…"))}</p>`;
+
+  root.innerHTML = `
+    <div class="an-filters">
+      <label class="an-period"><span>${escapeHtml(L("Periodo", "Period"))}</span>
+        <select class="text-input" data-an-period>${[["12m", L("Ultimi 12 mesi", "Last 12 months")], ["year", L("Quest'anno", "This year")], ["last-year", L("Anno scorso", "Last year")]].map(([value, label]) => `<option value="${value}" ${a.period === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+      <button type="button" class="ghost-button small-button" data-an-reload ${a.loading ? "disabled" : ""}>${escapeHtml(a.loading ? L("Aggiorno…", "Refreshing…") : L("Aggiorna", "Refresh"))}</button>
+      <span class="an-period-note">${escapeHtml(`${monthLong(months[0])} – ${monthLong(months[months.length - 1])}`)}</span>
+    </div>
+    <div class="an-kpis">
+      ${kpi(L("Fatturato", "Sales"), money(gross), L(`${count(ordersCount)} ordini · medio ${money(ordersCount ? gross / ordersCount : 0)}`, `${count(ordersCount)} orders · average ${money(ordersCount ? gross / ordersCount : 0)}`))}
+      ${kpi(L("Incassato", "Collected"), money(collected), gross > 0 ? L(`${pct((collected / gross) * 100)} del fatturato`, `${pct((collected / gross) * 100)} of sales`) : "—")}
+      ${kpi(L("Utile stimato", "Estimated profit"), data ? (profitCount ? money(profit) : "—") : "…", data ? (profitNet > 0 ? L(`margine medio ${pct((profit / profitNet) * 100)} · ${count(accepted)} preventivi accettati`, `average margin ${pct((profit / profitNet) * 100)} · ${count(accepted)} accepted quotes`) : accepted ? L(`${count(accepted)} preventivi accettati, senza utile salvato`, `${count(accepted)} accepted quotes, no saved profit`) : L("nessun preventivo accettato", "no accepted quotes")) : "", "is-profit")}
+      ${kpi(L("Richieste confermate", "Confirmed requests"), data ? (requestsTotal ? pct((requestsWon / requestsTotal) * 100) : "—") : "…", data ? L(`${count(requestsWon)} su ${count(requestsTotal)} richieste`, `${count(requestsWon)} of ${count(requestsTotal)} requests`) : "")}
+      ${kpi(L("Valore in magazzino", "Stock value"), stock ? money(stock.total) : "…", L("oggi, al costo d'acquisto", "today, at purchase cost"))}
+    </div>
+    ${data && data.seeAllQuotes === false ? `<p class="an-note">${escapeHtml(L("Utile e preventivi contano quelli condivisi e i tuoi: i preventivi privati dei colleghi restano fuori.", "Profit and quotes include shared ones and yours: colleagues' private quotes are left out."))}</p>` : ""}
+    <div class="an-grid ${twoCols ? "is-two" : ""}">
+      ${panel(L("Fatturato e incassato", "Sales and collections"), periodLabel, salesBody)}
+      ${panel(L("Utile stimato", "Estimated profit"), L("Dai preventivi accettati, con l'utile calcolato al salvataggio (IVA esclusa).", "From accepted quotes, with the profit calculated when saved (VAT excluded)."), profitBody)}
+      ${panel(L("Richieste: quante diventano vendite", "Requests: how many become sales"), L("Richieste arrivate nel periodo e dove sono arrivate oggi.", "Requests received in the period and where they stand today."), funnelBody)}
+      ${panel(L("Prodotti più venduti", "Best-selling products"), periodLabel, productsBody)}
+      ${panel(L("Da dove arrivano le richieste", "Where requests come from"), periodLabel, sourcesBody)}
+      ${panel(L("Valore di magazzino", "Stock value"), L("Merce in magazzino al costo dell'ultima fattura fornitore.", "Goods in stock at the latest supplier invoice cost."), stockBody)}
+    </div>`;
+}
+
+// Riquadro al passaggio del mouse (o col tasto Tab) sui grafici: valore in
+// evidenza, nome della serie sotto, trattino del colore. Testi con textContent.
+function showAnalyticsTip(target, event) {
+  let tip = document.getElementById("an-tip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "an-tip";
+    tip.className = "an-tip";
+    tip.setAttribute("role", "tooltip");
+    document.body.append(tip);
+  }
+  let info;
+  try { info = JSON.parse(target.dataset.tip || "{}"); } catch { return; }
+  tip.replaceChildren();
+  const title = document.createElement("div");
+  title.className = "an-tip-title";
+  title.textContent = info.title || "";
+  tip.append(title);
+  (info.rows || []).forEach(([label, value, color]) => {
+    const row = document.createElement("div");
+    row.className = "an-tip-row";
+    const key = document.createElement("i");
+    if (color) key.style.background = color; else key.className = "is-blank";
+    const strong = document.createElement("strong");
+    strong.textContent = value;
+    const small = document.createElement("span");
+    small.textContent = label;
+    row.append(key, strong, small);
+    tip.append(row);
+  });
+  tip.hidden = false;
+  const rect = target.getBoundingClientRect();
+  const x = event?.clientX ?? rect.left + rect.width / 2;
+  const y = event?.clientY ?? rect.top;
+  const left = Math.min(window.innerWidth - tip.offsetWidth - 8, Math.max(8, x + 14));
+  const top = y - tip.offsetHeight - 12 < 8 ? y + 18 : y - tip.offsetHeight - 12;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+
+function hideAnalyticsTip() {
+  const tip = document.getElementById("an-tip");
+  if (tip) tip.hidden = true;
+}
+
+function bindAnalyticsRoot(root) {
+  if (root.dataset.bound) return;
+  root.dataset.bound = "1";
+  root.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-an-period]")) return;
+    state.analytics.period = event.target.value;
+    renderAnalytics();
+  });
+  root.addEventListener("click", (event) => {
+    if (event.target.closest("[data-an-reload]")) void loadAnalytics({ force: true }).then(() => renderAnalytics());
+  });
+  root.addEventListener("pointermove", (event) => {
+    const target = event.target.closest?.("[data-tip]");
+    if (target) showAnalyticsTip(target, event); else hideAnalyticsTip();
+  });
+  root.addEventListener("pointerleave", hideAnalyticsTip);
+  root.addEventListener("focusin", (event) => {
+    const target = event.target.closest?.("[data-tip]");
+    if (target) showAnalyticsTip(target); else hideAnalyticsTip();
+  });
+  root.addEventListener("focusout", hideAnalyticsTip);
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (state.currentView === "analytics") renderAnalytics(); }, 200);
+  });
 }
 
 function isSqmUnit(unit = "") {

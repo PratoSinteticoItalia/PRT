@@ -2,6 +2,8 @@ import { buildTimesheetCsv } from "./lib/timesheet-export.js";
 import { validateAbsenceInput } from "./lib/timesheet-absence.js";
 import { profitPaymentBalance } from "./lib/profit-history.js";
 import { registerState, mutateRegister } from "./lib/accounting-register.js";
+import { findFiscalIds, isOnlyFiscalId } from "./lib/fiscal-ids.js";
+import { monthRange, quotesByMonth } from "./lib/analytics.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { computeSupplierLandedCosts, hasSupplierInvoiceCosts, normalizeSupplierInvoiceCosts } from "./lib/supplier-landed-cost.js";
 import { renderQuoteLinkErrorPage, renderQuotePublicPage } from "./lib/quote-public-page.js";
@@ -8020,8 +8022,20 @@ function extractBillingMetadata(...inputs) {
   };
 
   const company = String(pickValue("company") || "").trim();
-  const vatNumber = cleanVatNumber(pickValue("vatNumber"));
-  const taxCode = cleanTaxCode(pickValue("taxCode"));
+  let vatNumber = cleanVatNumber(pickValue("vatNumber"));
+  let taxCode = cleanTaxCode(pickValue("taxCode"));
+  // Il checkout non ha campi per P.IVA e codice fiscale: chi vuole la fattura
+  // li scrive in "Azienda", in "Interno, scala" o nelle note. Si riconoscono
+  // dal formato con il controllo (lib/fiscal-ids.js); nelle note serve anche
+  // una parola come "P.IVA" o "fattura".
+  if (!vatNumber || !taxCode) {
+    const fieldText = sources.flatMap((source) => ["company", "companyName", "address1", "address2", "address"].map((key) => source?.[key] || "")).join(" | ");
+    const noteText = [...sources.map((source) => source?.note || ""), ...attributes.map((entry) => `${entry.key} ${entry.value}`)].join(" | ");
+    const inFields = findFiscalIds(fieldText);
+    const inNotes = findFiscalIds(noteText, { needKeyword: true });
+    vatNumber = vatNumber || inFields.vatNumber || inNotes.vatNumber;
+    taxCode = taxCode || inFields.taxCode || inNotes.taxCode;
+  }
   const sdiCode = cleanRecipientCode(pickValue("sdiCode"));
   const pecEmail = cleanEmail(pickValue("pecEmail"));
   const invoiceRequestedRaw = pickValue("invoiceRequested");
@@ -8155,6 +8169,9 @@ function normalizeLineDetailRecord(item = {}) {
 }
 
 function normalizeBillingAddress(source = {}, fallbackOrder = {}, metadata = {}) {
+  // Solo un codice fiscale o una P.IVA nel campo "Azienda" non è un'intestazione.
+  const rawCompany = String(metadata.company || source.company || source.companyName || "").trim();
+  const companyName = isOnlyFiscalId(rawCompany) ? "" : rawCompany;
   const invoiceRequested = metadata.invoiceRequested ?? normalizeBooleanFlag(
     source.invoiceRequested
     ?? source.invoice_requested
@@ -8163,7 +8180,7 @@ function normalizeBillingAddress(source = {}, fallbackOrder = {}, metadata = {})
   return {
     firstName: String(source.first_name || source.firstName || fallbackOrder.firstName || "").trim(),
     lastName: String(source.last_name || source.lastName || fallbackOrder.lastName || "").trim(),
-    company: String(metadata.company || source.company || source.companyName || "").trim(),
+    company: companyName,
     email: String(source.email || fallbackOrder.email || "").trim(),
     phone: String(source.phone || fallbackOrder.phone || "").trim(),
     address: [source.address1, source.address2].filter(Boolean).join(" ").trim() || String(source.address || fallbackOrder.address || "").trim(),
@@ -12226,6 +12243,7 @@ function reconcileStoreData(store) {
   store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
   store.pushSubscriptions = Array.isArray(store.pushSubscriptions) ? store.pushSubscriptions : [];
   store.customProducts = Array.isArray(store.customProducts) ? store.customProducts : [];
+  store.inventoryValueHistory = Array.isArray(store.inventoryValueHistory) ? store.inventoryValueHistory.filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item?.date || ""))) : [];
   store.shopifySettings = {
     ...defaults.shopifySettings,
     ...(store.shopifySettings || {}),
@@ -12233,6 +12251,12 @@ function reconcileStoreData(store) {
 
   store.orders = store.orders.map((order) => {
     const nextOrder = { ...order };
+    // Ordini a mano salvati senza data: "MAN-<millisecondi>" dice quando sono nati.
+    const manualStamp = !nextOrder.createdAt && String(nextOrder.orderNumber || "").match(/^MAN-(\d{13})$/);
+    if (manualStamp) {
+      nextOrder.createdAt = new Date(Number(manualStamp[1])).toISOString();
+      changed = true;
+    }
     if (!Array.isArray(nextOrder.lineDetails) || !nextOrder.lineDetails.length) {
       nextOrder.lineDetails = normalizeStringLineDetails(nextOrder.lineItems || []);
     } else {
@@ -18532,6 +18556,91 @@ async function handleApi(req, res, url) {
     });
   }
 
+  // ── Pagina Analisi (ottobre 2026), solo ufficio ────────────────────────
+  // Richieste e preventivi mese per mese (gli ordini li conta il browser, che
+  // li ha già tutti) + storico del valore di magazzino. I preventivi privati dei
+  // colleghi restano fuori, come nella cartella cliente.
+  if (url.pathname === "/api/analytics" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const isMonth = (value) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || ""));
+    const from = String(url.searchParams.get("from") || "");
+    const to = String(url.searchParams.get("to") || "");
+    if (!isMonth(from) || !isMonth(to) || from > to) return sendJson(res, 400, { error: "invalid_period" });
+    const months = monthRange(from, to);
+    const seeAll = Boolean(currentUser.canSeeAllQuotes);
+    const inventoryHistory = (store.inventoryValueHistory || []).filter((item) => item.date.slice(0, 7) >= from && item.date.slice(0, 7) <= to);
+    if (!USE_POSTGRES) return sendJson(res, 200, { months, requests: [], sources: [], quotes: quotesByMonth([], months), inventoryHistory, seeAllQuotes: seeAll, database: false });
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    // Inizio e fine del periodo a mezzanotte di Roma.
+    const fromTs = `${from}-01 00:00:00`;
+    const [toYear, toMonth] = to.split("-").map(Number);
+    const toTs = toMonth === 12 ? `${toYear + 1}-01-01 00:00:00` : `${toYear}-${String(toMonth + 1).padStart(2, "0")}-01 00:00:00`;
+    const bucket = getSalesRequestPipelineBucketSql("sr");
+    const requestRows = await pool.query(
+      `SELECT to_char(sr.created_at AT TIME ZONE 'Europe/Rome', 'YYYY-MM') AS month,
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE sr.quoted_at IS NOT NULL OR (${bucket}) IN ('quoted','won')
+                OR EXISTS (SELECT 1 FROM sales_quotes q WHERE q.request_id = sr.id))::int AS quoted,
+              COUNT(*) FILTER (WHERE (${bucket}) = 'won')::int AS won
+         FROM sales_requests sr
+        WHERE sr.created_at >= ($1::timestamp AT TIME ZONE 'Europe/Rome') AND sr.created_at < ($2::timestamp AT TIME ZONE 'Europe/Rome')
+        GROUP BY 1 ORDER BY 1`,
+      [fromTs, toTs],
+    );
+    const sourceRows = await pool.query(
+      `SELECT coalesce(nullif(trim(source), ''), 'altro') AS source, COUNT(*)::int AS count
+         FROM sales_requests
+        WHERE created_at >= ($1::timestamp AT TIME ZONE 'Europe/Rome') AND created_at < ($2::timestamp AT TIME ZONE 'Europe/Rome')
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
+      [fromTs, toTs],
+    );
+    const quoteRows = await pool.query(
+      `SELECT status, total, created_at, sent_at, updated_at,
+              payload->>'marginPct' AS margin_pct, payload->>'marginProfit' AS margin_profit, payload->>'marginRevenueNet' AS margin_net
+         FROM (SELECT DISTINCT ON (number) * FROM sales_quotes ORDER BY number, revision DESC) q
+        WHERE greatest(created_at, coalesce(sent_at, created_at), updated_at) >= ($1::timestamp AT TIME ZONE 'Europe/Rome')
+          AND created_at < ($2::timestamp AT TIME ZONE 'Europe/Rome')
+          AND ($3::boolean OR shared OR author_id = $4)`,
+      [fromTs, toTs, seeAll, String(currentUser.id)],
+    );
+    const byMonth = new Map(requestRows.rows.map((row) => [row.month, row]));
+    return sendJson(res, 200, {
+      months,
+      requests: months.map((month) => ({ month, total: byMonth.get(month)?.total || 0, quoted: byMonth.get(month)?.quoted || 0, won: byMonth.get(month)?.won || 0 })),
+      sources: sourceRows.rows,
+      quotes: quotesByMonth(quoteRows.rows.map((row) => ({
+        status: row.status,
+        total: Number(row.total || 0),
+        createdAt: row.created_at,
+        sentAt: row.sent_at,
+        updatedAt: row.updated_at,
+        marginPct: row.margin_pct,
+        marginProfit: row.margin_profit,
+        marginRevenueNet: row.margin_net,
+      })), months),
+      inventoryHistory,
+      seeAllQuotes: seeAll,
+      database: true,
+    });
+  }
+
+  // Valore di magazzino del giorno, mandato dal browser dell'ufficio quando
+  // apre Inventario o Analisi (il calcolo usa i costi collegati in Impostazioni).
+  if (url.pathname === "/api/analytics/inventory-value" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const amount = (value) => (Number.isFinite(Number(value)) ? Math.max(0, Math.min(1e9, Math.round(Number(value) * 100) / 100)) : 0);
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(new Date());
+    const entry = { date, total: amount(body.total), turf: amount(body.turf), materials: amount(body.materials), missing: Math.max(0, Math.min(10000, Number.parseInt(body.missing, 10) || 0)) };
+    const history = (store.inventoryValueHistory || []).filter((item) => item.date !== date);
+    store.inventoryValueHistory = [...history, entry].sort((a, b) => a.date.localeCompare(b.date)).slice(-800);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, entry });
+  }
+
   // PUT /api/supplier-invoice-costs → trasporto, dazio e altre spese di una
   // fattura. Si indicano le voci della fattura: quelle registrate prima dei
   // costi (senza invoiceId comune) ricevono qui un invoiceId condiviso.
@@ -19904,9 +20013,13 @@ async function handleApi(req, res, url) {
       netKnown: body.netSubtotal != null || body.total != null,
       lineDetails,
     }, body.total || 0);
+    const createdAt = new Date().toISOString();
     const manualOrder = {
       id: randomUUID(),
       orderNumber: String(body.orderNumber || `MAN-${Date.now()}`),
+      // Senza data l'ordine non entrava nei mesi di Contabilità e Analisi.
+      createdAt,
+      updatedAt: createdAt,
       firstName: String(body.firstName || "").trim(),
       lastName: String(body.lastName || "").trim(),
       email: String(body.email || "").trim(),
