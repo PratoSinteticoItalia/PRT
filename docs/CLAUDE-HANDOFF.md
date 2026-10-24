@@ -504,3 +504,12 @@ L'utente: il CSV dei corrispettivi dava gli importi uno per uno; vuole per ogni 
 - Pagina Corrispettivi: una riga per giorno (totale, Carta di credito, PayPal, Bonifico bancario, HeyLight sempre; Scalapay, Contanti, Altro solo se usati nel mese; imponibile e IVA con le aliquote), riga "Totale del mese", avviso se ci sono importi con metodo non riconosciuto. Il dettaglio del giorno mostra il totale per metodo e il metodo di ogni movimento.
 - CSV: "Data; Operazioni; Totale giornata; <tutti i metodi, anche a zero>; Imponibile; IVA; Lordo per aliquota" + riga "Totale del mese", date in formato italiano.
 - Panoramica "Incassi per metodo" raggruppa con le stesse categorie; i metodi proposti nel movimento sono quelli riconosciuti (Carta di credito, PayPal, Bonifico bancario, HeyLight, Scalapay, Contanti, Assegno).
+- Pubblicato il 25 ott (prod-promote 1deeb2c, main 95075f0, live "20261025-corrispettivi-per-metodo").
+
+### "Registra tutti" gli incassi degli ordini — 25 ottobre
+
+L'utente ha accettato la proposta: i corrispettivi contano solo i movimenti verificati in prima nota, e confermare gli incassi uno per uno era lungo.
+
+- `registerAllForm` in `lib/accounting-workspace.js`: finestra con totale, corrispettivi/fatture, importo per metodo, elenco a spunta (tutti spuntati) e avviso per gli incassi datati con la data dell'ordine. "Registra e verifica" o "Registra senza verificare": salva una alla volta le stesse proposte di `suggestEntryFromPending` (IVA 22%, riferimento «Ordine #…»), con avanzamento "Registro N di M…"; se uno fallisce si ferma e dice quanti ne ha registrati.
+- Pulsante "Registra tutti (N) →" in "Da verificare" e link "Registra tutti →" nella pagina Corrispettivi quando ci sono incassi non ancora in prima nota.
+- Nota: dopo la pubblicazione del 25 ott la cartella risultava su `main` (HEAD scritto senza voce nel reflog) e la configurazione dell'anteprima era rimasta nello stash; l'app Codex era aperta. Ripristinato `prod-promote` + stash. Dopo ogni pubblicazione controllare `git branch --show-current`.

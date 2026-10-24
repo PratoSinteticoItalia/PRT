@@ -28643,6 +28643,8 @@ body.mobile-safe-mode .main-content {
 .acw-dialog .acw-error-inline{color:#a42c2c;font-size:13px;margin-top:12px;min-height:0}
 .acw-dialog .acw-error-inline:empty{display:none}
 .acw-dialog .acw-checklist{max-height:200px;overflow:auto;border:1px solid var(--acw-line);border-radius:8px;padding:6px 10px;margin-top:8px}
+.acw-dialog .acw-checklist.is-tall{max-height:300px}
+.acw-dialog .acw-checklist .acw-bulk-amount{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
 .acw-dialog .acw-checklist label{display:flex;gap:8px;align-items:center;font-weight:500;margin:0;padding:7px 0;border-bottom:1px solid #f0f2ee}
 .acw-dialog .acw-checklist label[hidden]{display:none}
 /* "Pagamenti ordini" è confluita in "Ordini e incassi": della sezione storica
