@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-generatore-pulsanti";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261024-generatore-pulsanti";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-generatore-pulsanti";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-generatore-pulsanti";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-generatore-pulsanti";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-generatore-pulsanti";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-generatore-pulsanti';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-correzioni-generatore-inbox";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261024-correzioni-generatore-inbox";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-correzioni-generatore-inbox";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-correzioni-generatore-inbox";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-correzioni-generatore-inbox";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-correzioni-generatore-inbox";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-correzioni-generatore-inbox';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261024-generatore-pulsanti";
+} from "./lib/order-money.js?v=20261024-correzioni-generatore-inbox";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261024-generatore-pulsanti";
+import { regionForCity } from "./lib/geo.js?v=20261024-correzioni-generatore-inbox";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261024-generatore-pulsanti";
+} from "./lib/shipping-eligibility.js?v=20261024-correzioni-generatore-inbox";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261024-generatore-pulsanti";
+} from "./lib/profit-split.js?v=20261024-correzioni-generatore-inbox";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261024-generatore-pulsanti";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-generatore-pulsanti";
+} from "./lib/preventivo-pricing.js?v=20261024-correzioni-generatore-inbox";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-correzioni-generatore-inbox";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261024-generatore-pulsanti";
+} from "./lib/sales-assignment.js?v=20261024-correzioni-generatore-inbox";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261024-generatore-pulsanti";
+} from "./lib/surveys.js?v=20261024-correzioni-generatore-inbox";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261024-generatore-pulsanti";
+const APP_SHELL_VERSION = "20261024-correzioni-generatore-inbox";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -38214,7 +38214,10 @@ function computeNfOptionMargin(cq, index) {
     materialCosts: cq.materials?.include === false ? [] : resolveMaterialCosts(nfEffectiveMaterials().items),
     shippingCost: getQuoteShippingCost(),
     accessoriesCost: blankOrNumber(f.marginAccessoriesCost, null),
-    posaExpenses: blankOrNumber(f.marginPosaExpenses, 0),
+    // Spese e quota del posatore valgono solo con la posa: passando a "Solo
+    // fornitura" restavano nel conto (e i campi sparivano, quindi non si
+    // potevano togliere). I valori restano salvati per quando si torna alla posa.
+    posaExpenses: f.quoteType === "posa" ? blankOrNumber(f.marginPosaExpenses, 0) : 0,
     partnerSharePct: blankOrNumber(f.marginPartnerSharePct, config.partnerSharePct),
   });
   return { margin, turf };
