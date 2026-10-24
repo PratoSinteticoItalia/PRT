@@ -465,3 +465,22 @@ L'utente: il generatore era "leggermente confusionario, un po flat", "la parte d
 - **Due colonne** da 1180 px (`.nf-main` + `aside.nf-aside` in index.html, CSS "Generatore leggibile"): a destra, ferma mentre si scorre, totale per il cliente (`#nf-summary`), utile (`#nf-margin`) e "Genera preventivo" (fisso in fondo al riepilogo solo sul computer). Sotto i 1180 px tutto in colonna.
 - **Sezioni**: intestazione su fondo `#f5f8f5`, numero in pallino verde pieno, titolo normale 14,5 px (prima maiuscoletto grigio 11,5 px della versione "piatta"), etichette più scure. Richiesta collegata su una riga.
 - **Utile** (`renderNfMargin`): numero grande + % + giudizio (Ottimo ≥ goodPct, Nella media, Basso < lowPct, In perdita, Parziale senza costo prato); barra a pezzi "dove vanno i soldi" (prato, materiali, spedizione/accessori, posatore = spese + quota, utile) con legenda; "Come si arriva all'utile" riga per riga (aperto per la prima opzione, stato ricordato in `nfMarginCalcOpen`/`nfMarginCalcTouched`); sconto massimo sul prato; "Costi di questo preventivo" per i campi a mano.
+
+## Pose: calendario squadre con sopralluoghi, azioni rapide, agenda squadra — 24 ottobre
+
+L'utente: Pose e Sopralluoghi "le parti più carenti"; le pose le pianifica l'ufficio ma le squadre devono poter fare la loro parte dal telefono. Primo blocco:
+
+- **Calendario** (`buildInstallationCalendar`): 7 giorni su una riga da 981 px, giorno della settimana sopra la data, pose ordinate per ora (ora in verde, squadra se non filtrata) e **sopralluoghi** del giorno (`getCalendarSurveys`, fondo viola, apre la scheda con `cal-open-survey`), "+ N sopralluoghi" accanto ai mq. Nomi ora escapati.
+- **Bacheca** (`renderInstallationKanbanCard`): nome intero (2 righe), numero e data sotto; **data e squadra cliccabili** (`openInstallQuickPanel` → `saveInstallQuickChange`, stesso POST `/operations` del trascinamento, blocca le squadre non disponibili, data → "programmata", togli data → "da pianificare"); data passata in rosso. "Completate" mostra solo le ultime 3 settimane + "Vedi tutte le completate".
+- **Squadra sul telefono**: il calendario diventa un'agenda verticale (`.is-agenda`): un giorno per riga, pose e sopralluoghi della squadra, "Libero", oggi evidenziato.
+- **Errore vecchio corretto**: `getInstallationWeekStart` dava la mezzanotte locale del lunedì e `toISOString()` la portava a domenica: in Italia il calendario mostrava le settimane **da domenica a sabato**. Ora `localDateKey` in tutto il calendario pose (test `test/local-date-key.test.js`).
+- **Server**: colonne DATE lette come testo (`setTypeParser(1082)` in `getPgPool`): con l'ora italiana la data del sopralluogo tornava indietro di un giorno (in produzione, UTC, non succedeva, ma ora è robusto per turni, sistemazioni e sopralluoghi).
+- Prossimi passi proposti: Sopralluoghi a bacheca, "Fissa sopralluogo" dalla richiesta con WhatsApp al cliente, conferma posa al cliente su WhatsApp, pagine Pose riunite in schede.
+
+### Secondo blocco Pose e Sopralluoghi — 24 ottobre
+
+- **Menu rapido comune** (`openFloatingQuickPanel`, `renderQuickCrewPanelHtml`, `renderQuickDatePanelHtml`; i pulsanti hanno `data-quick-anchor`): usato da pose e sopralluoghi.
+- **Sopralluoghi**: con "Tutti" l'elenco è diviso in Da fissare / In programma (per giorno, "Oggi", "Domani") / Fatti (ultimi 8 + "Vedi tutti"), `getSurveyGroupKey`. Ufficio: data e squadra cliccabili sulla scheda (`saveSurveyQuickChange`, "spostato" con data nuova torna "assegnato", blocca squadre non disponibili). Nel dettaglio: ora del sopralluogo e "Avvisa il cliente". Elenco e dettaglio affiancati da 1101 px (prima sotto i 1320 il dettaglio finiva sotto l'elenco).
+- **Fissa sopralluogo dalla Cartella** (`openSurveyScheduleDialog`, finestra `#survey-schedule-dialog`): giorno, ora, squadra, indirizzo, note → sopralluogo collegato alla richiesta, poi messaggio WhatsApp modificabile al cliente. La Cartella mostra stato, giorno e ora (il server ora manda anche `scheduledTime`).
+- **Conferma al cliente** (pulsante nel dettaglio posa, `confirmInstallationToCustomer`): crea il link di tracciamento se manca (finestra aperta subito, poi indirizzata) e apre WhatsApp con data, indirizzo e link. Messaggi in `buildSurveyConfirmMessage` / `buildInstallationConfirmMessage` (test `test/customer-confirm-messages.test.js`; per aziende "Ciao," senza nome).
+

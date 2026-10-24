@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-correzioni-generatore-inbox";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261024-correzioni-generatore-inbox";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-correzioni-generatore-inbox";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-correzioni-generatore-inbox";
-import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-correzioni-generatore-inbox";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-correzioni-generatore-inbox";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-correzioni-generatore-inbox';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261024-pose-sopralluoghi";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261024-pose-sopralluoghi";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-pose-sopralluoghi";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261024-pose-sopralluoghi";
+import { mountAccountingWorkspace, showAccountingPane } from "./lib/accounting-workspace.js?v=20261024-pose-sopralluoghi";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261024-pose-sopralluoghi";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261024-pose-sopralluoghi';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261024-correzioni-generatore-inbox";
+} from "./lib/order-money.js?v=20261024-pose-sopralluoghi";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261024-correzioni-generatore-inbox";
+import { regionForCity } from "./lib/geo.js?v=20261024-pose-sopralluoghi";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261024-correzioni-generatore-inbox";
+} from "./lib/shipping-eligibility.js?v=20261024-pose-sopralluoghi";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261024-correzioni-generatore-inbox";
+} from "./lib/profit-split.js?v=20261024-pose-sopralluoghi";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,8 +66,8 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261024-correzioni-generatore-inbox";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-correzioni-generatore-inbox";
+} from "./lib/preventivo-pricing.js?v=20261024-pose-sopralluoghi";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261024-pose-sopralluoghi";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -75,13 +75,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261024-correzioni-generatore-inbox";
+} from "./lib/sales-assignment.js?v=20261024-pose-sopralluoghi";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261024-correzioni-generatore-inbox";
+} from "./lib/surveys.js?v=20261024-pose-sopralluoghi";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -95,7 +95,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261024-correzioni-generatore-inbox";
+const APP_SHELL_VERSION = "20261024-pose-sopralluoghi";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1896,6 +1896,7 @@ const ui = {
   installationRouteButton: document.getElementById("installation-route-button"),
   installationCallButton: document.getElementById("installation-call-button"),
   installationEmailButton: document.getElementById("installation-email-button"),
+  installationConfirmButton: document.getElementById("installation-confirm-button"),
   installationAttachmentButton: document.getElementById("installation-attachment-button"),
   installationExportButton: document.getElementById("installation-export-button"),
   installationAttachments: document.getElementById("installation-attachments"),
@@ -15326,11 +15327,12 @@ function renderSalesRequestFolderUi(requestId = state.selectedSalesRequestId) {
         : `<p class="srq-folder-empty">${it ? "Nessun preventivo salvato. Quelli fatti dal generatore con \"Salva PDF\" arrivano qui." : "No saved quotes yet. Quotes saved from the generator with \"Save PDF\" appear here."}</p>`}
     </section>
     <section class="srq-folder-sec">
-      <header><h4>${it ? "Sopralluoghi" : "Site surveys"}</h4></header>
+      <header><h4>${it ? "Sopralluoghi" : "Site surveys"}</h4>
+        <button type="button" class="ghost-button small-button" data-action="folder-schedule-survey">${it ? "+ Fissa sopralluogo" : "+ Schedule survey"}</button></header>
       ${surveys.length ? surveys.map((survey) => `<div class="srq-folder-item">
           <span class="srq-folder-ico">SO</span>
-          <span class="srq-folder-copy"><strong>${escapeHtml(survey.id)} · ${escapeHtml(survey.status || "")}</strong>
-            <small>${[survey.crewName, survey.scheduledDate ? formatDate(survey.scheduledDate) : "", survey.measuredSqm ? `${survey.measuredSqm} mq` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</small></span>
+          <span class="srq-folder-copy"><strong>${escapeHtml(getSurveyStatusMeta(survey.status).label)}${survey.scheduledDate ? ` · ${escapeHtml(surveyDayLabel(survey.scheduledDate))}${survey.scheduledTime ? ` ${escapeHtml(survey.scheduledTime)}` : ""}` : ""}</strong>
+            <small>${[survey.id, survey.crewName, survey.measuredSqm ? `${survey.measuredSqm} mq misurati` : ""].filter(Boolean).map(escapeHtml).join(" · ")}</small></span>
           <button type="button" class="ghost-button small-button" data-action="folder-open-survey" data-id="${escapeAttr(survey.id)}">${it ? "Apri" : "Open"}</button>
         </div>`).join("")
         : `<p class="srq-folder-empty">${it ? "Nessun sopralluogo collegato a questa richiesta." : "No site survey linked to this request."}</p>`}
@@ -15468,6 +15470,135 @@ async function handleSalesRequestFolderAction(button) {
   if (action === "folder-open-survey") {
     state.selectedSurveyId = id;
     setView("sopralluoghi");
+  }
+  if (action === "folder-schedule-survey") {
+    openSurveyScheduleDialog(requestId);
+  }
+}
+
+// ── Fissa sopralluogo dalla richiesta (ottobre 2026) ─────────────────────
+// Dalla Cartella: giorno, ora e squadra; il sopralluogo nasce collegato alla
+// richiesta con i dati del cliente, poi si può avvisare il cliente su WhatsApp.
+async function openSurveyScheduleDialog(requestId = "") {
+  const dialog = document.getElementById("survey-schedule-dialog");
+  if (!dialog?.showModal || !requestId) return;
+  const request = await fetchSalesRequestById(requestId);
+  if (!request) {
+    showToast(state.lang === "it" ? "Richiesta non trovata." : "Request not found.", "error");
+    return;
+  }
+  state.surveySchedule = { requestId, request, created: null, busy: false, error: "" };
+  renderSurveyScheduleDialog();
+  dialog.showModal();
+  dialog.querySelector("input[name=scheduledDate]")?.focus();
+}
+
+function renderSurveyScheduleDialog() {
+  const it = state.lang === "it";
+  const flow = state.surveySchedule;
+  const body = document.getElementById("survey-schedule-body");
+  const actions = document.getElementById("survey-schedule-actions");
+  if (!flow || !body || !actions) return;
+  const request = flow.request || {};
+  const name = getSalesRequestDisplayName(request);
+  if (flow.created) {
+    const survey = flow.created;
+    body.innerHTML = `
+      <div class="srq-send-confirm"><span><strong>${it ? "Sopralluogo fissato" : "Survey scheduled"}</strong> · ${escapeHtml(formatCustomerAppointmentDate(survey.scheduledDate, survey.scheduledTime))}${survey.crewName ? ` · ${escapeHtml(survey.crewName)}` : ""}</span></div>
+      <label class="srq-dialog-section"><span class="srq-dialog-label">${it ? "Messaggio per il cliente" : "Message for the customer"}</span>
+        <textarea id="survey-schedule-message" class="text-input" rows="6">${escapeHtml(buildSurveyConfirmMessage(survey))}</textarea></label>
+      ${survey.phone ? "" : `<p class="srq-dialog-note"><span class="is-warning">${it ? "Il cliente non ha un numero di telefono: aggiungilo nella scheda Cliente." : "The customer has no phone number."}</span></p>`}`;
+    actions.innerHTML = `
+      <button type="button" class="ghost-button small-button" data-action="survey-schedule-close">${it ? "Chiudi" : "Close"}</button>
+      <button type="button" class="ghost-button small-button" data-action="survey-schedule-open">${it ? "Apri il sopralluogo" : "Open survey"}</button>
+      <button type="button" class="primary-button small-button" data-action="survey-schedule-whatsapp" ${survey.phone ? "" : "disabled"}>${it ? "Avvisa il cliente su WhatsApp" : "Notify customer on WhatsApp"}</button>`;
+    return;
+  }
+  const crews = getInstallationCrewNames();
+  body.innerHTML = `
+    <div class="srq-linked"><span><strong>${escapeHtml(name || "—")}</strong>${request.phone ? ` · ${escapeHtml(request.phone)}` : ""}</span></div>
+    <div class="survey-schedule-grid">
+      <label class="field"><span>${it ? "Giorno" : "Day"}</span><input class="text-input" type="date" name="scheduledDate" required /></label>
+      <label class="field"><span>${it ? "Ora" : "Time"}</span><input class="text-input" type="time" name="scheduledTime" /></label>
+      <label class="field"><span>${it ? "Squadra" : "Crew"}</span><select class="text-input" name="crewName">
+        <option value="">${it ? "Da assegnare" : "Unassigned"}</option>
+        ${crews.map((crew) => `<option value="${escapeAttr(crew)}">${escapeHtml(crew)}</option>`).join("")}
+      </select></label>
+      <label class="field survey-schedule-wide"><span>${it ? "Indirizzo" : "Address"}</span><input class="text-input" name="address" value="${escapeAttr(request.address || request.indirizzo || "")}" placeholder="${it ? "Via e numero" : "Street and number"}" /></label>
+      <label class="field"><span>${it ? "Città" : "City"}</span><input class="text-input" name="city" value="${escapeAttr(request.city || "")}" /></label>
+      <label class="field"><span>${it ? "Provincia" : "Province"}</span><input class="text-input" name="province" maxlength="2" value="${escapeAttr(request.provinceCode || extractProvinceCodeFromText(request.city || "") || "")}" /></label>
+      <label class="field survey-schedule-wide"><span>${it ? "Note per la squadra" : "Notes for the crew"}</span><textarea class="text-input" name="officeNotes" rows="2" placeholder="${it ? "Accesso, cancello, cosa guardare…" : "Access, gate, what to check…"}"></textarea></label>
+    </div>
+    <p class="srq-dialog-status" role="status">${escapeHtml(flow.error || "")}</p>`;
+  actions.innerHTML = `
+    <button type="button" class="ghost-button small-button" data-action="survey-schedule-close">${it ? "Annulla" : "Cancel"}</button>
+    <button type="button" class="primary-button small-button" data-action="survey-schedule-save" ${flow.busy ? "disabled" : ""}>${it ? "Fissa sopralluogo" : "Schedule survey"}</button>`;
+}
+
+async function saveSurveyScheduleDialog() {
+  const it = state.lang === "it";
+  const flow = state.surveySchedule;
+  const body = document.getElementById("survey-schedule-body");
+  if (!flow || !body || flow.busy) return;
+  const field = (name) => String(body.querySelector(`[name="${name}"]`)?.value || "").trim();
+  const scheduledDate = field("scheduledDate");
+  const crewName = field("crewName");
+  const setError = (text) => {
+    const status = body.querySelector(".srq-dialog-status");
+    if (status) status.textContent = text;
+  };
+  if (!scheduledDate) {
+    setError(it ? "Scegli il giorno del sopralluogo." : "Pick the survey day.");
+    return;
+  }
+  if (crewName && isCrewUnavailable(crewName, scheduledDate)) {
+    setError(it ? `${crewName} è segnata non disponibile il ${formatDate(scheduledDate)}.` : `${crewName} is unavailable on ${formatDate(scheduledDate)}.`);
+    return;
+  }
+  const request = flow.request || {};
+  flow.busy = true;
+  try {
+    const created = await apiCreateSurvey({
+      customerName: getSalesRequestDisplayName(request),
+      phone: request.phone || "",
+      email: request.email || "",
+      address: field("address"),
+      city: field("city"),
+      province: field("province"),
+      crewName,
+      scheduledDate,
+      scheduledTime: field("scheduledTime"),
+      officeNotes: field("officeNotes"),
+      salesRequestId: flow.requestId,
+    });
+    state.surveys = [created, ...(state.surveys || [])];
+    flow.created = created;
+    flow.busy = false;
+    renderSurveyScheduleDialog();
+    renderOps();
+    void loadSalesRequestFolder(flow.requestId, { force: true });
+  } catch (error) {
+    flow.busy = false;
+    setError(it ? `Sopralluogo non creato: ${String(error?.message || "").trim()}` : `Survey not created: ${String(error?.message || "").trim()}`);
+  }
+}
+
+function handleSurveyScheduleDialogClick(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  const flow = state.surveySchedule;
+  const dialog = document.getElementById("survey-schedule-dialog");
+  const action = button.dataset.action;
+  if (action === "survey-schedule-close") dialog?.close();
+  if (action === "survey-schedule-save") void saveSurveyScheduleDialog();
+  if (action === "survey-schedule-open" && flow?.created) {
+    dialog?.close();
+    state.selectedSurveyId = flow.created.id;
+    setView("sopralluoghi");
+  }
+  if (action === "survey-schedule-whatsapp" && flow?.created) {
+    const message = String(document.getElementById("survey-schedule-message")?.value || "").trim();
+    if (openCustomerWhatsApp(flow.created.phone, message)) dialog?.close();
   }
 }
 
@@ -20480,6 +20611,14 @@ function refreshShippingDraftPreview() {
   renderDdtPreview(order);
 }
 
+// Giorno "AAAA-MM-GG" in ora locale. toISOString() passa per l'ora UTC: in
+// Italia la mezzanotte del lunedì diventava domenica, e il calendario pose
+// mostrava le settimane da domenica a sabato (ottobre 2026).
+function localDateKey(date = new Date()) {
+  const value = date instanceof Date ? date : new Date(date);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
 function getInstallationWeekStart() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -20494,7 +20633,7 @@ function getInstallationWeekKeys() {
   return Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
-    return date.toISOString().slice(0, 10);
+    return localDateKey(date);
   });
 }
 
@@ -20522,7 +20661,7 @@ function getPreferredCrewInstallationOrder(orders = []) {
   const scheduled = orders
     .filter((order) => String(order.operations?.installation?.installDate || "").trim())
     .sort((left, right) => String(left.operations?.installation?.installDate || "").localeCompare(String(right.operations?.installation?.installDate || "")));
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDateKey();
   return scheduled.find((order) => String(order.operations?.installation?.installDate || "") >= todayKey)
     || scheduled[0]
     || orders[0]
@@ -20542,7 +20681,7 @@ function clearInstallationDetail() {
   if (ui.installationAttachments) ui.installationAttachments.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun allegato caricato." : "No attachments uploaded."}</div>`;
   if (ui.installationExpenseForm) {
     ui.installationExpenseForm.reset();
-    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
+    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = localDateKey();
   }
   if (ui.installationExpenseSummary) ui.installationExpenseSummary.innerHTML = "";
   if (ui.installationExpenseList) ui.installationExpenseList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessuna spesa registrata su questo ordine." : "No crew expenses registered for this order."}</div>`;
@@ -20595,7 +20734,7 @@ function renderInstallationExpenseSection(order) {
       .reduce((sum, item) => sum + toNumber(item.amount || 0), 0),
   })).filter((item) => item.amount > 0);
   if (ui.installationExpenseForm?.date && !ui.installationExpenseForm.date.value) {
-    ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
+    ui.installationExpenseForm.date.value = localDateKey();
   }
   if (ui.installationExpenseSummary) {
     ui.installationExpenseSummary.innerHTML = [
@@ -20931,15 +21070,28 @@ function renderCrewExpenseMonthlyReport() {
   `;
 }
 
+// Sopralluoghi nel calendario delle squadre (ottobre 2026): non consumano mq
+// ma occupano la squadra quel giorno, quindi si vedono accanto alle pose.
+function getCalendarSurveys(dateKey, crewName = "") {
+  const crewKey = String(crewName || "").trim().toLowerCase();
+  return (Array.isArray(state.surveys) ? state.surveys : [])
+    .filter((survey) => survey.scheduledDate === dateKey
+      && survey.status !== "annullato"
+      && (!crewKey || String(survey.crewName || "").trim().toLowerCase() === crewKey))
+    .sort((a, b) => String(a.scheduledTime || "99").localeCompare(String(b.scheduledTime || "99")));
+}
+
 function buildInstallationCalendar(orders, crewName = "") {
   const start = getInstallationWeekStart();
   const dailyCapacity = getInstallationCapacityForScope(crewName);
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDateKey();
   return Array.from({ length: 7 }).map((_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
-    const key = date.toISOString().slice(0, 10);
-    const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key);
+    const key = localDateKey(date);
+    const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key)
+      .sort((a, b) => String(a.operations?.installation?.installTime || "99").localeCompare(String(b.operations?.installation?.installTime || "99")));
+    const surveys = getCalendarSurveys(key, crewName);
     const totalSqm = items.reduce((sum, order) => sum + getSafeOrderSqm(order), 0);
     const fillRatio = dailyCapacity > 0 ? totalSqm / dailyCapacity : 0;
     const fillPct = Math.min(100, Math.round(fillRatio * 100));
@@ -20952,24 +21104,32 @@ function buildInstallationCalendar(orders, crewName = "") {
     return `
       <article class="cal-day ${unavailable ? "is-unavailable" : ""} ${isToday ? "cal-day-today" : ""}" data-date="${key}" data-drop-date="${key}">
         <div class="cal-day-top">
-          <span class="cal-day-date">${formatDate(key)}</span>
+          <span class="cal-day-date"><small class="cal-day-weekday">${escapeHtml(date.toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB", { weekday: "short" }))}</small>${formatDate(key)}</span>
           ${crewName ? `
             <button class="cal-unavail-toggle ${unavailable ? "is-active" : ""}" type="button" data-action="toggle-crew-unavailable" data-date="${key}" title="${unavailLabel}" aria-label="${unavailLabel}" aria-pressed="${unavailable}">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><line x1="6.2" y1="6.2" x2="17.8" y2="17.8"/></svg>
             </button>` : ""}
         </div>
         <div class="cal-day-meta">
-          <span class="cal-day-capacity">${Math.round(totalSqm)}/${Math.round(dailyCapacity)} mq</span>
+          <span class="cal-day-capacity">${Math.round(totalSqm)}/${Math.round(dailyCapacity)} mq${surveys.length ? ` <small>+ ${surveys.length} ${state.lang === "it" ? (surveys.length === 1 ? "sopralluogo" : "sopralluoghi") : (surveys.length === 1 ? "survey" : "surveys")}</small>` : ""}</span>
           <span class="cal-capacity-pill ${gaugeTone}">${getInstallationCapacityBadgeCopy(fillRatio)}</span>
         </div>
         <div class="cal-gauge"><div class="cal-gauge-fill ${gaugeTone}" style="width:${fillPct}%"></div></div>
         ${unavailable ? `<div class="cal-unavail-tag">${state.lang === "it" ? "Non disponibile" : "Unavailable"}</div>` : ""}
-        ${items.map((order) => `
-          <button class="cal-item" data-action="select-order" data-id="${order.id}" data-view="installations" style="border-left:3px solid ${getCrewColor(order.operations?.installation?.crew)}">
-            <strong>${composeClientName(order)} · ${getOrderNumber(order)}</strong>
-            <span>${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq</span>
-          </button>
-        `).join("")}
+        ${items.map((order) => {
+          const install = order.operations?.installation || {};
+          return `
+          <button class="cal-item" data-action="select-order" data-id="${escapeAttr(order.id)}" data-view="installations" style="border-left:3px solid ${getCrewColor(install.crew)}" title="${escapeAttr(`${composeClientName(order)} · ${getOrderNumber(order)}${install.crew ? ` · ${install.crew}` : ""}`)}">
+            <strong>${install.installTime ? `<em>${escapeHtml(install.installTime)}</em> ` : ""}${escapeHtml(composeClientName(order))}</strong>
+            <span>${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}${crewName || !install.crew ? "" : ` · ${escapeHtml(install.crew)}`}</span>
+          </button>`;
+        }).join("")}
+        ${surveys.map((survey) => `
+          <button class="cal-item cal-item-survey${survey.status === "completato" ? " is-done" : ""}" type="button" data-action="cal-open-survey" data-id="${escapeAttr(survey.id)}" style="border-left:3px solid ${getCrewColor(survey.crewName)}" title="${escapeAttr(`${state.lang === "it" ? "Sopralluogo" : "Site survey"} · ${survey.customerName}${survey.crewName ? ` · ${survey.crewName}` : ""}`)}">
+            <strong>${survey.scheduledTime ? `<em>${escapeHtml(survey.scheduledTime)}</em> ` : ""}${escapeHtml(survey.customerName)}</strong>
+            <span>${state.lang === "it" ? "Sopralluogo" : "Site survey"}${survey.city ? ` · ${escapeHtml(survey.city)}` : ""}${crewName || !survey.crewName ? "" : ` · ${escapeHtml(survey.crewName)}`}</span>
+          </button>`).join("")}
+        ${!items.length && !surveys.length && !unavailable ? `<span class="cal-day-free">${state.lang === "it" ? "Libero" : "Free"}</span>` : ""}
       </article>
     `;
   }).join("");
@@ -21004,38 +21164,286 @@ function getInstallationLaneMeta(lane) {
 function renderInstallationKanbanCard(order) {
   const install = order.operations?.installation || {};
   const selected = order.id === state.selectedOrderId ? "selected" : "";
+  const it = state.lang === "it";
   const dateLabel = install.installDate
     ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
-    : (state.lang === "it" ? "Senza data" : "No date");
+    : (it ? "Fissa la data" : "Set date");
   const installStatus = String(install.status || "").trim();
   const statusLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
-  const it = state.lang === "it";
   const crewName = String(install.crew || "").trim();
   const crewColor = getCrewColor(install.crew);
   const destination = composeAddress(order) || addressIncompleteText();
   const addressMissing = !order.address || !order.city;
   const place = addressMissing ? addressIncompleteText() : String(order.city || "").trim();
   const done = installStatus === "completata";
-  // Stessa scheda di Spedizioni (sv2): la corsia dice già lo stato, quindi
-  // niente pillola; colore solo su data mancante, squadra mancante, problema.
+  // Data passata e posa non ancora iniziata: in rosso, va riprogrammata.
+  const overdue = Boolean(install.installDate) && !done && installStatus !== "in-corso"
+    && install.installDate < localDateKey();
+  // Squadra e data si cambiano dalla scheda (menu sotto il pulsante), senza
+  // aprire l'ordine; il resto della scheda apre il dettaglio come prima.
   return `
-    <article class="shp-row sv2-card ${selected} ${done ? "is-done" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
-      <div class="sv2-head">
-        <span class="sv2-name">${escapeHtml(composeClientName(order))}</span>
+    <article class="shp-row sv2-card inst-card ${selected} ${done ? "is-done" : ""}" data-action="select-order" data-id="${order.id}" data-view="installations" draggable="true" data-installation-drag-id="${order.id}">
+      <div class="sv2-head"><span class="sv2-name" title="${escapeAttr(composeClientName(order))}">${escapeHtml(composeClientName(order))}</span></div>
+      <div class="inst-card-sub">
         <span class="sv2-num">${escapeHtml(getOrderNumber(order))}</span>
-        <span class="sv2-date ${install.installDate ? "" : "is-today"}" title="${escapeHtml(statusLabel)}">${escapeHtml(dateLabel)}</span>
+        <button type="button" class="inst-chip inst-chip-date${install.installDate ? "" : " is-warn"}${overdue ? " is-overdue" : ""}" data-action="install-quick-date" data-quick-anchor data-id="${escapeAttr(order.id)}" title="${escapeAttr(`${statusLabel} · ${it ? "cambia data" : "change date"}`)}">${escapeHtml(dateLabel)}</button>
       </div>
       <div class="sv2-line sv2-material">${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}</div>
       <div class="sv2-line sv2-place${addressMissing ? " is-warn" : ""}" title="${escapeHtml(destination)}">${escapeHtml(place)}</div>
       <div class="sv2-foot">
-        <div class="sv2-line sv2-meta">
-          <span class="sv2-crew${crewName ? "" : " is-warn"}"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewName || (it ? "Squadra da assegnare" : "Crew to assign"))}</span>
-          ${installStatus === "problema" ? `<span class="sv2-sep" aria-hidden="true">·</span><span class="is-alert">${escapeHtml(statusLabel)}</span>` : ""}
-        </div>
+        <button type="button" class="inst-chip inst-chip-crew${crewName ? "" : " is-warn"}" data-action="install-quick-crew" data-quick-anchor data-id="${escapeAttr(order.id)}" title="${escapeAttr(it ? "Cambia squadra" : "Change crew")}"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewName || (it ? "Assegna squadra" : "Assign crew"))}</button>
+        ${installStatus === "problema" ? `<span class="is-alert">${escapeHtml(statusLabel)}</span>` : ""}
       </div>
       ${kanbanGripHandle(order.id, "installation")}
     </article>
   `;
+}
+
+// ── Squadra e data dalla scheda della bacheca (ottobre 2026) ──────────────
+// ── Menu rapido sotto un pulsante (squadra, data) — pose e sopralluoghi ────
+function closeInstallQuickPanel() {
+  document.getElementById("install-quick-panel")?.remove();
+}
+
+function openFloatingQuickPanel(anchor, key, innerHtml) {
+  const wasOpen = document.getElementById("install-quick-panel")?.dataset.key === key;
+  closeInstallQuickPanel();
+  if (wasOpen) return null;
+  const panel = document.createElement("div");
+  panel.id = "install-quick-panel";
+  panel.className = "crm-assign-menu install-quick-panel";
+  panel.dataset.key = key;
+  panel.setAttribute("role", "dialog");
+  panel.innerHTML = innerHtml;
+  document.body.appendChild(panel);
+  const rect = anchor.getBoundingClientRect();
+  const left = Math.min(Math.max(8, rect.left), window.innerWidth - panel.offsetWidth - 8);
+  const fitsBelow = rect.bottom + 6 + panel.offsetHeight <= window.innerHeight - 8;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - panel.offsetHeight)}px`;
+  (panel.querySelector("input[type=date]") || panel.querySelector("button:not([disabled])"))?.focus({ preventScroll: true });
+  if (!document.body.dataset.installQuickBound) {
+    document.body.dataset.installQuickBound = "1";
+    document.addEventListener("pointerdown", (event) => {
+      if (!event.target.closest?.("#install-quick-panel, [data-quick-anchor]")) closeInstallQuickPanel();
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeInstallQuickPanel();
+      if (event.key === "Enter" && event.target.closest?.("#install-quick-panel input")) {
+        event.preventDefault();
+        event.target.closest("#install-quick-panel").querySelector("[data-quick-save]")?.click();
+      }
+    });
+    window.addEventListener("resize", closeInstallQuickPanel);
+    document.querySelector(".main-content")?.addEventListener("scroll", closeInstallQuickPanel, { passive: true });
+  }
+  return panel;
+}
+
+function renderQuickCrewPanelHtml({ actionAttr, id, currentCrew = "", date = "" }) {
+  const it = state.lang === "it";
+  return `<p class="crm-assign-menu-title">${it ? "Squadra" : "Crew"}${date ? ` · ${escapeHtml(formatDate(date))}` : ""}</p>
+    ${getInstallationCrewNames().map((crew) => {
+      const unavailable = Boolean(date) && isCrewUnavailable(crew, date);
+      const current = crew === currentCrew;
+      return `<button type="button" data-action="${actionAttr}" data-id="${escapeAttr(id)}" data-crew="${escapeAttr(crew)}" ${unavailable ? "disabled" : ""} class="${current ? "is-current" : ""}">
+        <span class="crew-dot" style="background:${getCrewColor(crew)}"></span>${escapeHtml(crew)}${unavailable ? ` <small>${it ? "non disponibile" : "unavailable"}</small>` : current ? ` <small>${it ? "attuale" : "current"}</small>` : ""}</button>`;
+    }).join("")}
+    ${currentCrew ? `<button type="button" data-action="${actionAttr}" data-id="${escapeAttr(id)}" data-crew="" class="is-muted">${it ? "Togli la squadra" : "Remove crew"}</button>` : ""}`;
+}
+
+function renderQuickDatePanelHtml({ title, saveAction, clearAction, id, date = "", time = "" }) {
+  const it = state.lang === "it";
+  return `<p class="crm-assign-menu-title">${escapeHtml(title)}</p>
+    <div class="install-quick-fields">
+      <label><span>${it ? "Giorno" : "Day"}</span><input type="date" name="quickDate" value="${escapeAttr(date)}" /></label>
+      <label><span>${it ? "Ora" : "Time"}</span><input type="time" name="quickTime" value="${escapeAttr(time)}" /></label>
+    </div>
+    <div class="install-quick-actions">
+      ${date ? `<button type="button" class="is-muted" data-action="${clearAction}" data-id="${escapeAttr(id)}">${it ? "Togli data" : "Clear date"}</button>` : ""}
+      <button type="button" class="is-primary" data-quick-save data-action="${saveAction}" data-id="${escapeAttr(id)}">${it ? "Salva" : "Save"}</button>
+    </div>`;
+}
+
+function openInstallQuickPanel(anchor, orderId, kind) {
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  if (!order) return;
+  const install = order.operations?.installation || {};
+  openFloatingQuickPanel(anchor, `install|${orderId}|${kind}`, kind === "crew"
+    ? renderQuickCrewPanelHtml({ actionAttr: "install-quick-pick-crew", id: orderId, currentCrew: install.crew || "", date: install.installDate || "" })
+    : renderQuickDatePanelHtml({ title: state.lang === "it" ? "Data della posa" : "Installation date", saveAction: "install-quick-save-date", clearAction: "install-quick-clear-date", id: orderId, date: install.installDate || "", time: install.installTime || "" }));
+}
+
+function openSurveyQuickPanel(anchor, surveyId, kind) {
+  const survey = (state.surveys || []).find((item) => item.id === surveyId);
+  if (!survey) return;
+  openFloatingQuickPanel(anchor, `survey|${surveyId}|${kind}`, kind === "crew"
+    ? renderQuickCrewPanelHtml({ actionAttr: "survey-quick-pick-crew", id: surveyId, currentCrew: survey.crewName || "", date: survey.scheduledDate || "" })
+    : renderQuickDatePanelHtml({ title: state.lang === "it" ? "Data del sopralluogo" : "Survey date", saveAction: "survey-quick-save-date", clearAction: "survey-quick-clear-date", id: surveyId, date: survey.scheduledDate || "", time: survey.scheduledTime || "" }));
+}
+
+async function saveSurveyQuickChange(surveyId = "", change = {}) {
+  const it = state.lang === "it";
+  const survey = (state.surveys || []).find((item) => item.id === surveyId);
+  if (!survey) return;
+  const patch = { ...change };
+  // Un sopralluogo "spostato" con una data nuova torna in programma.
+  if (change.scheduledDate && survey.status === "spostato") patch.status = survey.crewName || change.crewName ? "assegnato" : "da-assegnare";
+  const crew = "crewName" in change ? change.crewName : survey.crewName;
+  const date = "scheduledDate" in change ? change.scheduledDate : survey.scheduledDate;
+  if (crew && date && isCrewUnavailable(crew, date)) {
+    showToast(it
+      ? `${crew} è segnata non disponibile il ${formatDate(date)}. Scegli un altro giorno o un'altra squadra.`
+      : `${crew} is marked unavailable on ${formatDate(date)}. Pick another day or crew.`, "warning");
+    return;
+  }
+  closeInstallQuickPanel();
+  try {
+    const updated = await apiPatchSurvey(surveyId, patch);
+    state.surveys = (state.surveys || []).map((item) => (item.id === updated.id ? updated : item));
+    showToast("crewName" in change
+      ? (change.crewName ? (it ? `Squadra: ${change.crewName}` : `Crew: ${change.crewName}`) : (it ? "Squadra tolta" : "Crew removed"))
+      : (change.scheduledDate ? (it ? `Sopralluogo fissato al ${formatDate(change.scheduledDate)}` : `Survey on ${formatDate(change.scheduledDate)}`) : (it ? "Data tolta" : "Date cleared")), "success");
+    renderCurrentViewOnly(state.currentView);
+  } catch (error) {
+    showToast(it ? `Modifica non salvata: ${String(error?.message || "").trim()}` : `Change not saved: ${String(error?.message || "").trim()}`, "error");
+  }
+}
+
+// ── Messaggi WhatsApp al cliente: sopralluogo e posa fissati ─────────────
+function formatCustomerAppointmentDate(dateKey = "", time = "") {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const day = date.toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+  return `${day}${time ? (state.lang === "it" ? ` alle ${time}` : ` at ${time}`) : ""}`;
+}
+
+function firstNameOf(fullName = "") {
+  // Aziende, studi, condomini: niente nome di battesimo ("Ciao Studio" no).
+  if (/\b(s\.?r\.?l|s\.?n\.?c|s\.?a\.?s|s\.?p\.?a|studio|ditta|societ[aà]|condominio|comune|azienda|impresa|hotel|agriturismo)\b/i.test(String(fullName || ""))) return "";
+  const first = String(fullName || "").trim().split(/\s+/)[0] || "";
+  return first ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : "";
+}
+
+function buildSurveyConfirmMessage(survey = {}) {
+  const it = state.lang === "it";
+  const when = formatCustomerAppointmentDate(survey.scheduledDate, survey.scheduledTime);
+  const place = [survey.address, survey.city].filter(Boolean).join(", ");
+  const name = firstNameOf(survey.customerName);
+  if (!it) {
+    return [`Hello${name ? ` ${name}` : ""}, we confirm the site survey for your synthetic turf${when ? ` on ${when}` : ""}${place ? ` at ${place}` : ""}.`,
+      "Our crew will take measurements and check the ground. If the time doesn't suit you, just reply to this message.",
+      "Prato Sintetico Italia"].join("\n\n");
+  }
+  return [`Ciao${name ? ` ${name}` : ""}, ti confermiamo il sopralluogo per il prato sintetico${when ? ` ${when}` : ""}${place ? ` in ${place}` : ""}.`,
+    "La nostra squadra prenderà le misure e vedrà il terreno. Se l'orario non va bene rispondi pure a questo messaggio.",
+    "Prato Sintetico Italia"].join("\n\n");
+}
+
+function buildInstallationConfirmMessage(order = {}, trackingUrl = "") {
+  const it = state.lang === "it";
+  const install = order.operations?.installation || {};
+  const when = formatCustomerAppointmentDate(install.installDate, install.installTime);
+  const place = composeAddress(order);
+  const name = firstNameOf(composeClientName(order));
+  if (!it) {
+    return [`Hello${name ? ` ${name}` : ""}, we confirm the installation of your synthetic turf${when ? ` on ${when}` : ""}${place ? ` at ${place}` : ""}.`,
+      trackingUrl ? `You can follow the job here: ${trackingUrl}` : "",
+      "For anything just reply to this message. Prato Sintetico Italia"].filter(Boolean).join("\n\n");
+  }
+  return [`Ciao${name ? ` ${name}` : ""}, ti confermiamo la posa del tuo prato sintetico${when ? ` per ${when}` : ""}${place ? ` in ${place}` : ""}.`,
+    trackingUrl ? `Puoi seguire il cantiere qui: ${trackingUrl}` : "",
+    "Per qualsiasi cosa rispondi pure a questo messaggio. Prato Sintetico Italia"].filter(Boolean).join("\n\n");
+}
+
+function openCustomerWhatsApp(phone = "", message = "") {
+  const url = buildWhatsAppWebSendUrl(phone, message);
+  if (!url) {
+    showToast(state.lang === "it" ? "Manca il numero di telefono del cliente." : "Customer phone number is missing.", "warning");
+    return false;
+  }
+  window.open(url, "psi_sales_request_whatsapp", "noopener");
+  return true;
+}
+
+async function confirmInstallationToCustomer(orderId = "") {
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  if (!order) return;
+  const it = state.lang === "it";
+  const phone = String(order.phone || order.customerPhone || order.telefono || "").trim();
+  if (!order.operations?.installation?.installDate) {
+    showToast(it ? "Fissa prima la data della posa." : "Set the installation date first.", "warning");
+    return;
+  }
+  if (!phone) {
+    showToast(it ? "Manca il numero di telefono del cliente." : "Customer phone number is missing.", "warning");
+    return;
+  }
+  // Senza link di tracciamento va prima creato: la finestra si apre subito
+  // (nello stesso clic, altrimenti il browser la blocca) e poi si indirizza.
+  let token = order.operations?.trackingToken || "";
+  const pending = token ? null : window.open("about:blank", "psi_sales_request_whatsapp");
+  if (!token) {
+    try {
+      const res = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/tracking-token`, { method: "POST" });
+      token = res?.token || "";
+      order.operations = { ...(order.operations || {}), trackingToken: token, trackingTokenCreatedAt: res?.createdAt };
+    } catch {
+      token = "";
+    }
+  }
+  const trackingUrl = token ? `${window.location.origin}/track/${token}` : "";
+  const url = buildWhatsAppWebSendUrl(phone, buildInstallationConfirmMessage(order, trackingUrl));
+  if (pending && !pending.closed) {
+    pending.opener = null;
+    pending.location.href = url;
+  } else {
+    window.open(url, "psi_sales_request_whatsapp", "noopener");
+  }
+}
+
+async function saveInstallQuickChange(orderId = "", change = {}) {
+  const it = state.lang === "it";
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  if (!order) return;
+  const install = order.operations?.installation || {};
+  const patch = { ...change };
+  if ("installDate" in change) {
+    if (change.installDate) {
+      if (!install.status || install.status === "da-pianificare") patch.status = "programmata";
+    } else {
+      patch.status = "da-pianificare";
+      patch.installTime = "";
+    }
+  }
+  const crew = "crew" in change ? change.crew : install.crew;
+  const date = "installDate" in change ? change.installDate : install.installDate;
+  // Come il trascinamento sul calendario: niente posa su una squadra segnata
+  // non disponibile quel giorno.
+  if (crew && date && isCrewUnavailable(crew, date)) {
+    showToast(it
+      ? `${crew} è segnata non disponibile il ${formatDate(date)}. Scegli un altro giorno o un'altra squadra.`
+      : `${crew} is marked unavailable on ${formatDate(date)}. Pick another day or crew.`, "warning");
+    return;
+  }
+  closeInstallQuickPanel();
+  orderPendingPatchIds.add(orderId);
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({ installation: patch }),
+    });
+    state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+    showToast("crew" in change
+      ? (change.crew ? (it ? `Squadra: ${change.crew}` : `Crew: ${change.crew}`) : (it ? "Squadra tolta" : "Crew removed"))
+      : (change.installDate ? (it ? `Posa fissata al ${formatDate(change.installDate)}` : `Scheduled on ${formatDate(change.installDate)}`) : (it ? "Data tolta: la posa torna da pianificare" : "Date cleared")), "success");
+    renderCurrentViewOnly(state.currentView);
+  } catch (error) {
+    showToast(it ? `Modifica non salvata: ${String(error?.message || "").trim()}` : `Change not saved: ${String(error?.message || "").trim()}`, "error");
+  } finally {
+    orderPendingPatchIds.delete(orderId);
+  }
 }
 
 // Maniglia card per il MOBILE: l'HTML5 drag&drop non parte su touch, quindi qui
@@ -21053,6 +21461,14 @@ function renderInstallationsKanban(listOrders) {
     orders: listOrders.filter((o) => getInstallationLane(o) === lane),
   }));
   const counts = Object.fromEntries(lanes.map((l) => [l.key, l.orders.length]));
+  // "Completate" mostra solo le ultime 3 settimane: senza limite la corsia
+  // cresceva all'infinito. Le altre sono nella pagina Completate.
+  const doneLane = lanes.find((lane) => lane.key === "done");
+  const recentCutoff = localDateKey(new Date(Date.now() - 21 * 86400000));
+  const doneHidden = doneLane ? doneLane.orders.filter((o) => String(o.operations?.installation?.installDate || o.updatedAt || "9999").slice(0, 10) < recentCutoff).length : 0;
+  if (doneLane && doneHidden) {
+    doneLane.orders = doneLane.orders.filter((o) => String(o.operations?.installation?.installDate || o.updatedAt || "9999").slice(0, 10) >= recentCutoff);
+  }
   const kpi = (val, label, warn) =>
     `<div class="shp-kpi ${warn ? "warn" : ""}"><span class="shp-kpi-value">${val}</span><span class="shp-kpi-label">${label}</span></div>`;
   // Corsia visibile su mobile (pattern a TAB come Logistica). Default "Da pianificare".
@@ -21081,8 +21497,9 @@ function renderInstallationsKanban(listOrders) {
           <div class="shp-group-list">
             ${g.orders.length
               ? g.orders.map(renderInstallationKanbanCard).join("")
-              : `<div class="cal-empty">${it ? "Nessuna" : "None"}</div>`}
+              : `<div class="cal-empty">${g.key === "done" && doneHidden ? (it ? "Nessuna nelle ultime 3 settimane" : "None in the last 3 weeks") : (it ? "Nessuna" : "None")}</div>`}
           </div>
+          ${g.key === "done" && doneHidden ? `<button type="button" class="shp-show-all-done ghost-button small-button" data-action="install-show-completed">${it ? `Vedi tutte le completate (${counts.done}) →` : `See all completed (${counts.done}) →`}</button>` : ""}
         </section>
       `).join("")}
     </div>
@@ -21157,6 +21574,7 @@ function renderInstallations() {
   const listOrders = isCrewView ? orders : backlogOrders;
   if (ui.installationCrewField) ui.installationCrewField.classList.toggle("hidden", isCrewView);
   if (ui.installationEmailButton) ui.installationEmailButton.classList.toggle("hidden", isCrewView);
+  if (ui.installationConfirmButton) ui.installationConfirmButton.classList.toggle("hidden", isCrewView);
   if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
     ? (state.lang === "it" ? "Salva aggiornamento cantiere" : "Save site update")
     : (state.lang === "it" ? "Salva posa" : "Save installation");
@@ -21183,16 +21601,19 @@ function renderInstallations() {
   scheduleCoverageRender();
   if (ui.installationCalendar) {
     ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, calendarCrewScope);
+    // Squadra sul telefono: agenda verticale della settimana invece della
+    // striscia da scorrere di lato (vedi CSS ".is-agenda").
+    ui.installationCalendar.classList.toggle("is-agenda", isCrewView);
   }
   if (ui.installationPrevWeekButton) {
     const start = getInstallationWeekStart();
-    ui.installationPrevWeekButton.dataset.weekStart = start.toISOString().slice(0, 10);
+    ui.installationPrevWeekButton.dataset.weekStart = localDateKey(start);
   }
   if (ui.installationNextWeekButton) {
     const start = getInstallationWeekStart();
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
-    ui.installationNextWeekButton.dataset.weekEnd = end.toISOString().slice(0, 10);
+    ui.installationNextWeekButton.dataset.weekEnd = localDateKey(end);
   }
   withScrollPreservation(ui.installationList, () => {
   if (!isCrewView) {
@@ -27132,36 +27553,99 @@ function renderSopralluoghi() {
   renderSurveyDetailPanel();
 }
 
+// Giorno del sopralluogo detto come lo si direbbe: Oggi, Domani, lun 26 ott.
+function surveyDayLabel(dateKey = "") {
+  const it = state.lang === "it";
+  if (!dateKey) return "";
+  const today = localDateKey();
+  const tomorrow = localDateKey(new Date(Date.now() + 86400000));
+  if (dateKey === today) return it ? "Oggi" : "Today";
+  if (dateKey === tomorrow) return it ? "Domani" : "Tomorrow";
+  const match = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return formatDate(dateKey);
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.toLocaleDateString(it ? "it-IT" : "en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
 function renderSurveyCard(survey) {
+  const it = state.lang === "it";
   const meta = getSurveyStatusMeta(survey.status);
   const selected = survey.id === state.selectedSurveyId ? "selected" : "";
+  const isOffice = state.currentUser?.role === "office";
+  const open = !["completato", "annullato"].includes(survey.status);
+  const overdue = open && survey.scheduledDate && survey.scheduledDate < localDateKey() && survey.status !== "in-corso";
+  const whenLabel = survey.scheduledDate
+    ? `${surveyDayLabel(survey.scheduledDate)}${survey.scheduledTime ? ` · ${survey.scheduledTime}` : ""}`
+    : (it ? "Fissa la data" : "Set date");
+  const crewLabel = survey.crewName || (it ? "Assegna squadra" : "Assign crew");
+  // Ufficio: squadra e data si cambiano dalla scheda (come nella bacheca pose).
+  const chips = isOffice && open
+    ? `<div class="survey-card-chips">
+        <button type="button" class="inst-chip${survey.scheduledDate ? "" : " is-warn"}${overdue ? " is-overdue" : ""}" data-action="survey-quick-date" data-quick-anchor data-id="${escapeAttr(survey.id)}">${escapeHtml(whenLabel)}</button>
+        <button type="button" class="inst-chip${survey.crewName ? "" : " is-warn"}" data-action="survey-quick-crew" data-quick-anchor data-id="${escapeAttr(survey.id)}"><span class="crew-dot" style="background:${getCrewColor(survey.crewName)}"></span>${escapeHtml(crewLabel)}</button>
+      </div>`
+    : "";
   const metaLine = [
     survey.city || "",
-    survey.crewName || (state.lang === "it" ? "Da assegnare" : "Unassigned"),
-    survey.scheduledDate ? formatDate(survey.scheduledDate) : "",
+    !chips ? (survey.crewName || (it ? "Da assegnare" : "Unassigned")) : "",
+    !chips && survey.scheduledDate ? whenLabel : "",
   ].filter(Boolean).join(" · ");
   return `
-    <article class="shp-row ${selected}" data-action="select-survey" data-id="${escapeAttr(survey.id)}">
+    <article class="shp-row survey-card ${selected}" data-action="select-survey" data-id="${escapeAttr(survey.id)}">
       <span class="shp-dot ${meta.tone}"></span>
       <div class="shp-main">
         <div class="shp-name-line"><span class="shp-name">${escapeHtml(survey.customerName)}</span></div>
-        <div class="shp-meta"><span>${escapeHtml(metaLine)}</span></div>
+        ${metaLine ? `<div class="shp-meta"><span>${escapeHtml(metaLine)}</span></div>` : ""}
+        ${chips}
       </div>
       <div class="shp-aside">
-        ${(survey.criticalities || []).length ? `<span class="shp-badge tone-red">${(survey.criticalities || []).length === 1 ? (state.lang === "it" ? "1 criticità" : "1 issue") : `${survey.criticalities.length} ${state.lang === "it" ? "criticità" : "issues"}`}</span>` : ""}
+        ${(survey.criticalities || []).length ? `<span class="shp-badge tone-red">${(survey.criticalities || []).length === 1 ? (it ? "1 criticità" : "1 issue") : `${survey.criticalities.length} ${it ? "criticità" : "issues"}`}</span>` : ""}
         <span class="shp-badge ${meta.tone === "ready" ? "ok" : ""}">${escapeHtml(meta.label)}</span>
       </div>
     </article>`;
 }
 
+// Con "Tutti" i sopralluoghi sono divisi per quello che c'è da fare: da
+// fissare (manca squadra o data, o il cliente ha chiesto di spostare), in
+// programma (in ordine di giorno) e fatti (gli ultimi; gli altri col filtro).
+function getSurveyGroupKey(survey) {
+  if (survey.status === "annullato") return "cancelled";
+  if (survey.status === "completato") return "done";
+  if (survey.status === "da-assegnare" || survey.status === "spostato" || !survey.scheduledDate || !survey.crewName) return "todo";
+  return "scheduled";
+}
+
 function renderSurveyListHtml() {
   if (!ui.surveyList) return;
+  const it = state.lang === "it";
   const visible = getVisibleSurveys();
   if (!visible.length) {
-    ui.surveyList.innerHTML = `<div class="info-card">${state.lang === "it" ? "Nessun sopralluogo." : "No site surveys."}</div>`;
+    ui.surveyList.innerHTML = `<div class="info-card">${it ? "Nessun sopralluogo." : "No site surveys."}</div>`;
     return;
   }
-  ui.surveyList.innerHTML = visible.map(renderSurveyCard).join("");
+  if (state.surveyFilter !== "all") {
+    ui.surveyList.innerHTML = visible.map(renderSurveyCard).join("");
+    return;
+  }
+  const byDate = (a, b) => `${a.scheduledDate || "9999"}${a.scheduledTime || "99"}`.localeCompare(`${b.scheduledDate || "9999"}${b.scheduledTime || "99"}`);
+  const todo = visible.filter((survey) => getSurveyGroupKey(survey) === "todo").sort(byDate);
+  const scheduled = visible.filter((survey) => getSurveyGroupKey(survey) === "scheduled").sort(byDate);
+  const doneAll = visible.filter((survey) => getSurveyGroupKey(survey) === "done")
+    .sort((a, b) => String(b.completedAt || b.updatedAt || "").localeCompare(String(a.completedAt || a.updatedAt || "")));
+  const done = doneAll.slice(0, 8);
+  const group = (title, items, extra = "") => (items.length || extra ? `
+    <section class="survey-group">
+      <div class="shp-group-label"><h3>${escapeHtml(title)}</h3><span class="shp-gc">${items.length}</span></div>
+      ${items.map(renderSurveyCard).join("")}
+      ${extra}
+    </section>` : "");
+  ui.surveyList.innerHTML = [
+    group(it ? "Da fissare" : "To schedule", todo),
+    group(it ? "In programma" : "Scheduled", scheduled),
+    group(it ? "Fatti" : "Done", done, doneAll.length > done.length
+      ? `<button type="button" class="ghost-button small-button survey-show-done" data-action="survey-show-done">${it ? `Vedi tutti i fatti (${doneAll.length}) →` : `See all done (${doneAll.length}) →`}</button>`
+      : ""),
+  ].join("") || `<div class="info-card">${it ? "Nessun sopralluogo aperto." : "No open site surveys."}</div>`;
 }
 
 function renderSurveyDetailPanel() {
@@ -27491,6 +27975,9 @@ function renderSurveyDetailView(survey) {
       <label class="survey-meta-field" title="${L("Data prevista", "Scheduled date")}">${surveyIcon("calendar", 13)}
         <input type="date" id="survey-date-input" value="${escapeAttr(survey.scheduledDate || "")}" />
       </label>
+      <label class="survey-meta-field" title="${L("Ora", "Time")}">
+        <input type="time" id="survey-time-input" value="${escapeAttr(survey.scheduledTime || "")}" />
+      </label>
       <button type="button" class="survey-meta-field" data-action="survey-toggle-request-picker">
         ${surveyIcon("link", 13)}<span>${survey.salesRequestId ? "#" + escapeHtml(survey.salesRequestId) : L("Collega CRM", "Link CRM")}</span>
       </button>
@@ -27520,6 +28007,7 @@ function renderSurveyDetailView(survey) {
 
     <div class="survey-action-bar">
       <button type="button" class="survey-icon-button primary" data-action="survey-save-office" data-id="${escapeAttr(survey.id)}">${surveyIcon("check", 14)}${L("Salva", "Save")}</button>
+      ${survey.scheduledDate && survey.phone && survey.status !== "annullato" && survey.status !== "completato" ? `<button type="button" class="survey-icon-button" data-action="survey-confirm-customer" data-id="${escapeAttr(survey.id)}">${L("Avvisa il cliente", "Notify customer")}</button>` : ""}
       ${survey.status !== "da-assegnare" ? `<a class="survey-icon-button" href="/api/surveys/${encodeURIComponent(survey.id)}/report-pdf" target="_blank" rel="noopener">${surveyIcon("download", 14)}${L("Report", "Report")}</a>` : ""}
       ${survey.status === "completato" ? `<button type="button" class="survey-icon-button" data-action="survey-to-generator" data-id="${escapeAttr(survey.id)}">${surveyIcon("quote", 14)}${L("Preventivo", "Quote")}</button>` : ""}
       ${survey.status !== "annullato" && survey.status !== "completato" ? `<button type="button" class="survey-icon-button danger" data-action="survey-cancel" data-id="${escapeAttr(survey.id)}">${surveyIcon("x", 14)}${L("Annulla", "Cancel")}</button>` : ""}
@@ -28449,6 +28937,7 @@ function applySessionPayload(session = {}) {
     state.quoteCosts = null;
     state.quoteEditing = null;
     state.quoteSave = null;
+    state.surveySchedule = null;
     state.salesRequestPendingTab = null;
     state.pendingCurrentViewRefresh = false;
     // Pulisce dati preventivo condivisi per evitare leakage cross-account
@@ -34035,7 +34524,7 @@ async function saveInstallationExpense(event) {
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   if (ui.installationExpenseForm) {
     ui.installationExpenseForm.reset();
-    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = new Date().toISOString().slice(0, 10);
+    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = localDateKey();
   }
   renderCurrentViewOnly(state.currentView);
   setStatus(
@@ -34985,6 +35474,67 @@ function handleGlobalClick(event) {
     showGlobalSearchDialog();
     return;
   }
+  if (action === "cal-open-survey") {
+    state.selectedSurveyId = id;
+    setView("sopralluoghi");
+    return;
+  }
+  if (action === "install-quick-crew" || action === "install-quick-date") {
+    event.preventDefault();
+    event.stopPropagation();
+    openInstallQuickPanel(button, id, action === "install-quick-crew" ? "crew" : "date");
+    return;
+  }
+  if (action === "install-quick-pick-crew") {
+    void saveInstallQuickChange(id, { crew: button.dataset.crew || "" });
+    return;
+  }
+  if (action === "install-quick-save-date" || action === "install-quick-clear-date") {
+    const panel = button.closest(".install-quick-panel");
+    const clear = action === "install-quick-clear-date";
+    void saveInstallQuickChange(id, {
+      installDate: clear ? "" : String(panel?.querySelector("[name=quickDate]")?.value || ""),
+      installTime: clear ? "" : String(panel?.querySelector("[name=quickTime]")?.value || ""),
+    });
+    return;
+  }
+  if (action === "survey-quick-crew" || action === "survey-quick-date") {
+    event.preventDefault();
+    event.stopPropagation();
+    openSurveyQuickPanel(button, id, action === "survey-quick-crew" ? "crew" : "date");
+    return;
+  }
+  if (action === "survey-quick-pick-crew") {
+    void saveSurveyQuickChange(id, { crewName: button.dataset.crew || "" });
+    return;
+  }
+  if (action === "survey-quick-save-date" || action === "survey-quick-clear-date") {
+    const panel = button.closest(".install-quick-panel");
+    const clear = action === "survey-quick-clear-date";
+    void saveSurveyQuickChange(id, {
+      scheduledDate: clear ? "" : String(panel?.querySelector("[name=quickDate]")?.value || ""),
+      scheduledTime: clear ? "" : String(panel?.querySelector("[name=quickTime]")?.value || ""),
+    });
+    return;
+  }
+  if (action === "survey-confirm-customer") {
+    const survey = (state.surveys || []).find((item) => item.id === id);
+    if (survey) openCustomerWhatsApp(survey.phone, buildSurveyConfirmMessage(survey));
+    return;
+  }
+  if (action === "installation-confirm-customer") {
+    void confirmInstallationToCustomer(id || state.selectedOrderId || "");
+    return;
+  }
+  if (action === "survey-show-done") {
+    state.surveyFilter = "completato";
+    renderSopralluoghi();
+    return;
+  }
+  if (action === "install-show-completed") {
+    setView("installations-completed");
+    return;
+  }
   if (action === "crm-assign-pick") {
     void assignSingleSalesRequest(button.dataset.id || "", button.dataset.assignment || "");
     return;
@@ -35667,6 +36217,7 @@ function handleGlobalClick(event) {
     const patch = {
       crewName: crewSelect?.value || "",
       scheduledDate: dateInput?.value || "",
+      scheduledTime: document.getElementById("survey-time-input")?.value || "",
       officeNotes: notesInput?.value || "",
       phone: phoneInput?.value || "",
       email: emailInput?.value || "",
@@ -37196,6 +37747,7 @@ bindEvent(document.getElementById("quote-save-search"), "input", (event) => {
 });
 bindEvent(document.getElementById("quote-list-dialog"), "click", handleSavedQuotesDialogClick);
 bindEvent(document.getElementById("quote-send-dialog"), "click", handleQuoteSendDialogClick);
+bindEvent(document.getElementById("survey-schedule-dialog"), "click", handleSurveyScheduleDialogClick);
 bindEvent(document.getElementById("nf-margin"), "input", handleNfMarginInput);
 bindEvent(document.getElementById("quote-costs-editor"), "submit", (event) => { void saveQuoteCostsConfig(event); });
 ["input", "change"].forEach((eventName) => bindEvent(document.getElementById("quote-costs-editor"), eventName, (event) => {

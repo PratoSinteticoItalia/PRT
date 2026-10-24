@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261024-correzioni-generatore-inbox" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261024-correzioni-generatore-inbox" />
+    <link rel="preload" href="./styles.css?v=20261024-pose-sopralluoghi" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261024-pose-sopralluoghi" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1522,6 +1522,7 @@
                   <button type="button" id="installation-maps-button" class="ghost-button small">Apri Maps</button>
                   <button type="button" id="installation-route-button" class="ghost-button small">Apri itinerario</button>
                   <button type="button" id="installation-call-button" class="ghost-button small">Chiama cliente</button>
+                  <button type="button" id="installation-confirm-button" class="ghost-button small" data-action="installation-confirm-customer">Conferma al cliente</button>
                   <button type="button" id="installation-email-button" class="ghost-button small">Invia email</button>
                   <button type="button" id="installation-attachment-button" class="ghost-button small">Carica foto</button>
                   <button type="button" id="installation-export-button" class="ghost-button small">Esporta scheda</button>
@@ -2740,6 +2741,19 @@
         </footer>
       </div>
     </dialog>
+    <!-- Fissa sopralluogo dalla richiesta (Cartella): data, ora, squadra, poi WhatsApp al cliente -->
+    <dialog id="survey-schedule-dialog" class="srq-dialog" aria-labelledby="survey-schedule-title">
+      <div class="srq-dialog-body">
+        <header class="srq-dialog-head">
+          <div>
+            <h2 id="survey-schedule-title">Fissa il sopralluogo</h2>
+            <p id="survey-schedule-sub">Nasce già collegato alla richiesta, con i dati del cliente.</p>
+          </div>
+        </header>
+        <div id="survey-schedule-body" class="srq-dialog-section"></div>
+        <footer class="srq-dialog-actions" id="survey-schedule-actions"></footer>
+      </div>
+    </dialog>
     <!-- Preventivi salvati: i miei (privati e condivisi) e, con il permesso, tutto l'ufficio -->
     <dialog id="quote-list-dialog" class="srq-dialog is-wide" aria-labelledby="quote-list-title">
       <div class="srq-dialog-body">
@@ -2753,7 +2767,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261024-correzioni-generatore-inbox" defer></script>
-    <script src="./app.js?v=20261024-correzioni-generatore-inbox" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261024-pose-sopralluoghi" defer></script>
+    <script src="./app.js?v=20261024-pose-sopralluoghi" type="module"></script>
   </body>
 </html>

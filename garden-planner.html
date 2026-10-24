@@ -75,12 +75,12 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <!-- Bundle già compilato da esbuild (garden-planner-page.min.js): script classico, niente Babel a runtime -->
-    <script src="./garden-planner-page.js?v=20261024-correzioni-generatore-inbox"></script>
+    <script src="./garden-planner-page.js?v=20261024-pose-sopralluoghi"></script>
     <script type="module">
       // Interfaccia in inglese se scelta nel portale (stesso catalogo dell'app).
       // I report per il cliente hanno data-no-i18n e restano in italiano.
-      import { translateItToEn } from "./lib/i18n-en.js?v=20261024-correzioni-generatore-inbox";
-      import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-correzioni-generatore-inbox";
+      import { translateItToEn } from "./lib/i18n-en.js?v=20261024-pose-sopralluoghi";
+      import { createDomTranslator } from "./lib/i18n-dom.js?v=20261024-pose-sopralluoghi";
       const translator = createDomTranslator(translateItToEn);
       const readLang = () => { try { return window.localStorage.getItem("psi-lang") === "en" ? "en" : "it"; } catch { return "it"; } };
       const applyLang = () => {
@@ -98,7 +98,7 @@
           // Register without update logic — the main app SW handles version updates.
           // Avoid registration.waiting checks and controllerchange reloads here to
           // prevent the garden planner iframe from reloading every time it opens.
-          navigator.serviceWorker.register("./sw.js?v=20261024-correzioni-generatore-inbox").catch(() => {});
+          navigator.serviceWorker.register("./sw.js?v=20261024-pose-sopralluoghi").catch(() => {});
         });
       }
     </script>
