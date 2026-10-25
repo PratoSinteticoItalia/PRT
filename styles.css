@@ -30705,3 +30705,10 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 @media (max-width: 520px) {
   #sopralluoghi .detail-panel .ddt-head-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Impostazioni → Pagine del menu (26 ott 2026) */
+.suspended-views-editor { display: grid; gap: 2px; margin-top: 8px; }
+.suspended-view-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 2px; border-bottom: 1px solid var(--ui-line, #e5e9e4); }
+.suspended-view-row:last-child { border-bottom: 0; }
+.suspended-view-row strong { display: block; font-size: 14px; }
+.suspended-view-row small { display: block; margin-top: 2px; color: var(--ui-muted, #6b7b72); font-size: 12.5px; }

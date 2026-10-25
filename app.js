@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-sopralluoghi-telefono";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261025-sopralluoghi-telefono";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-sopralluoghi-telefono";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-sopralluoghi-telefono";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-sopralluoghi-telefono";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-sopralluoghi-telefono";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-sopralluoghi-telefono';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-pagine-sospese-2";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261025-pagine-sospese-2";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-pagine-sospese-2";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-pagine-sospese-2";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-pagine-sospese-2";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-pagine-sospese-2";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-pagine-sospese-2';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261025-sopralluoghi-telefono";
+} from "./lib/order-money.js?v=20261025-pagine-sospese-2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261025-sopralluoghi-telefono";
+import { regionForCity } from "./lib/geo.js?v=20261025-pagine-sospese-2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261025-sopralluoghi-telefono";
+} from "./lib/shipping-eligibility.js?v=20261025-pagine-sospese-2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261025-sopralluoghi-telefono";
+} from "./lib/profit-split.js?v=20261025-pagine-sospese-2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,11 +66,11 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261025-sopralluoghi-telefono";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-sopralluoghi-telefono";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-sopralluoghi-telefono";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261025-sopralluoghi-telefono";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261025-sopralluoghi-telefono";
+} from "./lib/preventivo-pricing.js?v=20261025-pagine-sospese-2";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-pagine-sospese-2";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-pagine-sospese-2";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261025-pagine-sospese-2";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261025-pagine-sospese-2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -78,13 +78,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261025-sopralluoghi-telefono";
+} from "./lib/sales-assignment.js?v=20261025-pagine-sospese-2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261025-sopralluoghi-telefono";
+} from "./lib/surveys.js?v=20261025-pagine-sospese-2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -98,7 +98,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261025-sopralluoghi-telefono";
+const APP_SHELL_VERSION = "20261025-pagine-sospese-2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1322,6 +1322,8 @@ const state = {
   selectedCommunicationThreadId: "",
   loadedCommunicationThreadId: "",
   communicationsUnreadCount: 0,
+  // Pagine sospese dall'ufficio (Impostazioni → Pagine del menu): fuori dal menu di tutti.
+  suspendedViews: [],
   communicationsLoading: false,
   communicationsInitialized: false,
   // ── Centro notifiche ──────────────────────────────────────────────────
@@ -2820,7 +2822,13 @@ function closeMobileDrillDetail({ skipHistory = false } = {}) {
 }
 
 function getAllowedViewsForRole(role = state.currentUser?.role || "office") {
-  return roleViews[normalizeUserRole(role)] || roleViews.office;
+  const views = roleViews[normalizeUserRole(role)] || roleViews.office;
+  const suspended = state.suspendedViews || [];
+  return suspended.length ? views.filter((view) => !suspended.includes(view)) : views;
+}
+
+function isViewSuspended(view) {
+  return (state.suspendedViews || []).includes(view);
 }
 
 function getHashViewForCurrentRole(allowedViews = getAllowedViewsForRole()) {
@@ -12562,6 +12570,9 @@ function renderDashboardMessagesWidget(prefix) {
   const msgEyebrow = document.getElementById(`dashboard-${prefix}-messages-eyebrow`);
   const msgTitle = document.getElementById(`dashboard-${prefix}-messages-title`);
   if (!messagesEl) return;
+  const card = messagesEl.closest(".dash-card");
+  if (card) card.hidden = isViewSuspended("communications");
+  if (isViewSuspended("communications")) return;
   const it = state.lang !== "en";
   const unread = Number(state.communicationsUnreadCount || 0);
   const threads = state.communicationThreads || [];
@@ -23051,6 +23062,21 @@ const MOBILE_BOTTOM_NAV_PRIMARY = {
   warehouse: ["dashboard", "warehouse", "shipping", "communications"],
   crew: ["dashboard", "installations", "sales-generator", "communications"],
 };
+// Se una voce della barra è sospesa (o non permessa), al suo posto la prima di
+// queste ancora libera: la barra resta di 4 voci + Altro.
+const MOBILE_BOTTOM_NAV_FALLBACK = {
+  office: ["sales-requests", "sopralluoghi", "warehouse"],
+  warehouse: ["ddt", "timesheet-me"],
+  crew: ["sopralluoghi", "garden-planner"],
+};
+
+function getMobilePrimaryViews(role = state.currentUser?.role || "office") {
+  const allowed = getAllowedViewsForRole(role);
+  const primary = (MOBILE_BOTTOM_NAV_PRIMARY[role] || MOBILE_BOTTOM_NAV_PRIMARY.office).filter((view) => allowed.includes(view));
+  const spare = (MOBILE_BOTTOM_NAV_FALLBACK[role] || []).filter((view) => allowed.includes(view) && !primary.includes(view));
+  while (primary.length < 4 && spare.length) primary.push(spare.shift());
+  return primary;
+}
 
 const VIEW_ICONS = {
   dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>',
@@ -23248,11 +23274,11 @@ function renderMobileBottomNav() {
     return;
   }
   nav.classList.remove("hidden");
-  const primary = MOBILE_BOTTOM_NAV_PRIMARY[role] || MOBILE_BOTTOM_NAV_PRIMARY.office;
-  const allAllowed = getAllowedViewsForRole();
   const currentView = state.currentView || "";
   // Costruisce 4 voci primarie + bottone Altro
-  const tabs = primary.filter((v) => allAllowed.includes(v));
+  const allAllowed = getAllowedViewsForRole();
+  const tabs = getMobilePrimaryViews(role);
+  const primary = tabs;
   let html = tabs.map((view) => {
     const active = currentView === view || currentView.startsWith(view + "-");
     const label = t(view) || view;
@@ -23353,8 +23379,7 @@ function openMoreSheet() {
   if (!sheet || !content) return;
   const allAllowed = new Set(getAllowedViewsForRole());
   const role = state.currentUser?.role || "office";
-  const primary = MOBILE_BOTTOM_NAV_PRIMARY[role] || [];
-  const exclude = new Set(primary);
+  const exclude = new Set(getMobilePrimaryViews(role));
   let html = "";
   for (const section of MORE_SHEET_SECTIONS) {
     const visible = section.views.filter((v) => allAllowed.has(v) && !exclude.has(v));
@@ -28288,7 +28313,7 @@ async function deleteFreeDdt() {
 // Impostazioni a sezioni (ottobre 2026): si vede una sezione alla volta invece
 // di quattordici riquadri uno sotto l'altro. L'ultima scelta resta per la
 // prossima apertura su questo browser.
-const SETTINGS_SECTIONS = ["account", "team", "quotes", "catalog", "integrations", "security"];
+const SETTINGS_SECTIONS = ["account", "team", "quotes", "catalog", "integrations", "menu", "security"];
 
 function getSettingsSection() {
   if (state.currentUser?.mustChangePassword) return "account";
@@ -28323,8 +28348,49 @@ function setSettingsSection(section) {
   scrollCurrentViewToTop();
 }
 
+// Pagine del menu (26 ott 2026): l'ufficio sospende le pagine che non usa;
+// spariscono dal menu di tutti, codice e dati restano.
+const SUSPENDABLE_VIEW_INFO = {
+  communications: ["Chat tra ufficio, squadre, magazzino e rivenditori.", "Chat between office, crews, warehouse and resellers."],
+  marketing: ["Pubblicazione su Instagram e Facebook.", "Publishing to Instagram and Facebook."],
+  "reseller-report": ["Uso del portale da parte dei rivenditori.", "Resellers' portal usage."],
+};
+
+function renderSuspendedViewsEditor() {
+  const box = document.getElementById("suspended-views-editor");
+  if (!box) return;
+  const it = state.lang === "it";
+  box.innerHTML = Object.entries(SUSPENDABLE_VIEW_INFO).map(([view, [noteIt, noteEn]]) => {
+    const suspended = isViewSuspended(view);
+    return `<div class="suspended-view-row">
+      <div><strong>${escapeHtml(t(view))}</strong><small>${escapeHtml(it ? noteIt : noteEn)}</small></div>
+      <button type="button" class="native-product-toggle ${suspended ? "is-off" : "is-on"}" data-action="toggle-suspended-view" data-view-key="${escapeAttr(view)}" aria-pressed="${suspended ? "false" : "true"}">${suspended ? (it ? "Sospesa" : "Suspended") : (it ? "Attiva" : "Active")}</button>
+    </div>`;
+  }).join("");
+}
+
+async function toggleSuspendedView(view) {
+  const it = state.lang === "it";
+  const next = isViewSuspended(view)
+    ? state.suspendedViews.filter((item) => item !== view)
+    : [...state.suspendedViews, view];
+  try {
+    const result = await apiFetch("/api/settings/suspended-views", { method: "PUT", body: JSON.stringify({ views: next }) });
+    state.suspendedViews = Array.isArray(result?.suspendedViews) ? result.suspendedViews : next;
+    updateShell();
+    renderMobileBottomNav();
+    renderSuspendedViewsEditor();
+    showToast(isViewSuspended(view)
+      ? (it ? `${t(view)} sospesa: non compare più nel menu.` : `${t(view)} suspended: no longer in the menu.`)
+      : (it ? `${t(view)} di nuovo attiva.` : `${t(view)} active again.`), "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 function renderSettings() {
   applySettingsSection();
+  renderSuspendedViewsEditor();
   renderQuoteCostsEditor();
   ui.settingsForm.storeDomain.value = state.settings.storeDomain || "";
   ui.settingsForm.clientId.value = state.settings.clientId || "";
@@ -29068,6 +29134,7 @@ function applySessionPayload(session = {}) {
     state.communicationsUnreadCount = session.communicationsUnreadCount;
     setNavCount("communications", state.communicationsUnreadCount);
   }
+  state.suspendedViews = Array.isArray(session.suspendedViews) ? session.suspendedViews : [];
   state.securityEvents = session.securityEvents || [];
   state.securityPolicy = session.securityPolicy || {};
   if (!state.crmServerPage?.loadedAt && session.salesRequestsStats && typeof session.salesRequestsStats === "object") {
@@ -35590,6 +35657,10 @@ function handleGlobalClick(event) {
   }
   if (action === "crm-assign-pick") {
     void assignSingleSalesRequest(button.dataset.id || "", button.dataset.assignment || "");
+    return;
+  }
+  if (action === "toggle-suspended-view") {
+    void toggleSuspendedView(button.dataset.viewKey);
     return;
   }
   if (action === "settings-section") {

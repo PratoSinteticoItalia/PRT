@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261025-sopralluoghi-telefono" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261025-sopralluoghi-telefono" />
+    <link rel="preload" href="./styles.css?v=20261025-pagine-sospese-2" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261025-pagine-sospese-2" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1954,6 +1954,7 @@
             <button type="button" class="settings-section-tab" data-action="settings-section" data-section="quotes">Preventivi</button>
             <button type="button" class="settings-section-tab" data-action="settings-section" data-section="catalog">Prodotti e listino</button>
             <button type="button" class="settings-section-tab" data-action="settings-section" data-section="integrations">Collegamenti</button>
+            <button type="button" class="settings-section-tab" data-action="settings-section" data-section="menu">Pagine del menu</button>
             <button type="button" class="settings-section-tab" data-action="settings-section" data-section="security">Sicurezza</button>
           </nav>
           <div class="settings-grid">
@@ -2432,6 +2433,16 @@
                 <div id="sync-control-panel" class="sync-control-grid"></div>
               </section>
 
+              <section class="panel" data-settings-section="menu">
+                <div class="panel-head">
+                  <div>
+                    <p class="panel-eyebrow">Menu</p>
+                    <h3>Pagine del menu</h3>
+                  </div>
+                </div>
+                <p class="panel-note">Una pagina sospesa sparisce dal menu di tutti (ufficio, squadre, magazzino, rivenditori). I dati restano: riattivandola torna com'era.</p>
+                <div id="suspended-views-editor" class="suspended-views-editor"></div>
+              </section>
               <section class="panel" data-settings-section="security">
                 <div class="panel-head">
                   <div>
@@ -2777,7 +2788,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261025-sopralluoghi-telefono" defer></script>
-    <script src="./app.js?v=20261025-sopralluoghi-telefono" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261025-pagine-sospese-2" defer></script>
+    <script src="./app.js?v=20261025-pagine-sospese-2" type="module"></script>
   </body>
 </html>

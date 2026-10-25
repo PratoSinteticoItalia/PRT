@@ -11190,6 +11190,14 @@ const QUOTE_ACCEPTED_REQUEST_STATUS = "preventivo confermato";
 // (riparto dell'utile come in Conti posa) e soglie dei colori.
 const QUOTE_COST_MATERIAL_KEYS = ["pietrisco", "telo", "bande", "colla", "picchetti"];
 
+// Pagine che l'ufficio può sospendere (26 ott 2026): spariscono dal menu di
+// tutti, codice e dati restano; si riattivano da Impostazioni → Pagine del menu.
+const SUSPENDABLE_VIEWS = ["communications", "marketing", "reseller-report"];
+function normalizeSuspendedViews(value) {
+  const list = Array.isArray(value) ? value.map((item) => String(item || "").trim()) : [];
+  return SUSPENDABLE_VIEWS.filter((view) => list.includes(view));
+}
+
 function normalizeQuoteCostConfig(config = {}) {
   const bounded = (value, fallback, max = 100) => {
     const number = Number(value);
@@ -12243,6 +12251,9 @@ function reconcileStoreData(store) {
   store.securityEvents = Array.isArray(store.securityEvents) ? store.securityEvents : [];
   store.pushSubscriptions = Array.isArray(store.pushSubscriptions) ? store.pushSubscriptions : [];
   store.customProducts = Array.isArray(store.customProducts) ? store.customProducts : [];
+  // Mai impostato = la prima volta: sospese le tre pagine che l'ufficio non usa
+  // (richiesta del 26 ott 2026). Poi vale la scelta fatta in Impostazioni.
+  store.suspendedViews = store.suspendedViews === undefined ? [...SUSPENDABLE_VIEWS] : normalizeSuspendedViews(store.suspendedViews);
   store.inventoryValueHistory = Array.isArray(store.inventoryValueHistory) ? store.inventoryValueHistory.filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item?.date || ""))) : [];
   store.shopifySettings = {
     ...defaults.shopifySettings,
@@ -14013,6 +14024,7 @@ async function handleApi(req, res, url) {
       revision: getStoreRevision(store),
       user: sanitizeUser(currentUser),
       communicationsUnreadCount: sessionCommUnread,
+      suspendedViews: currentUser ? normalizeSuspendedViews(store.suspendedViews) : [],
       jobs: roleFilteredJobs,
       orders: roleFilteredOrders,
       surveys: sessionSurveys,
@@ -18538,6 +18550,15 @@ async function handleApi(req, res, url) {
 
   // Costi della barra dell'utile: tutto l'ufficio li legge (la barra la vede
   // tutto l'ufficio) e li imposta da Impostazioni.
+  if (url.pathname === "/api/settings/suspended-views" && req.method === "PUT") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    store.suspendedViews = normalizeSuspendedViews(body.views);
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { suspendedViews: store.suspendedViews, suspendable: SUSPENDABLE_VIEWS });
+  }
+
   if (url.pathname === "/api/quote-costs" && ["GET", "PUT"].includes(req.method)) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
