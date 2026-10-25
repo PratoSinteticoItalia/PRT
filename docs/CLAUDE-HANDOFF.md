@@ -527,3 +527,10 @@ L'utente ha accettato la proposta: i corrispettivi contano solo i movimenti veri
 
 - L'utente: "gli ordini una volta registrati non tornano più indietro, se si commettono errori". In prima nota un movimento si poteva solo modificare. Ora `mutateRegister` accetta `delete-entry` / `delete-payout` (motivo obbligatorio, solo a mese aperto, voce nello storico con il movimento tolto); nel dettaglio del movimento e dell'accredito c'è "Elimina" con il riquadro del motivo (`deleteBoxHtml`/`bindDeleteBox`). In "Ordini e incassi" gli euro registrati sono un link che apre il movimento (o l'elenco, `orderEntries`). L'incasso dell'ordine torna "da registrare".
 - Sopralluoghi "visibilità sminchiata": sul telefono la scheda usciva dal bordo destro (colonne `.panel-subsection`/`.ddt-head-grid` con larghezza minima dei campi 2×197 px). Colonne `minmax(0, 1fr)`, una colonna sotto 520 px, pulsante allegati con stile, intestazioni dei gruppi con margine.
+- Pubblicato il 26 ott (prod-promote a6948ed, main 4328bbe, live "20261025-sopralluoghi-telefono").
+
+## Pagine sospese: Report rivenditori, Marketing, Comunicazioni — 26 ottobre
+
+L'utente non usa queste tre pagine e vuole "metterle in bozza", riattivabili se servono.
+- Server: `SUSPENDABLE_VIEWS` e `normalizeSuspendedViews`; `store.suspendedViews` (mai impostato = le tre sospese, poi vale la scelta), nel payload di sessione `suspendedViews` per tutti i ruoli, `PUT /api/settings/suspended-views` (ufficio).
+- Client: `getAllowedViewsForRole` toglie le pagine sospese (menu, "Altro", accesso da indirizzo → Dashboard); `getMobilePrimaryViews` rimpiazza nella barra in basso la voce sospesa (`MOBILE_BOTTOM_NAV_FALLBACK`: ufficio Richieste, magazzino DDT, squadra Sopralluoghi); il riquadro chat della Dashboard sparisce. Impostazioni → nuova sezione "Pagine del menu" con gli interruttori (`renderSuspendedViewsEditor`, `toggleSuspendedView`). Codice e dati delle pagine restano.
