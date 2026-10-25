@@ -28574,6 +28574,12 @@ body.mobile-safe-mode .main-content {
 #accounting-workspace .acw-btn:hover,.acw-dialog .acw-btn:hover{border-color:#b9c9bd;background:#f7faf6}
 #accounting-workspace .acw-btn.is-primary,.acw-dialog .acw-btn.is-primary{background:var(--acw-green,#214d3d);border-color:var(--acw-green,#214d3d);color:#fff}
 #accounting-workspace .acw-btn.is-primary:hover,.acw-dialog .acw-btn.is-primary:hover{background:#183a2e}
+#accounting-workspace .acw-btn.is-danger,.acw-dialog .acw-btn.is-danger{color:#a3361c;border-color:#ecc9bd}
+#accounting-workspace .acw-btn.is-danger:hover,.acw-dialog .acw-btn.is-danger:hover{background:#fdf1ed}
+.acw-dialog .acw-push-left{margin-right:auto}
+.acw-dialog .acw-delete-box{margin-top:16px;padding:14px 16px;border:1px solid #ecc9bd;border-radius:10px;background:#fdf6f3}
+.acw-dialog .acw-delete-box[hidden]{display:none}
+#accounting-workspace .acw-small-link{display:block;font-size:12px;font-weight:600;margin-top:4px}
 #accounting-workspace .acw-btn.is-small{padding:6px 11px;min-height:32px;font-size:12.5px}
 #accounting-workspace .acw-btn:disabled,.acw-dialog .acw-btn:disabled{opacity:.45;cursor:not-allowed}
 #accounting-workspace .acw-link,.acw-dialog .acw-link{background:none;border:0;padding:3px 0;color:var(--acw-green,#214d3d);font-weight:650;font-size:inherit;cursor:pointer;text-align:left;transform:none;box-shadow:none}
@@ -30681,4 +30687,21 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
   .an-kpi strong { font-size: 20px; }
   .an-bar-row { grid-template-columns: minmax(0, 1fr) auto; }
   .an-bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Sopralluoghi (26 ott 2026): la scheda usciva dal bordo destro del telefono.
+   Le colonne prendevano la larghezza naturale dei campi (2 × ~197 px) e la
+   riga squadra/data/ora non si restringeva: ora tutto si adatta allo schermo. */
+#sopralluoghi .detail-panel .panel-subsection { grid-template-columns: minmax(0, 1fr); }
+#sopralluoghi .detail-panel .ddt-head-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#sopralluoghi .detail-panel :is(.text-input, .survey-note-block) { width: 100%; min-width: 0; box-sizing: border-box; }
+#sopralluoghi .survey-meta-strip .survey-meta-field { min-width: 0; max-width: 100%; }
+#sopralluoghi .survey-file-row { flex-wrap: wrap; }
+#sopralluoghi .survey-file-row input[type="file"] { max-width: 100%; font-size: 12.5px; color: var(--muted, #6b7b72); }
+#sopralluoghi .survey-file-row input[type="file"]::file-selector-button { margin-right: 8px; padding: 6px 11px; border: 1px solid var(--ui-line-strong, #d5dbd3); border-radius: 8px; background: #fff; color: #1f2f28; font: inherit; font-weight: 600; cursor: pointer; }
+#sopralluoghi .survey-action-bar { flex-wrap: wrap; }
+/* Intestazioni dei gruppi (Da fissare, In programma, Fatti) staccate dal bordo. */
+#sopralluoghi .survey-group .shp-group-label { padding: 12px 16px 8px; }
+@media (max-width: 520px) {
+  #sopralluoghi .detail-panel .ddt-head-grid { grid-template-columns: minmax(0, 1fr); }
 }
