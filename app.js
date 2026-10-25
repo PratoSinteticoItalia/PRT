@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-analisi-stili-mobile";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261025-analisi-stili-mobile";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-analisi-stili-mobile";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-analisi-stili-mobile";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-analisi-stili-mobile";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-analisi-stili-mobile";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-analisi-stili-mobile';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-sopralluoghi-telefono";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261025-sopralluoghi-telefono";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-sopralluoghi-telefono";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-sopralluoghi-telefono";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-sopralluoghi-telefono";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-sopralluoghi-telefono";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-sopralluoghi-telefono';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261025-analisi-stili-mobile";
+} from "./lib/order-money.js?v=20261025-sopralluoghi-telefono";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261025-analisi-stili-mobile";
+import { regionForCity } from "./lib/geo.js?v=20261025-sopralluoghi-telefono";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261025-analisi-stili-mobile";
+} from "./lib/shipping-eligibility.js?v=20261025-sopralluoghi-telefono";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261025-analisi-stili-mobile";
+} from "./lib/profit-split.js?v=20261025-sopralluoghi-telefono";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,11 +66,11 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261025-analisi-stili-mobile";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-analisi-stili-mobile";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-analisi-stili-mobile";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261025-analisi-stili-mobile";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261025-analisi-stili-mobile";
+} from "./lib/preventivo-pricing.js?v=20261025-sopralluoghi-telefono";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-sopralluoghi-telefono";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-sopralluoghi-telefono";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261025-sopralluoghi-telefono";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261025-sopralluoghi-telefono";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -78,13 +78,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261025-analisi-stili-mobile";
+} from "./lib/sales-assignment.js?v=20261025-sopralluoghi-telefono";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261025-analisi-stili-mobile";
+} from "./lib/surveys.js?v=20261025-sopralluoghi-telefono";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -98,7 +98,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261025-analisi-stili-mobile";
+const APP_SHELL_VERSION = "20261025-sopralluoghi-telefono";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];

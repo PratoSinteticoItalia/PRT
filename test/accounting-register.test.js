@@ -67,3 +67,14 @@ test('metodi di pagamento: circuiti Shopify e testo libero nella categoria giust
   assert.equal(receiptMethodKey('Shopify'), 'other');
   assert.equal(receiptMethodKey(''), 'other');
 });
+
+test('registro: un movimento registrato per sbaglio si elimina, con il motivo, solo a mese aperto', () => {
+  let s = add();
+  assert.throws(() => mutateRegister(s, { action: 'delete-entry', id: 'e1', revision: s.revision }, 'a', 'now', 'x'), /perché/);
+  const removed = mutateRegister(s, { action: 'delete-entry', id: 'e1', reason: 'ordine sbagliato', revision: s.revision }, 'a', 'now', 'x');
+  assert.equal(removed.entries.length, 0);
+  assert.equal(removed.audit.at(-1).before.id, 'e1');
+  assert.equal(removed.audit.at(-1).reason, 'ordine sbagliato');
+  s = mutateRegister(s, { action: 'close', month: '2026-10', revision: s.revision }, 'a', 'now', 'x');
+  assert.throws(() => mutateRegister(s, { action: 'delete-entry', id: 'e1', reason: 'x', revision: s.revision }, 'a', 'now', 'x'), /Mese chiuso/);
+});
