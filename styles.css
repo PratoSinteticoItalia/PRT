@@ -30712,3 +30712,36 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 .suspended-view-row:last-child { border-bottom: 0; }
 .suspended-view-row strong { display: block; font-size: 14px; }
 .suspended-view-row small { display: block; margin-top: 2px; color: var(--ui-muted, #6b7b72); font-size: 12.5px; }
+
+/* Calendario della posa nella bacheca (novembre 2026): primo e ultimo giorno,
+   arancione = squadra già impegnata, rosso = non disponibile. Sul telefono
+   sale dal fondo dello schermo invece di stare sotto il pulsante. */
+.install-quick-panel.install-date-picker { width: 324px; max-width: calc(100vw - 16px); max-height: 86vh; padding: 8px 8px 10px; gap: 6px; }
+.install-date-picker .idp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
+.install-date-picker .idp-head strong { font-size: 14.5px; text-transform: capitalize; }
+.install-date-picker .idp-nav { justify-content: center; width: 36px; min-height: 36px; padding: 0; font-size: 20px; line-height: 1; }
+.install-date-picker .idp-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.install-date-picker .idp-weekdays span { color: var(--ui-muted, #66716a); font-size: 11px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.install-date-picker .idp-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-height: 42px; padding: 2px 1px; border: 1px solid #e8ece7; border-radius: 8px; background: #fff; color: var(--ui-text, #18231c); font-size: 13.5px; font-weight: 600; text-align: center; }
+.install-date-picker .idp-cell small { max-width: 100%; margin: 0; overflow: hidden; color: #7a4a14; font-size: 9.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.install-date-picker .idp-cell.is-empty { border: 0; background: none; }
+.install-date-picker .idp-cell.is-past, .install-date-picker .idp-cell.is-sunday { color: #9aa59f; background: #f7f8f6; }
+.install-date-picker .idp-cell.is-busy { background: #fbe7cf; border-color: #f0cf9f; }
+.install-date-picker .idp-cell.is-off { background: #f6dede; border-color: #ebbcbc; }
+.install-date-picker .idp-cell.is-off small { color: #8a2e2e; }
+.install-date-picker .idp-cell.is-today { border: 2px solid var(--brand, #2f7a55); }
+.install-date-picker .idp-cell.is-in { background: var(--brand, #2f7a55); border-color: var(--brand, #2f7a55); color: #fff; }
+.install-date-picker .idp-cell.is-edge { background: var(--brand-strong, #1f4637); border-color: var(--brand-strong, #1f4637); }
+.install-date-picker .idp-cell.is-in small { color: #e3f1e8; }
+.install-date-picker .idp-cell:hover:not(.is-in) { background: var(--brand-soft, #e8f2ec); color: var(--brand-strong, #276647); }
+.install-date-picker .idp-summary { margin: 4px 2px 0; padding: 8px 10px; border-radius: 8px; background: #f3f6f3; color: #33433a; font-size: 12.5px; line-height: 1.45; }
+.install-date-picker .idp-summary.is-ok { background: #e9f3ec; color: #1f5a3d; font-weight: 600; }
+.install-date-picker .idp-summary.is-warn { background: #fdf3e7; color: #8a4b12; font-weight: 600; }
+.install-date-picker .idp-summary.is-error { background: #fbeceb; color: #a3352c; font-weight: 600; }
+.install-date-picker .idp-note { margin: 0 2px; color: var(--ui-muted, #66716a); font-size: 12px; line-height: 1.4; }
+.install-date-picker .idp-time { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; color: var(--ui-muted, #66716a); font-size: 12.5px; font-weight: 600; }
+.install-date-picker .idp-time input { min-height: 34px; padding: 4px 8px; border: 1px solid var(--ui-line-strong, #d5dbd3); border-radius: 7px; font: inherit; font-size: 13.5px; }
+@media (max-width: 600px) {
+  .install-quick-panel.install-date-picker { left: 8px !important; right: 8px; top: auto !important; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); width: auto; max-width: none; }
+  .install-date-picker .idp-cell { min-height: 46px; }
+}

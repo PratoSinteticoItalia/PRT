@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261025-pagine-sospese-2";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261025-pagine-sospese-2";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261025-pagine-sospese-2";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261025-pagine-sospese-2";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261025-pagine-sospese-2";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261025-pagine-sospese-2";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261025-pagine-sospese-2';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261103-pose-piu-giorni";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261103-pose-piu-giorni";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261103-pose-piu-giorni";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261103-pose-piu-giorni";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261103-pose-piu-giorni";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261103-pose-piu-giorni";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261103-pose-piu-giorni';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261025-pagine-sospese-2";
+} from "./lib/order-money.js?v=20261103-pose-piu-giorni";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261025-pagine-sospese-2";
+import { regionForCity } from "./lib/geo.js?v=20261103-pose-piu-giorni";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261025-pagine-sospese-2";
+} from "./lib/shipping-eligibility.js?v=20261103-pose-piu-giorni";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261025-pagine-sospese-2";
+} from "./lib/profit-split.js?v=20261103-pose-piu-giorni";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,11 +66,12 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261025-pagine-sospese-2";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261025-pagine-sospese-2";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261025-pagine-sospese-2";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261025-pagine-sospese-2";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261025-pagine-sospese-2";
+} from "./lib/preventivo-pricing.js?v=20261103-pose-piu-giorni";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261103-pose-piu-giorni";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261103-pose-piu-giorni";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261103-pose-piu-giorni";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261103-pose-piu-giorni";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261103-pose-piu-giorni";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -78,13 +79,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261025-pagine-sospese-2";
+} from "./lib/sales-assignment.js?v=20261103-pose-piu-giorni";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261025-pagine-sospese-2";
+} from "./lib/surveys.js?v=20261103-pose-piu-giorni";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -98,7 +99,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261025-pagine-sospese-2";
+const APP_SHELL_VERSION = "20261103-pose-piu-giorni";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11777,10 +11778,10 @@ function buildDashboardCommandMaterialTasks() {
 function buildDashboardCommandInstallationTasks() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = localDateKey(today);
   const horizon = new Date(today);
   horizon.setDate(horizon.getDate() + 7);
-  const horizonKey = horizon.toISOString().slice(0, 10);
+  const horizonKey = localDateKey(horizon);
 
   return (state.orders || [])
     .filter((order) => {
@@ -12467,9 +12468,9 @@ function renderDashboardWarehouseView() {
 function renderDashboardTodayInstalls(elementId, ownerFilter) {
   const todayEl = document.getElementById(elementId);
   if (!todayEl) return;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDateKey();
   const todayInstalls = (state.orders || []).filter((o) => {
-    if (o.operations?.installation?.installDate !== todayKey) return false;
+    if (!installationDays(o.operations?.installation).includes(todayKey)) return false;
     return ownerFilter(o);
   });
   todayEl.innerHTML = todayInstalls.length
@@ -12480,7 +12481,11 @@ function renderDashboardTodayInstalls(elementId, ownerFilter) {
             <div class="dash-action-title">${escapeHtml(composeClientName(o))}</div>
             <div class="dash-action-sub">${escapeHtml(composeAddress(o) || (state.lang === "it" ? "Indirizzo da definire" : "Address pending"))} · ${Math.round(getSafeOrderSqm(o))} mq · ${escapeHtml(o.operations?.product || "—")}</div>
           </div>
-          <span class="dash-action-tag tone-green">${state.lang === "it" ? "Oggi" : "Today"}</span>
+          <span class="dash-action-tag tone-green">${(() => {
+            const days = installationDays(o.operations?.installation);
+            const label = state.lang === "it" ? "Oggi" : "Today";
+            return days.length > 1 ? `${label} · ${days.indexOf(todayKey) + 1}/${days.length}` : label;
+          })()}</span>
         </article>
       `).join("")
     : `<div class="dash-action-empty">${state.lang === "it" ? "Nessuna posa programmata per oggi." : "No installs scheduled for today."}</div>`;
@@ -12493,10 +12498,10 @@ function renderDashboardUpcomingInstalls(elementId, ownerFilter) {
   if (!el) return;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = localDateKey(today);
   const horizon = new Date(today);
   horizon.setDate(horizon.getDate() + 7);
-  const horizonKey = horizon.toISOString().slice(0, 10);
+  const horizonKey = localDateKey(horizon);
   const upcoming = (state.orders || [])
     .filter((o) => {
       const d = o.operations?.installation?.installDate;
@@ -20685,9 +20690,8 @@ function getInstallationWeekKeys() {
 }
 
 function isInstallationInCurrentWeek(order) {
-  const installDate = String(order.operations?.installation?.installDate || "");
-  if (!installDate) return false;
-  return getInstallationWeekKeys().includes(installDate);
+  const week = getInstallationWeekKeys();
+  return installationDays(order.operations?.installation).some((day) => week.includes(day));
 }
 
 function getInstallationWeekOffsetForDate(dateValue) {
@@ -20721,6 +20725,7 @@ function clearInstallationDetail() {
   if (ui.installationProfitSplitSummary) ui.installationProfitSplitSummary.innerHTML = "";
   if (ui.installationProfitSplitBreakdown) ui.installationProfitSplitBreakdown.innerHTML = "";
   if (ui.installationForm?.installDate) ui.installationForm.installDate.value = "";
+  if (ui.installationForm?.installEndDate) ui.installationForm.installEndDate.value = "";
   if (ui.installationForm?.installTime) ui.installationForm.installTime.value = "";
   if (ui.installationForm?.status) ui.installationForm.status.value = "da-pianificare";
   if (ui.installationCrew) ui.installationCrew.innerHTML = buildInstallationCrewOptions("");
@@ -21136,10 +21141,11 @@ function buildInstallationCalendar(orders, crewName = "") {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
     const key = localDateKey(date);
-    const items = orders.filter((order) => String(order.operations?.installation?.installDate || "") === key)
+    // Una posa di più giorni compare in ognuno; i mq si dividono sui giorni.
+    const items = orders.filter((order) => installationDays(order.operations?.installation).includes(key))
       .sort((a, b) => String(a.operations?.installation?.installTime || "99").localeCompare(String(b.operations?.installation?.installTime || "99")));
     const surveys = getCalendarSurveys(key, crewName);
-    const totalSqm = items.reduce((sum, order) => sum + getSafeOrderSqm(order), 0);
+    const totalSqm = items.reduce((sum, order) => sum + getSafeOrderSqm(order) / Math.max(1, installationDays(order.operations?.installation).length), 0);
     const fillRatio = dailyCapacity > 0 ? totalSqm / dailyCapacity : 0;
     const fillPct = Math.min(100, Math.round(fillRatio * 100));
     const gaugeTone = getInstallationSaturationTone(fillRatio);
@@ -21165,10 +21171,13 @@ function buildInstallationCalendar(orders, crewName = "") {
         ${unavailable ? `<div class="cal-unavail-tag">${state.lang === "it" ? "Non disponibile" : "Unavailable"}</div>` : ""}
         ${items.map((order) => {
           const install = order.operations?.installation || {};
+          const days = installationDays(install);
+          const dayIndex = days.indexOf(key) + 1;
+          const dayTag = days.length > 1 ? (state.lang === "it" ? ` · giorno ${dayIndex} di ${days.length}` : ` · day ${dayIndex} of ${days.length}`) : "";
           return `
-          <button class="cal-item" data-action="select-order" data-id="${escapeAttr(order.id)}" data-view="installations" style="border-left:3px solid ${getCrewColor(install.crew)}" title="${escapeAttr(`${composeClientName(order)} · ${getOrderNumber(order)}${install.crew ? ` · ${install.crew}` : ""}`)}">
-            <strong>${install.installTime ? `<em>${escapeHtml(install.installTime)}</em> ` : ""}${escapeHtml(composeClientName(order))}</strong>
-            <span>${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}${crewName || !install.crew ? "" : ` · ${escapeHtml(install.crew)}`}</span>
+          <button class="cal-item" data-action="select-order" data-id="${escapeAttr(order.id)}" data-view="installations" style="border-left:3px solid ${getCrewColor(install.crew)}" title="${escapeAttr(`${composeClientName(order)} · ${getOrderNumber(order)}${install.crew ? ` · ${install.crew}` : ""}${dayTag}`)}">
+            <strong>${install.installTime && dayIndex === 1 ? `<em>${escapeHtml(install.installTime)}</em> ` : ""}${escapeHtml(composeClientName(order))}</strong>
+            <span>${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}${crewName || !install.crew ? "" : ` · ${escapeHtml(install.crew)}`}${escapeHtml(dayTag)}</span>
           </button>`;
         }).join("")}
         ${surveys.map((survey) => `
@@ -21212,8 +21221,9 @@ function renderInstallationKanbanCard(order) {
   const install = order.operations?.installation || {};
   const selected = order.id === state.selectedOrderId ? "selected" : "";
   const it = state.lang === "it";
+  const installDayCount = installationDays(install).length;
   const dateLabel = install.installDate
-    ? `${formatDate(install.installDate)}${install.installTime ? ` · ${install.installTime}` : ""}`
+    ? `${formatInstallRange(install, state.lang)}${installDayCount > 1 ? ` · ${installDayCount} ${it ? "gg" : "days"}` : ""}${install.installTime ? ` · ${install.installTime}` : ""}`
     : (it ? "Fissa la data" : "Set date");
   const installStatus = String(install.status || "").trim();
   const statusLabel = getInstallationStatusLabel(installStatus, Boolean(install.installDate));
@@ -21225,7 +21235,7 @@ function renderInstallationKanbanCard(order) {
   const done = installStatus === "completata";
   // Data passata e posa non ancora iniziata: in rosso, va riprogrammata.
   const overdue = Boolean(install.installDate) && !done && installStatus !== "in-corso"
-    && install.installDate < localDateKey();
+    && lastInstallationDay(install) < localDateKey();
   // Squadra e data si cambiano dalla scheda (menu sotto il pulsante), senza
   // aprire l'ordine; il resto della scheda apre il dettaglio come prima.
   return `
@@ -21268,6 +21278,7 @@ function openFloatingQuickPanel(anchor, key, innerHtml) {
   const fitsBelow = rect.bottom + 6 + panel.offsetHeight <= window.innerHeight - 8;
   panel.style.left = `${left}px`;
   panel.style.top = `${fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - panel.offsetHeight)}px`;
+  panel.dataset.openWidth = String(window.innerWidth);
   (panel.querySelector("input[type=date]") || panel.querySelector("button:not([disabled])"))?.focus({ preventScroll: true });
   if (!document.body.dataset.installQuickBound) {
     document.body.dataset.installQuickBound = "1";
@@ -21281,17 +21292,23 @@ function openFloatingQuickPanel(anchor, key, innerHtml) {
         event.target.closest("#install-quick-panel").querySelector("[data-quick-save]")?.click();
       }
     });
-    window.addEventListener("resize", closeInstallQuickPanel);
+    // Sul telefono tastiera e calendario di sistema cambiano solo l'altezza
+    // della finestra: prima il riquadro si chiudeva proprio mentre si sceglieva.
+    window.addEventListener("resize", () => {
+      const open = document.getElementById("install-quick-panel");
+      if (open && Math.abs(window.innerWidth - Number(open.dataset.openWidth || 0)) > 60) closeInstallQuickPanel();
+    });
     document.querySelector(".main-content")?.addEventListener("scroll", closeInstallQuickPanel, { passive: true });
   }
   return panel;
 }
 
-function renderQuickCrewPanelHtml({ actionAttr, id, currentCrew = "", date = "" }) {
+function renderQuickCrewPanelHtml({ actionAttr, id, currentCrew = "", date = "", days = null, dateLabel = "" }) {
   const it = state.lang === "it";
-  return `<p class="crm-assign-menu-title">${it ? "Squadra" : "Crew"}${date ? ` · ${escapeHtml(formatDate(date))}` : ""}</p>
+  const checkDays = days?.length ? days : (date ? [date] : []);
+  return `<p class="crm-assign-menu-title">${it ? "Squadra" : "Crew"}${dateLabel || date ? ` · ${escapeHtml(dateLabel || formatDate(date))}` : ""}</p>
     ${getInstallationCrewNames().map((crew) => {
-      const unavailable = Boolean(date) && isCrewUnavailable(crew, date);
+      const unavailable = checkDays.some((day) => isCrewUnavailable(crew, day));
       const current = crew === currentCrew;
       return `<button type="button" data-action="${actionAttr}" data-id="${escapeAttr(id)}" data-crew="${escapeAttr(crew)}" ${unavailable ? "disabled" : ""} class="${current ? "is-current" : ""}">
         <span class="crew-dot" style="background:${getCrewColor(crew)}"></span>${escapeHtml(crew)}${unavailable ? ` <small>${it ? "non disponibile" : "unavailable"}</small>` : current ? ` <small>${it ? "attuale" : "current"}</small>` : ""}</button>`;
@@ -21316,9 +21333,155 @@ function openInstallQuickPanel(anchor, orderId, kind) {
   const order = (state.orders || []).find((item) => item.id === orderId);
   if (!order) return;
   const install = order.operations?.installation || {};
-  openFloatingQuickPanel(anchor, `install|${orderId}|${kind}`, kind === "crew"
-    ? renderQuickCrewPanelHtml({ actionAttr: "install-quick-pick-crew", id: orderId, currentCrew: install.crew || "", date: install.installDate || "" })
-    : renderQuickDatePanelHtml({ title: state.lang === "it" ? "Data della posa" : "Installation date", saveAction: "install-quick-save-date", clearAction: "install-quick-clear-date", id: orderId, date: install.installDate || "", time: install.installTime || "" }));
+  if (kind !== "crew") {
+    openInstallDatePicker(anchor, order);
+    return;
+  }
+  openFloatingQuickPanel(anchor, `install|${orderId}|crew`, renderQuickCrewPanelHtml({
+    actionAttr: "install-quick-pick-crew",
+    id: orderId,
+    currentCrew: install.crew || "",
+    days: installationDays(install),
+    dateLabel: formatInstallRange(install, state.lang),
+  }));
+}
+
+// ── Calendario della posa nella bacheca (novembre 2026) ────────────────────
+// Primo e ultimo giorno su un calendario del mese; arancione dove la squadra ha
+// già un'altra posa, rosso dove non è disponibile. Resta aperto finché non si
+// salva o annulla (prima, sul telefono, si chiudeva aprendo il calendario).
+const installDatePicker = { orderId: "", start: "", end: "", month: "", time: "" };
+
+function getCrewBusyDays(crew = "", excludeOrderId = "") {
+  const busy = new Map();
+  if (!crew) return busy;
+  (state.orders || []).forEach((order) => {
+    if (order.id === excludeOrderId) return;
+    const install = order.operations?.installation || {};
+    if (String(install.crew || "").trim() !== crew) return;
+    installationDays(install).forEach((day) => {
+      if (!busy.has(day)) busy.set(day, composeClientName(order));
+    });
+  });
+  return busy;
+}
+
+function openInstallDatePicker(anchor, order) {
+  const install = order.operations?.installation || {};
+  installDatePicker.orderId = order.id;
+  installDatePicker.start = install.installDate || "";
+  installDatePicker.end = install.installEndDate || "";
+  installDatePicker.time = install.installTime || "";
+  installDatePicker.month = String(install.installDate || localDateKey()).slice(0, 7);
+  const panel = openFloatingQuickPanel(anchor, `install|${order.id}|date`, renderInstallDatePickerHtml());
+  panel?.classList.add("install-date-picker");
+}
+
+function refreshInstallDatePicker() {
+  const panel = document.getElementById("install-quick-panel");
+  if (!panel?.classList.contains("install-date-picker")) return;
+  const time = panel.querySelector("[name=quickTime]");
+  if (time) installDatePicker.time = time.value;
+  panel.innerHTML = renderInstallDatePickerHtml();
+}
+
+function pickInstallDatePickerDay(key = "") {
+  const picker = installDatePicker;
+  if (!picker.start || picker.end || key <= picker.start) {
+    picker.start = key;
+    picker.end = "";
+  } else {
+    picker.end = key;
+  }
+  refreshInstallDatePicker();
+}
+
+function shiftInstallDatePickerMonth(direction = 0) {
+  const [year, month] = installDatePicker.month.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1 + direction, 1));
+  installDatePicker.month = next.toISOString().slice(0, 7);
+  refreshInstallDatePicker();
+}
+
+function renderInstallDatePickerHtml() {
+  const it = state.lang === "it";
+  const picker = installDatePicker;
+  const order = (state.orders || []).find((item) => item.id === picker.orderId);
+  const install = order?.operations?.installation || {};
+  const crew = String(install.crew || "").trim();
+  const busy = getCrewBusyDays(crew, picker.orderId);
+  const range = installationDays({ installDate: picker.start, installEndDate: picker.end });
+  const todayKey = localDateKey();
+  const [year, month] = picker.month.split("-").map(Number);
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const lead = (first.getUTCDay() + 6) % 7;
+  const monthLabel = first.toLocaleDateString(it ? "it-IT" : "en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  const weekdays = it ? ["lun", "mar", "mer", "gio", "ven", "sab", "dom"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const cells = [];
+  for (let i = 0; i < lead; i += 1) cells.push('<span class="idp-cell is-empty" aria-hidden="true"></span>');
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${picker.month}-${String(day).padStart(2, "0")}`;
+    const busyName = busy.get(key) || "";
+    const off = Boolean(crew) && isCrewUnavailable(crew, key);
+    const inRange = range.includes(key);
+    const classes = ["idp-cell"];
+    if (inRange) classes.push("is-in");
+    if (inRange && (key === range[0] || key === range[range.length - 1])) classes.push("is-edge");
+    if (busyName) classes.push("is-busy");
+    if (off) classes.push("is-off");
+    if (key < todayKey) classes.push("is-past");
+    if ((lead + day - 1) % 7 === 6) classes.push("is-sunday");
+    if (key === todayKey) classes.push("is-today");
+    const note = off ? (it ? "non disp." : "off") : busyName.split(" ").pop();
+    const aria = [formatDate(key), busyName ? (it ? `${crew} ha già ${busyName}` : `${crew} already has ${busyName}`) : "", off ? (it ? `${crew} non disponibile` : `${crew} unavailable`) : ""].filter(Boolean).join(", ");
+    cells.push(`<button type="button" class="${classes.join(" ")}" data-action="install-picker-day" data-date="${key}" aria-pressed="${inRange}" aria-label="${escapeAttr(aria)}"><span>${day}</span>${note ? `<small>${escapeHtml(note)}</small>` : ""}</button>`);
+  }
+  const longDay = (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(it ? "it-IT" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+  };
+  const offDays = crew ? range.filter((day) => isCrewUnavailable(crew, day)) : [];
+  const busyDays = range.filter((day) => busy.has(day));
+  let summary = it ? "Scegli il primo giorno della posa." : "Pick the first day.";
+  let tone = "";
+  if (picker.start && offDays.length) {
+    summary = it
+      ? `${crew} non è disponibile ${offDays.map((day) => `il ${formatDate(day)}`).join(", ")}: scegli altri giorni o cambia squadra.`
+      : `${crew} is unavailable on ${offDays.map(formatDate).join(", ")}: pick other days or another crew.`;
+    tone = "is-error";
+  } else if (picker.start && busyDays.length) {
+    summary = it
+      ? `${crew} ha già ${busyDays.map((day) => `${busy.get(day)} il ${formatDate(day)}`).join(", ")}. Puoi salvare lo stesso se ci stanno entrambe.`
+      : `${crew} already has ${busyDays.map((day) => `${busy.get(day)} on ${formatDate(day)}`).join(", ")}. You can still save if both fit.`;
+    tone = "is-warn";
+  } else if (picker.start && !picker.end) {
+    summary = it
+      ? `Il ${longDay(picker.start)}. Se dura più giorni clicca l'ultimo, altrimenti salva.`
+      : `${longDay(picker.start)}. If it takes more days click the last one, otherwise save.`;
+  } else if (picker.start) {
+    summary = it
+      ? `Da ${longDay(range[0])} a ${longDay(range[range.length - 1])} · ${range.length} giorni di lavoro${crew ? ` · ${crew} libera` : ""}.`
+      : `From ${longDay(range[0])} to ${longDay(range[range.length - 1])} · ${range.length} working days${crew ? ` · ${crew} free` : ""}.`;
+    tone = "is-ok";
+  }
+  const noCrew = !crew && picker.start ? `<p class="idp-note">${it ? "Nessuna squadra assegnata: la disponibilità si controlla quando la scegli." : "No crew yet: availability is checked when you pick one."}</p>` : "";
+  return `<p class="crm-assign-menu-title">${it ? "Giorni della posa" : "Installation days"}${crew ? ` · ${escapeHtml(crew)}` : ""}</p>
+    <div class="idp-head">
+      <button type="button" class="idp-nav" data-action="install-picker-month" data-dir="-1" aria-label="${it ? "Mese precedente" : "Previous month"}">‹</button>
+      <strong>${escapeHtml(monthLabel)}</strong>
+      <button type="button" class="idp-nav" data-action="install-picker-month" data-dir="1" aria-label="${it ? "Mese successivo" : "Next month"}">›</button>
+    </div>
+    <div class="idp-grid idp-weekdays" aria-hidden="true">${weekdays.map((label) => `<span>${label}</span>`).join("")}</div>
+    <div class="idp-grid">${cells.join("")}</div>
+    <p class="idp-summary ${tone}">${escapeHtml(summary)}</p>
+    ${noCrew}
+    <label class="idp-time"><span>${it ? "Arrivo il primo giorno" : "Arrival on the first day"}</span><input type="time" name="quickTime" value="${escapeAttr(picker.time)}" /></label>
+    <div class="install-quick-actions">
+      ${install.installDate ? `<button type="button" class="is-muted" data-action="install-picker-clear" data-id="${escapeAttr(picker.orderId)}">${it ? "Togli data" : "Clear date"}</button>` : ""}
+      <button type="button" data-action="install-picker-cancel">${it ? "Annulla" : "Cancel"}</button>
+      <button type="button" class="is-primary" data-quick-save data-action="install-picker-save" data-id="${escapeAttr(picker.orderId)}" ${!picker.start || offDays.length ? "disabled" : ""}>${it ? "Salva" : "Save"}</button>
+    </div>`;
 }
 
 function openSurveyQuickPanel(anchor, surveyId, kind) {
@@ -21388,18 +21551,32 @@ function buildSurveyConfirmMessage(survey = {}) {
     "Prato Sintetico Italia"].join("\n\n");
 }
 
+// Posa su più giorni: "da mercoledì 4 novembre a venerdì 6 novembre".
+function formatCustomerAppointmentRange(install = {}) {
+  const days = installationDays(install);
+  if (days.length <= 1) return formatCustomerAppointmentDate(install.installDate, install.installTime);
+  const it = state.lang === "it";
+  const long = (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(it ? "it-IT" : "en-GB", { weekday: "long", day: "numeric", month: "long" });
+  };
+  const arrival = install.installTime ? (it ? `, con arrivo alle ${install.installTime} il primo giorno` : `, arriving at ${install.installTime} on the first day`) : "";
+  return it ? `da ${long(days[0])} a ${long(days[days.length - 1])}${arrival}` : `from ${long(days[0])} to ${long(days[days.length - 1])}${arrival}`;
+}
+
 function buildInstallationConfirmMessage(order = {}, trackingUrl = "") {
   const it = state.lang === "it";
   const install = order.operations?.installation || {};
-  const when = formatCustomerAppointmentDate(install.installDate, install.installTime);
+  const multiDay = installationDays(install).length > 1;
+  const when = formatCustomerAppointmentRange(install);
   const place = composeAddress(order);
   const name = firstNameOf(composeClientName(order));
   if (!it) {
-    return [`Hello${name ? ` ${name}` : ""}, we confirm the installation of your synthetic turf${when ? ` on ${when}` : ""}${place ? ` at ${place}` : ""}.`,
+    return [`Hello${name ? ` ${name}` : ""}, we confirm the installation of your synthetic turf${when ? (multiDay ? ` ${when}` : ` on ${when}`) : ""}${place ? ` at ${place}` : ""}.`,
       trackingUrl ? `You can follow the job here: ${trackingUrl}` : "",
       "For anything just reply to this message. Prato Sintetico Italia"].filter(Boolean).join("\n\n");
   }
-  return [`Ciao${name ? ` ${name}` : ""}, ti confermiamo la posa del tuo prato sintetico${when ? ` per ${when}` : ""}${place ? ` in ${place}` : ""}.`,
+  return [`Ciao${name ? ` ${name}` : ""}, ti confermiamo la posa del tuo prato sintetico${when ? (multiDay ? ` ${when}` : ` per ${when}`) : ""}${place ? ` in ${place}` : ""}.`,
     trackingUrl ? `Puoi seguire il cantiere qui: ${trackingUrl}` : "",
     "Per qualsiasi cosa rispondi pure a questo messaggio. Prato Sintetico Italia"].filter(Boolean).join("\n\n");
 }
@@ -21462,16 +21639,22 @@ async function saveInstallQuickChange(orderId = "", change = {}) {
     } else {
       patch.status = "da-pianificare";
       patch.installTime = "";
+      patch.installEndDate = "";
     }
   }
   const crew = "crew" in change ? change.crew : install.crew;
-  const date = "installDate" in change ? change.installDate : install.installDate;
+  const dateChanged = "installDate" in change;
+  const nextInstall = {
+    installDate: dateChanged ? change.installDate : install.installDate,
+    installEndDate: dateChanged ? (change.installEndDate || "") : install.installEndDate,
+  };
   // Come il trascinamento sul calendario: niente posa su una squadra segnata
-  // non disponibile quel giorno.
-  if (crew && date && isCrewUnavailable(crew, date)) {
+  // non disponibile, in nessuno dei giorni della posa.
+  const offDay = crew ? installationDays(nextInstall).find((day) => isCrewUnavailable(crew, day)) : "";
+  if (offDay) {
     showToast(it
-      ? `${crew} è segnata non disponibile il ${formatDate(date)}. Scegli un altro giorno o un'altra squadra.`
-      : `${crew} is marked unavailable on ${formatDate(date)}. Pick another day or crew.`, "warning");
+      ? `${crew} è segnata non disponibile il ${formatDate(offDay)}. Scegli altri giorni o un'altra squadra.`
+      : `${crew} is marked unavailable on ${formatDate(offDay)}. Pick other days or crew.`, "warning");
     return;
   }
   closeInstallQuickPanel();
@@ -21484,7 +21667,7 @@ async function saveInstallQuickChange(orderId = "", change = {}) {
     state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
     showToast("crew" in change
       ? (change.crew ? (it ? `Squadra: ${change.crew}` : `Crew: ${change.crew}`) : (it ? "Squadra tolta" : "Crew removed"))
-      : (change.installDate ? (it ? `Posa fissata al ${formatDate(change.installDate)}` : `Scheduled on ${formatDate(change.installDate)}`) : (it ? "Data tolta: la posa torna da pianificare" : "Date cleared")), "success");
+      : (change.installDate ? (it ? `Posa fissata: ${formatInstallRange(nextInstall, "it")}` : `Scheduled: ${formatInstallRange(nextInstall, "en")}`) : (it ? "Data tolta: la posa torna da pianificare" : "Date cleared")), "success");
     renderCurrentViewOnly(state.currentView);
   } catch (error) {
     showToast(it ? `Modifica non salvata: ${String(error?.message || "").trim()}` : `Change not saved: ${String(error?.message || "").trim()}`, "error");
@@ -21779,6 +21962,7 @@ function renderInstallations() {
       <div class="${wideLabels.has(card.label) ? "oi-kv-wide" : ""}"><dt>${escapeHtml(card.label)}</dt><dd>${escapeHtml(card.value)}${card.meta ? `<small>${escapeHtml(card.meta)}</small>` : ""}</dd></div>`).join("")}</dl>`;
   }
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
+  if (ui.installationForm.installEndDate) ui.installationForm.installEndDate.value = order.operations?.installation?.installEndDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
   if (ui.installationForm.status) {
     ui.installationForm.status.value = order.operations?.installation?.status || (order.operations?.installation?.installDate ? "programmata" : "da-pianificare");
@@ -34556,6 +34740,7 @@ async function saveInstallation(event) {
       body: JSON.stringify({
         installation: {
           installDate: form.get("installDate"),
+          installEndDate: normalizeInstallEndDate(form.get("installDate"), form.get("installEndDate")),
           installTime: form.get("installTime"),
           status: form.get("status"),
           crew: getCrewForCurrentUser() || form.get("crew") || activeCrewLabelFromFilter(),
@@ -34678,15 +34863,18 @@ async function assignInstallationOrderToDate(orderId, dateKey) {
   const order = state.orders.find((item) => item.id === orderId);
   if (!order || !dateKey) return;
   const suggestedCrew = getActiveInstallationCrewFilter() || order.operations?.installation?.crew || "";
+  // Una posa di più giorni trascinata su un altro giorno resta lunga uguale.
+  const shifted = shiftInstallationDays(order.operations?.installation || {}, dateKey);
   // Il drop sul calendario non controllava mai il flag "squadra non
   // disponibile" (toggleCrewUnavailable): trascinare una card su un giorno
   // segnato indisponibile per quella squadra veniva accettato in silenzio,
   // vanificando l'avviso visivo che l'ufficio aveva appena impostato apposta.
-  if (suggestedCrew && isCrewUnavailable(suggestedCrew, dateKey)) {
+  const offDay = suggestedCrew ? installationDays(shifted).find((day) => isCrewUnavailable(suggestedCrew, day)) : "";
+  if (offDay) {
     showToast(
       state.lang === "it"
-        ? `${suggestedCrew} è segnata non disponibile il ${formatDate(dateKey)}. Rendi la squadra disponibile prima di programmare qui.`
-        : `${suggestedCrew} is marked unavailable on ${formatDate(dateKey)}. Mark the crew available before scheduling here.`,
+        ? `${suggestedCrew} è segnata non disponibile il ${formatDate(offDay)}. Rendi la squadra disponibile prima di programmare qui.`
+        : `${suggestedCrew} is marked unavailable on ${formatDate(offDay)}. Mark the crew available before scheduling here.`,
       "warning",
     );
     return;
@@ -34695,7 +34883,8 @@ async function assignInstallationOrderToDate(orderId, dateKey) {
     method: "POST",
     body: JSON.stringify({
       installation: {
-        installDate: dateKey,
+        installDate: shifted.installDate,
+        installEndDate: shifted.installEndDate,
         status: order.operations?.installation?.status === "da-pianificare" ? "programmata" : order.operations?.installation?.status,
         crew: suggestedCrew,
       },
@@ -35607,6 +35796,27 @@ function handleGlobalClick(event) {
   }
   if (action === "install-quick-pick-crew") {
     void saveInstallQuickChange(id, { crew: button.dataset.crew || "" });
+    return;
+  }
+  if (action === "install-picker-day") {
+    event.preventDefault();
+    pickInstallDatePickerDay(button.dataset.date || "");
+    return;
+  }
+  if (action === "install-picker-month") {
+    event.preventDefault();
+    shiftInstallDatePickerMonth(Number(button.dataset.dir) || 0);
+    return;
+  }
+  if (action === "install-picker-cancel") {
+    closeInstallQuickPanel();
+    return;
+  }
+  if (action === "install-picker-save" || action === "install-picker-clear") {
+    const time = String(button.closest(".install-quick-panel")?.querySelector("[name=quickTime]")?.value || "");
+    void saveInstallQuickChange(id, action === "install-picker-clear"
+      ? { installDate: "", installEndDate: "", installTime: "" }
+      : { installDate: installDatePicker.start, installEndDate: normalizeInstallEndDate(installDatePicker.start, installDatePicker.end), installTime: time });
     return;
   }
   if (action === "install-quick-save-date" || action === "install-quick-clear-date") {

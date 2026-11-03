@@ -8,7 +8,9 @@ const slice = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.ind
 const code = [
   slice('function formatCustomerAppointmentDate(', 'function openCustomerWhatsApp('),
 ].join('\n');
+const { installationDays } = await import('../lib/install-days.js');
 const context = {
+  installationDays,
   state: { lang: 'it' },
   composeAddress: (order) => [order.address, order.city].filter(Boolean).join(', '),
   composeClientName: (order) => `${order.firstName} ${order.lastName}`,
@@ -32,4 +34,10 @@ test('conferma posa: data, indirizzo e link per seguire il cantiere', () => {
 test('senza ora né indirizzo il messaggio resta corretto', () => {
   const text = context.buildSurveyConfirmMessage({ customerName: 'Studio Verde', scheduledDate: '2026-11-02' });
   assert.match(text, /^Ciao, ti confermiamo il sopralluogo per il prato sintetico lunedì 2 novembre\./);
+});
+
+test('conferma posa su più giorni: dal primo all\'ultimo giorno, arrivo il primo', () => {
+  const order = { firstName: 'Mario', lastName: 'Rossi', address: 'Via Roma 1', city: 'Latina', operations: { installation: { installDate: '2026-11-04', installEndDate: '2026-11-06', installTime: '08:00' } } };
+  const text = context.buildInstallationConfirmMessage(order, '');
+  assert.match(text, /ti confermiamo la posa del tuo prato sintetico da mercoledì 4 novembre a venerdì 6 novembre, con arrivo alle 08:00 il primo giorno in Via Roma 1, Latina\./);
 });
