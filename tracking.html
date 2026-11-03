@@ -428,6 +428,7 @@
         departure:  { icon: "🚛", title: "Squadra in viaggio",   sub: "Partiti dal capannone" },
         arrival:    { icon: "📍", title: "Arrivati in cantiere", sub: "Inizio attività sul posto" },
         work_start: { icon: "🔨", title: "Inizio posa",          sub: "Lavori operativi avviati" },
+        day_end:    { icon: "🌙", title: "Fine giornata",        sub: "Si riprende il prossimo giorno di posa" },
         work_end:   { icon: "✅", title: "Posa terminata",       sub: "Verifica finale con il cliente" },
         return:     { icon: "🏁", title: "Cantiere chiuso",      sub: "Squadra rientrata" },
         issue:      { icon: "⚠️", title: "Segnalazione",         sub: "Comunicazione dal cantiere" },
@@ -670,7 +671,8 @@
               if (step.key === "in_transit"  && e.eventType === "departure") return true;
               if (step.key === "on_site"     && e.eventType === "arrival")   return true;
               if (step.key === "in_progress" && e.eventType === "work_start") return true;
-              if (step.key === "completed"   && e.eventType === "return")     return true;
+              if (step.key === "completed"   && e.eventType === "work_end")   return true;
+              if (step.key === "completed"   && e.eventType === "return" && !data.events.some(x => x.eventType === "work_end" || x.eventType === "day_end")) return true;
               return false;
             });
             if (ev) timeBadge = `<span class="step-time">${fmtTime(ev.occurredAt)}</span>`;

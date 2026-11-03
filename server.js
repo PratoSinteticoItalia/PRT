@@ -5,6 +5,7 @@ import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { findFiscalIds, isOnlyFiscalId } from "./lib/fiscal-ids.js";
 import { monthRange, quotesByMonth } from "./lib/analytics.js";
 import { normalizeInstallEndDate } from "./lib/install-days.js";
+import { buildTrips, fleetStatus, normalizeFleet, tripsTotals, vanCostPerKm } from "./lib/fleet.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { computeSupplierLandedCosts, hasSupplierInvoiceCosts, normalizeSupplierInvoiceCosts } from "./lib/supplier-landed-cost.js";
 import { renderQuoteLinkErrorPage, renderQuotePublicPage } from "./lib/quote-public-page.js";
@@ -1664,6 +1665,10 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS job_events_type_idx        ON job_events (event_type, occurred_at DESC);
       CREATE INDEX IF NOT EXISTS job_events_crew_idx        ON job_events (crew_name, occurred_at DESC);
       CREATE INDEX IF NOT EXISTS job_events_recent_idx      ON job_events (occurred_at DESC);
+      -- Novembre 2026: furgone/km/attrezzatura del passaggio e «Annulla».
+      ALTER TABLE job_events ADD COLUMN IF NOT EXISTS meta JSONB NOT NULL DEFAULT '{}';
+      ALTER TABLE job_events ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
+      ALTER TABLE job_events ADD COLUMN IF NOT EXISTS voided_by TEXT;
     `);
     // Ricerca contatti su pezzi di parola: indice a trigrammi. Facoltativo:
     // senza pg_trgm la ricerca funziona lo stesso, solo senza indice.
@@ -4429,8 +4434,20 @@ async function updateServiceRepairInDb(id, patch = {}, opts = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const JOB_EVENT_TYPES = new Set([
-  "departure", "arrival", "work_start", "work_end", "return", "issue", "note",
+  "departure", "arrival", "work_start", "day_end", "work_end", "return", "issue", "note",
 ]);
+
+// Furgone, km sul cruscotto e attrezzatura di Partenza/Rientro.
+function normalizeJobEventMeta(eventType, raw) {
+  if (!raw || typeof raw !== "object" || !["departure", "return"].includes(eventType)) return {};
+  const meta = {};
+  const vanId = String(raw.vanId || "").trim().slice(0, 40);
+  if (vanId) meta.vanId = vanId;
+  const km = Math.round(Number(raw.km));
+  if (Number.isFinite(km) && km > 0 && km < 3000000) meta.km = km;
+  if (Array.isArray(raw.tools)) meta.tools = [...new Set(raw.tools.map((id) => String(id || "").trim().slice(0, 40)).filter(Boolean))].slice(0, 60);
+  return meta;
+}
 
 function dbRowToJobEvent(row) {
   if (!row) return null;
@@ -4450,6 +4467,8 @@ function dbRowToJobEvent(row) {
     notes: row.notes || "",
     source: row.source || "manual",
     deviceId: row.device_id || "",
+    meta: row.meta && typeof row.meta === "object" ? row.meta : {},
+    voidedAt: row.voided_at ? new Date(row.voided_at).toISOString() : null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
   };
 }
@@ -4463,8 +4482,8 @@ async function insertJobEvent(orderId, eventType, ctx = {}) {
   const { rows } = await pool.query(
     `INSERT INTO job_events
       (order_id, installation_id, event_type, occurred_at, user_id, user_name, crew_name,
-       lat, lng, gps_accuracy_m, photos, notes, source, ip_address, user_agent, device_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16)
+       lat, lng, gps_accuracy_m, photos, notes, source, ip_address, user_agent, device_id, meta)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17::jsonb)
      RETURNING *`,
     [
       String(orderId),
@@ -4483,9 +4502,48 @@ async function insertJobEvent(orderId, eventType, ctx = {}) {
       String(ctx.ipAddress || "") || null,
       String(ctx.userAgent || "").slice(0, 500) || null,
       String(ctx.deviceId || "") || null,
+      JSON.stringify(normalizeJobEventMeta(eventType, ctx.meta)),
     ],
   );
   return dbRowToJobEvent(rows[0]);
+}
+
+async function voidJobEvent(orderId, eventId, voidedBy) {
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query(
+    `UPDATE job_events SET voided_at = NOW(), voided_by = $3
+      WHERE id = $1 AND order_id = $2 AND voided_at IS NULL RETURNING *`,
+    [String(eventId), String(orderId), String(voidedBy || "") || null],
+  );
+  return dbRowToJobEvent(rows[0]);
+}
+
+async function getJobEvent(orderId, eventId) {
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query("SELECT * FROM job_events WHERE id = $1 AND order_id = $2", [String(eventId), String(orderId)]);
+  return dbRowToJobEvent(rows[0]);
+}
+
+// Partenze e rientri con furgone dell'ultimo anno abbondante: da qui si
+// ricavano viaggi, km del furgone e dove sono gli attrezzi.
+async function listFleetJobEvents() {
+  if (!USE_POSTGRES) return [];
+  try {
+    await ensureRelationalSchema();
+    const pool = await getPgPool();
+    const { rows } = await pool.query(
+      `SELECT id, order_id, event_type, occurred_at, crew_name, meta FROM job_events
+        WHERE event_type IN ('departure','return') AND voided_at IS NULL
+          AND meta ? 'vanId' AND occurred_at >= NOW() - INTERVAL '400 days'
+        ORDER BY occurred_at ASC LIMIT 5000`,
+    );
+    return rows.map(dbRowToJobEvent);
+  } catch (err) {
+    console.warn("[db] listFleetJobEvents:", err?.message);
+    return [];
+  }
 }
 
 async function listJobEventsForOrder(orderId) {
@@ -4494,7 +4552,7 @@ async function listJobEventsForOrder(orderId) {
     await ensureRelationalSchema();
     const pool = await getPgPool();
     const { rows } = await pool.query(
-      `SELECT * FROM job_events WHERE order_id = $1 ORDER BY occurred_at ASC`,
+      `SELECT * FROM job_events WHERE order_id = $1 AND voided_at IS NULL ORDER BY occurred_at ASC`,
       [String(orderId)],
     );
     return rows.map(dbRowToJobEvent);
@@ -4516,7 +4574,7 @@ async function listLiveJobEventsToday({ crewName = null } = {}) {
     // Finestra: ultimi 24h (più tollerante per timezone server UTC vs Roma)
     const sinceTs = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const params = [sinceTs];
-    let sql = `SELECT * FROM job_events WHERE occurred_at >= $1`;
+    let sql = `SELECT * FROM job_events WHERE occurred_at >= $1 AND voided_at IS NULL`;
     if (crewName) {
       params.push(String(crewName));
       sql += ` AND crew_name = $${params.length}`;
@@ -12258,6 +12316,9 @@ function reconcileStoreData(store) {
   // (richiesta del 26 ott 2026). Poi vale la scelta fatta in Impostazioni.
   store.suspendedViews = store.suspendedViews === undefined ? [...SUSPENDABLE_VIEWS] : normalizeSuspendedViews(store.suspendedViews);
   store.inventoryValueHistory = Array.isArray(store.inventoryValueHistory) ? store.inventoryValueHistory.filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item?.date || ""))) : [];
+  // Furgoni e attrezzatura: la prima volta il Ducato e gli attrezzi dati
+  // dall'ufficio il 3 novembre 2026.
+  store.fleet = normalizeFleet(store.fleet);
   store.shopifySettings = {
     ...defaults.shopifySettings,
     ...(store.shopifySettings || {}),
@@ -13564,7 +13625,7 @@ async function reconcileInstallationStatusesFromField() {
     // il trigger live che avanza su work_start).
     const ev = await pool.query(
       `SELECT DISTINCT order_id FROM job_events
-        WHERE event_type IN ('work_start','work_end','return') AND order_id IS NOT NULL`,
+        WHERE event_type IN ('work_start','day_end','work_end','return') AND order_id IS NOT NULL AND voided_at IS NULL`,
     );
     for (const r of ev.rows) bump(r.order_id, "in-corso");
     // Verbali fine cantiere: bozza → in-corso; firmato/archiviato → completata.
@@ -15239,6 +15300,7 @@ async function handleApi(req, res, url) {
         ipAddress: extractClientIp(req),
         userAgent: req.headers["user-agent"] || "",
         deviceId: body.deviceId,
+        meta: body.meta,
       });
       writeAuditLog("job_event", String(event.id), "create", {
         orderId, eventType: event.eventType, hasGps: event.lat != null,
@@ -15253,6 +15315,35 @@ async function handleApi(req, res, url) {
     } catch (err) {
       console.error("[job-events] create failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "create_failed") });
+    }
+  }
+
+  // POST /api/jobs/:orderId/events/:eventId/void → «Annulla» un passaggio
+  // segnato per sbaglio. Il passaggio resta nel database (e nel registro
+  // modifiche) ma non conta più. La squadra annulla solo i propri passaggi
+  // delle ultime 12 ore; l'ufficio qualsiasi.
+  if (url.pathname.match(/^\/api\/jobs\/[^/]+\/events\/[^/]+\/void$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "db_unavailable" });
+    const parts = url.pathname.split("/");
+    const orderId = decodeURIComponent(parts[3]);
+    const eventId = decodeURIComponent(parts[5]);
+    try {
+      const existing = await getJobEvent(orderId, eventId);
+      if (!existing || existing.voidedAt) return sendJson(res, 404, { error: "event_not_found" });
+      if (currentUser.role === "crew") {
+        const mine = existing.userId === currentUser.id || (currentUser.crewName && existing.crewName === currentUser.crewName);
+        const recent = Date.now() - new Date(existing.createdAt || existing.occurredAt).getTime() < 12 * 3600 * 1000;
+        if (!mine || !recent) return sendJson(res, 403, { error: "void_not_allowed", message: "Puoi annullare solo i tuoi passaggi delle ultime 12 ore. Per gli altri chiedi all'ufficio." });
+      }
+      const event = await voidJobEvent(orderId, eventId, currentUser.name || currentUser.email || "");
+      if (!event) return sendJson(res, 404, { error: "event_not_found" });
+      writeAuditLog("job_event", String(event.id), "void", { orderId, eventType: event.eventType, occurredAt: event.occurredAt }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, event);
+    } catch (err) {
+      console.error("[job-events] void failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "void_failed") });
     }
   }
 
@@ -15415,15 +15506,21 @@ async function handleApi(req, res, url) {
       const siteAddress = [order.address, order.city].filter(Boolean).join(", ");
       // Stage corrente: derivato dal latest event o stato job
       const lastEvent = events.length ? events[events.length - 1] : null;
-      const stage = lastEvent?.eventType === "return" ? "completed"
-        : lastEvent?.eventType === "work_start" || lastEvent?.eventType === "work_end" ? "in_progress"
+      // Pose su più giorni: «Fine giornata» + «Rientro» non vuol dire finita.
+      // Finita = «Fine posa» segnata (o, per le pose di prima, l'ultimo rientro
+      // senza nessuna «Fine giornata»).
+      const lastEnd = [...events].reverse().find((ev) => ev.eventType === "work_end" || ev.eventType === "day_end") || null;
+      const finishEvent = lastEnd?.eventType === "work_end" ? lastEnd
+        : (!lastEnd && lastEvent?.eventType === "return" ? lastEvent : null);
+      const stage = finishEvent ? "completed"
+        : ["work_start", "day_end", "return"].includes(lastEvent?.eventType) ? "in_progress"
         : lastEvent?.eventType === "arrival" ? "on_site"
         : lastEvent?.eventType === "departure" ? "in_transit"
         : inst.installDate ? "scheduled"
         : "preparing";
-      // Garanzia: 365gg dall'ultimo event "return" o data installazione
+      // Garanzia: 365gg dalla fine posa o data installazione
       let warrantyUntil = null;
-      const installCompletedAt = lastEvent?.eventType === "return" ? lastEvent.occurredAt : (inst.completedAt || null);
+      const installCompletedAt = finishEvent ? finishEvent.occurredAt : (inst.completedAt || null);
       if (installCompletedAt) {
         const d = new Date(installCompletedAt);
         d.setDate(d.getDate() + 365);
@@ -18563,6 +18660,62 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { suspendedViews: store.suspendedViews, suspendable: SUSPENDABLE_VIEWS });
   }
 
+  // Furgoni e attrezzatura. La squadra (e il magazzino) vedono mezzi, km e
+  // attrezzi per i passaggi di cantiere; costi e viaggi solo l'ufficio.
+  if (url.pathname === "/api/fleet" && req.method === "GET") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew", "warehouse"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const fleet = normalizeFleet(store.fleet);
+    const events = await listFleetJobEvents();
+    const status = fleetStatus(events, fleet);
+    if (currentUser.role !== "office") {
+      return sendJson(res, 200, {
+        fleet: {
+          vans: fleet.vans.filter((van) => van.active).map(({ id, name, plate }) => ({ id, name, plate })),
+          tools: fleet.tools.filter((tool) => tool.active),
+        },
+        status,
+      });
+    }
+    return sendJson(res, 200, {
+      fleet,
+      status,
+      costs: Object.fromEntries(fleet.vans.map((van) => [van.id, vanCostPerKm(van)])),
+      trips: buildTrips(events, fleet),
+      database: USE_POSTGRES,
+    });
+  }
+
+  if (url.pathname === "/api/fleet" && req.method === "PUT") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    const body = await readBody(req);
+    const current = normalizeFleet(store.fleet);
+    store.fleet = normalizeFleet({
+      vans: Array.isArray(body.vans) ? body.vans : current.vans,
+      tools: Array.isArray(body.tools) ? body.tools : current.tools,
+      toolMoves: current.toolMoves,
+    });
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("fleet", "fleet", "update", { vans: store.fleet.vans.length, tools: store.fleet.tools.length }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { fleet: store.fleet, costs: Object.fromEntries(store.fleet.vans.map((van) => [van.id, vanCostPerKm(van)])) });
+  }
+
+  // «È in magazzino»: un attrezzo rimasto in cantiere è stato riportato.
+  if (url.pathname.match(/^\/api\/fleet\/tools\/[^/]+\/in-warehouse$/) && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "warehouse"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    const toolId = decodeURIComponent(url.pathname.split("/")[4]);
+    const fleet = normalizeFleet(store.fleet);
+    if (!fleet.tools.some((tool) => tool.id === toolId)) return sendJson(res, 404, { error: "tool_not_found" });
+    const body = await readBody(req);
+    fleet.toolMoves.push({ toolId, at: new Date().toISOString(), location: "warehouse", by: currentUser.name || currentUser.email || "", note: String(body?.note || "").slice(0, 160) });
+    store.fleet = normalizeFleet(fleet);
+    await writeJson(STORE_PATH, store);
+    const events = await listFleetJobEvents();
+    return sendJson(res, 200, { fleet: store.fleet, status: fleetStatus(events, store.fleet) });
+  }
+
   if (url.pathname === "/api/quote-costs" && ["GET", "PUT"].includes(req.method)) {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
@@ -18631,8 +18784,14 @@ async function handleApi(req, res, url) {
       [fromTs, toTs, seeAll, String(currentUser.id)],
     );
     const byMonth = new Map(requestRows.rows.map((row) => [row.month, row]));
+    const fleet = normalizeFleet(store.fleet);
+    const vanByMonth = tripsTotals(buildTrips(await listFleetJobEvents(), fleet), (trip) => {
+      const month = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit" }).format(new Date(trip.startAt));
+      return month >= from && month <= to ? month : "";
+    });
     return sendJson(res, 200, {
       months,
+      van: months.map((month) => ({ month, ...(vanByMonth[month] || { trips: 0, km: 0, cost: 0, missingKm: 0, missingCost: 0 }) })),
       requests: months.map((month) => ({ month, total: byMonth.get(month)?.total || 0, quoted: byMonth.get(month)?.quoted || 0, won: byMonth.get(month)?.won || 0 })),
       sources: sourceRows.rows,
       quotes: quotesByMonth(quoteRows.rows.map((row) => ({
