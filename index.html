@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261103-pose-piu-giorni" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261103-pose-piu-giorni" />
+    <link rel="preload" href="./styles.css?v=20261103-cantiere-e-furgoni" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261103-cantiere-e-furgoni" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1472,6 +1472,12 @@
               </div>
 
               <div class="installation-pane-group" data-installation-pane="summary">
+              <!-- Cantiere di oggi (prossimo passo, Naviga/Chiama, Annulla) e
+                   diario della posa giorno per giorno. Vedi renderJobSiteToday. -->
+              <section id="job-events-section" class="panel-subsection job-site" hidden>
+                <div id="job-events-quickbar" class="job-site-today"></div>
+                <div id="job-events-timeline" class="job-events-timeline" aria-live="polite"></div>
+              </section>
               <div id="installation-detail-summary" class="detail-grid"></div>
 
               <div id="installation-profit-split-shell" class="panel-subsection installation-profit-split-shell" hidden>
@@ -1534,22 +1540,6 @@
               </form>
 
               <div id="installation-attachments" class="attachment-grid"></div>
-
-              <!-- ─────────────────────────────────────────────────────────
-                   Job Events — tracking real-time cantiere.
-                   Bottoni rapidi crew (Partenza/Arrivato/Inizio/Rientro)
-                   + timeline visibile a office.
-                   ───────────────────────────────────────────────────────── -->
-              <section id="job-events-section" class="panel-subsection job-events-section" hidden>
-                <div class="subsection-head">
-                  <div>
-                    <h4>Diario di cantiere</h4>
-                    <p class="section-copy">Timeline degli eventi in tempo reale del job.</p>
-                  </div>
-                </div>
-                <div id="job-events-quickbar" class="job-events-quickbar"></div>
-                <div id="job-events-timeline" class="job-events-timeline" aria-live="polite"></div>
-              </section>
 
               <!-- Tracking cliente: link pubblico manuale (office only, fornitura+posa) -->
               <section id="client-tracking-section" class="panel-subsection client-tracking-section" hidden></section>
@@ -2477,6 +2467,16 @@
           <div id="supplier-prices-content"></div>
         </section>
 
+        <section class="view" id="fleet">
+          <div class="page-header">
+            <div>
+              <h1>Furgoni e attrezzatura</h1>
+              <div class="page-header-sub">Km, costo al km, viaggi e dove si trova ogni attrezzo</div>
+            </div>
+          </div>
+          <div id="fleet-root" class="fleet-root"></div>
+        </section>
+
         <section class="view" id="analytics">
           <div class="page-header">
             <div>
@@ -2792,7 +2792,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261103-pose-piu-giorni" defer></script>
-    <script src="./app.js?v=20261103-pose-piu-giorni" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261103-cantiere-e-furgoni" defer></script>
+    <script src="./app.js?v=20261103-cantiere-e-furgoni" type="module"></script>
   </body>
 </html>

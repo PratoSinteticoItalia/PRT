@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261103-pose-piu-giorni";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261103-pose-piu-giorni";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261103-pose-piu-giorni";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261103-pose-piu-giorni";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261103-pose-piu-giorni";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261103-pose-piu-giorni";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261103-pose-piu-giorni';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261103-cantiere-e-furgoni";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261103-cantiere-e-furgoni";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261103-cantiere-e-furgoni";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261103-cantiere-e-furgoni";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261103-cantiere-e-furgoni";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261103-cantiere-e-furgoni";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261103-cantiere-e-furgoni';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261103-pose-piu-giorni";
+} from "./lib/order-money.js?v=20261103-cantiere-e-furgoni";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261103-pose-piu-giorni";
+import { regionForCity } from "./lib/geo.js?v=20261103-cantiere-e-furgoni";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261103-pose-piu-giorni";
+} from "./lib/shipping-eligibility.js?v=20261103-cantiere-e-furgoni";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261103-pose-piu-giorni";
+} from "./lib/profit-split.js?v=20261103-cantiere-e-furgoni";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,12 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261103-pose-piu-giorni";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261103-pose-piu-giorni";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261103-pose-piu-giorni";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261103-pose-piu-giorni";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261103-pose-piu-giorni";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261103-pose-piu-giorni";
+} from "./lib/preventivo-pricing.js?v=20261103-cantiere-e-furgoni";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261103-cantiere-e-furgoni";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261103-cantiere-e-furgoni";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261103-cantiere-e-furgoni";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261103-cantiere-e-furgoni";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261103-cantiere-e-furgoni";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261103-cantiere-e-furgoni";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261103-cantiere-e-furgoni";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -79,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261103-pose-piu-giorni";
+} from "./lib/sales-assignment.js?v=20261103-cantiere-e-furgoni";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261103-pose-piu-giorni";
+} from "./lib/surveys.js?v=20261103-cantiere-e-furgoni";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -99,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261103-pose-piu-giorni";
+const APP_SHELL_VERSION = "20261103-cantiere-e-furgoni";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -475,7 +477,7 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "fleet", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
   crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
   // Il modulo ordini materiale rivenditore resta implementato ma in standby:
@@ -485,7 +487,7 @@ const roleViews = {
   // con un account rivenditore esterno, a differenza dello stato posa base.
   rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
 };
-const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "analytics", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
+const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "analytics", "fleet", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
   "follow up eseguito",
   "nuovo contatto",
@@ -535,6 +537,7 @@ const translations = {
     "installations-repairs": "Sistemazioni",
     "installations-live": "Cantieri Live",
     "installations-completed": "Completati",
+    fleet: "Furgoni e attrezzatura",
     sopralluoghi: "Sopralluoghi",
     office: "Ufficio",
     warehouseRole: "Inventario",
@@ -800,6 +803,7 @@ const translations = {
     "installations-repairs": "Repairs",
     "installations-live": "Live sites",
     "installations-completed": "Completed",
+    fleet: "Vans & tools",
     sopralluoghi: "Site surveys",
     office: "Office",
     warehouseRole: "Inventory",
@@ -3324,7 +3328,7 @@ function getStoredProfitSplitForOrder(order) {
   const raw = order?.operations?.installation?.profitSplit;
   if (!raw || typeof raw !== "object") return null;
   return normalizeProfitSplitDraft({
-    ...syncInstallationExpenses(raw, order.id, getTravelExpensesForOrder(order)),
+    ...syncInstallationExpenses(raw, order.id, getProfitSplitExpensesForOrder(order)),
     linkedOrderId: order.id,
   });
 }
@@ -3340,7 +3344,7 @@ function buildProfitSplitDraftForOrder(order, { preferStored = true } = {}) {
     partnerDailyFixed: localDefaults.partnerDailyFixed,
     partnerSharePct: localDefaults.partnerSharePct,
     partnerDays: localDefaults.partnerDays,
-  }, order?.id || "", getTravelExpensesForOrder(order)));
+  }, order?.id || "", getProfitSplitExpensesForOrder(order)));
 }
 
 function persistProfitSplitDraftLocally(draft = state.profitSplitDraft) {
@@ -3709,7 +3713,7 @@ function renderProfitSplitCalculator({ syncForm = true } = {}) {
   }
 
   const expenseOrder = getProfitSplitContextOrder();
-  if (expenseOrder) state.profitSplitDraft = syncInstallationExpenses(state.profitSplitDraft, expenseOrder.id, getTravelExpensesForOrder(expenseOrder));
+  if (expenseOrder) state.profitSplitDraft = syncInstallationExpenses(state.profitSplitDraft, expenseOrder.id, getProfitSplitExpensesForOrder(expenseOrder));
   if (syncForm) syncProfitSplitDraftFromState();
   renderProfitSplitContextCard();
   renderProfitSplitPartnerBalances();
@@ -7548,6 +7552,26 @@ function getTravelExpensesForOrder(order) {
   return Array.isArray(order?.operations?.installation?.travelExpenses)
     ? order.operations.installation.travelExpenses
     : [];
+}
+
+// Spese della posa per il conto posa: quelle della squadra più il furgone
+// (viaggi segnati con Partenza/Rientro × costo al km, pagato dall'azienda).
+// Se i viaggi non sono caricati (o chi guarda non è l'ufficio) resta la riga
+// furgone già salvata, così non sparisce.
+function getProfitSplitExpensesForOrder(order) {
+  const expenses = [...getTravelExpensesForOrder(order)];
+  if (!order?.id) return expenses;
+  const trips = state.fleet?.data?.trips;
+  if (Array.isArray(trips)) {
+    const total = tripsTotals(trips.filter((trip) => trip.orderId === order.id), () => "order").order;
+    if (total?.cost > 0) {
+      expenses.push({ id: "van-trips", category: "van", payer: "owner", amount: total.cost, note: `${total.trips} ${total.trips === 1 ? "viaggio" : "viaggi"} · ${total.km.toLocaleString("it-IT")} km` });
+    }
+    return expenses;
+  }
+  const saved = (order.operations?.installation?.profitSplit?.expenseLines || []).find((line) => line.sourceExpenseId === "van-trips" && line.sourceOrderId === order.id);
+  if (saved) expenses.push({ id: "van-trips", category: "van", payer: saved.payer || "owner", amount: saved.amount, note: String(saved.label || "").replace(/^Furgone · /, "") });
+  return expenses;
 }
 
 function getTravelExpenseLabel(category = "") {
@@ -22578,18 +22602,23 @@ window.buildOpenRepairButton = buildOpenRepairButton;
 // ═══════════════════════════════════════════════════════════════════════════
 
 const JOB_EVENT_DEFS = [
-  { type: "departure", label: "Partenza", icon: "🚛", color: "blue" },
-  { type: "arrival",   label: "Arrivato", icon: "📍", color: "amber", askPhoto: true },
-  { type: "work_start", label: "Inizio posa", icon: "🔨", color: "green" },
-  { type: "return",    label: "Rientro", icon: "🏁", color: "muted" },
+  { type: "departure", label: "Partenza", icon: "🚛" },
+  { type: "arrival", label: "Arrivato", icon: "📍" },
+  { type: "work_start", label: "Inizio lavori", icon: "🔨" },
+  { type: "day_end", label: "Fine giornata", icon: "🌙" },
+  { type: "work_end", label: "Fine posa", icon: "✅" },
+  { type: "return", label: "Rientro", icon: "🏁" },
+  { type: "issue", label: "Problema", icon: "⚠️" },
+  { type: "note", label: "Nota", icon: "📝" },
 ];
 
 const JOB_EVENT_LABELS = {
   departure: "Partenza dal capannone",
   arrival: "Arrivato in cantiere",
-  work_start: "Inizio posa",
+  work_start: "Inizio lavori",
+  day_end: "Fine giornata",
   work_end: "Fine posa",
-  return: "Rientro / cantiere chiuso",
+  return: "Rientro al capannone",
   issue: "Problema segnalato",
   note: "Nota",
 };
@@ -22658,7 +22687,101 @@ if (!state.jobEvents) {
   };
 }
 
-// ── Render Diario cantiere nel dettaglio job ────────────────────────────────
+// ── Cantiere di oggi + diario (novembre 2026) ───────────────────────────────
+// In cima al dettaglio posa: un solo pulsante con il prossimo passo della
+// giornata (Partenza → Sono arrivato → Inizio lavori → Fine giornata/Fine posa
+// → Rientro), Naviga/Chiama, «Annulla» sull'ultimo passaggio e, sotto, il
+// diario giorno per giorno con i tempi. Partenza e Rientro chiedono furgone,
+// km e attrezzatura: da lì la pagina Furgoni ricava viaggi e attrezzi.
+
+const jsL = (it, en) => (state.lang === "it" ? it : en);
+
+const JOB_SITE_BUTTONS = {
+  departure: ["Partenza", "Departure"],
+  arrival: ["Sono arrivato", "I've arrived"],
+  work_start: ["Inizio lavori", "Start work"],
+  day_end: ["Fine giornata", "End of day"],
+  work_end: ["Fine posa", "Job finished"],
+  return: ["Rientro", "Back at base"],
+};
+
+if (!state.jobSite) state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {} };
+if (!state.fleet) state.fleet = { data: null, loading: false, loadedAt: 0, error: "", tab: "vans", editVan: "", editTools: false, month: "", busy: false };
+
+function isGeoAnswered() {
+  try { return ["yes", "no"].includes(window.localStorage.getItem(GEO_OPT_IN_KEY)); } catch { return true; }
+}
+
+function jobEventLabel(type) {
+  const labels = {
+    departure: ["Partenza dal capannone", "Left the warehouse"],
+    arrival: ["Arrivati in cantiere", "Arrived on site"],
+    work_start: ["Inizio lavori", "Work started"],
+    day_end: ["Fine giornata", "End of day"],
+    work_end: ["Fine posa", "Job finished"],
+    return: ["Rientro al capannone", "Back at the warehouse"],
+    issue: ["Problema segnalato", "Issue reported"],
+    note: ["Nota", "Note"],
+  };
+  const pair = labels[type];
+  return pair ? jsL(pair[0], pair[1]) : type;
+}
+
+function jobSiteTime(iso) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+}
+
+function jobSiteDayName(dateKey) {
+  if (!dateKey) return "";
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  return date.toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+function jobSiteKm(value) {
+  return Number(value || 0).toLocaleString("it-IT");
+}
+
+function fleetVanName(vanId) {
+  const van = (state.fleet.data?.fleet?.vans || []).find((item) => item.id === vanId);
+  return van ? [van.name, van.plate].filter(Boolean).join(" ") : "";
+}
+
+function fleetToolName(toolId) {
+  const tool = (state.fleet.data?.fleet?.tools || []).find((item) => item.id === toolId);
+  return tool ? tool.name : toolId;
+}
+
+function fleetCostPerKm(vanId) {
+  const cost = state.fleet.data?.costs?.[vanId]?.total;
+  return Number.isFinite(cost) ? cost : null;
+}
+
+async function loadFleet({ force = false } = {}) {
+  if (state.fleet.loading) return state.fleet.data;
+  if (!force && state.fleet.data && Date.now() - state.fleet.loadedAt < 60000) return state.fleet.data;
+  state.fleet.loading = true;
+  try {
+    state.fleet.data = await apiFetch("/api/fleet");
+    state.fleet.loadedAt = Date.now();
+    state.fleet.error = "";
+  } catch (err) {
+    state.fleet.error = String(err?.message || err);
+  } finally {
+    state.fleet.loading = false;
+  }
+  if (state.currentView === "fleet") renderFleet();
+  if (state.jobSite.sheet) rerenderJobSiteFor(state.jobSite.sheet.orderId);
+  return state.fleet.data;
+}
+
+function rerenderJobSiteFor(orderId) {
+  if (!orderId || state.selectedOrderId !== orderId) return;
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  const quickbar = document.getElementById("job-events-quickbar");
+  const timeline = document.getElementById("job-events-timeline");
+  if (order && quickbar && timeline) renderJobEventsInner(order, quickbar, timeline);
+}
 
 function renderJobEventsForOrder(order) {
   const section = document.getElementById("job-events-section");
@@ -22671,100 +22794,374 @@ function renderJobEventsForOrder(order) {
     return;
   }
   section.hidden = false;
-  // Carica eventi (cache-friendly)
+  if (state.jobSite.sheet && state.jobSite.sheet.orderId !== order.id) state.jobSite.sheet = null;
   const cached = state.jobEvents.byOrder[order.id];
-  if (!cached) {
+  const stale = Date.now() - (state.jobEvents.loadedAt?.[order.id] || 0) > 60000;
+  if (cached) renderJobEventsInner(order, quickbar, timeline);
+  else {
     quickbar.innerHTML = "";
-    timeline.innerHTML = '<div class="job-events-loading">Caricamento timeline…</div>';
+    timeline.innerHTML = `<div class="job-events-loading">${jsL("Caricamento diario…", "Loading diary…")}</div>`;
+  }
+  if (!cached || stale) {
+    state.jobEvents.loadedAt = state.jobEvents.loadedAt || {};
+    state.jobEvents.loadedAt[order.id] = Date.now();
     apiListJobEvents(order.id).then((res) => {
       state.jobEvents.byOrder[order.id] = res?.events || [];
       if (state.currentView === "installations" && state.selectedOrderId === order.id) {
         renderJobEventsInner(order, quickbar, timeline);
       }
     }).catch((err) => {
-      timeline.innerHTML = `<div class="job-events-error">Errore: ${escapeHtml(String(err?.message || err))}</div>`;
+      if (!cached) timeline.innerHTML = `<div class="job-events-error">${jsL("Errore", "Error")}: ${escapeHtml(String(err?.message || err))}</div>`;
     });
-  } else {
-    renderJobEventsInner(order, quickbar, timeline);
   }
+  if (["office", "crew"].includes(role)) loadFleet();
 }
 
 function renderJobEventsInner(order, quickbar, timeline) {
   const events = state.jobEvents.byOrder[order.id] || [];
   const role = state.currentUser?.role || "";
-  // Quick bar: bottoni rapidi (solo crew + office)
-  if (role === "crew" || role === "office") {
-    const completed = new Set(events.map((e) => e.eventType));
-    quickbar.innerHTML = JOB_EVENT_DEFS.map((def) => {
-      const isDone = completed.has(def.type);
-      return `
-        <button type="button"
-                class="job-event-btn color-${def.color} ${isDone ? "is-done" : ""}"
-                data-action="register-job-event"
-                data-order-id="${escapeAttr(order.id)}"
-                data-event-type="${escapeAttr(def.type)}"
-                data-ask-photo="${def.askPhoto ? "1" : "0"}"
-                ${isDone ? "disabled" : ""}>
-          <span class="job-event-icon">${def.icon}</span>
-          <span class="job-event-label">${escapeHtml(def.label)}</span>
-          ${isDone ? '<span class="job-event-check">✓</span>' : ""}
-        </button>
-      `;
-    }).join("");
-  } else {
-    quickbar.innerHTML = "";
-  }
-  // Timeline
-  if (!events.length) {
-    timeline.innerHTML = '<div class="job-events-empty">Nessun evento ancora registrato. Tocca un bottone qui sopra per iniziare.</div>';
-    return;
-  }
-  timeline.innerHTML = events.map(renderJobEventCard).join("");
+  quickbar.innerHTML = role === "crew" || role === "office" ? renderJobSiteToday(order, events) : "";
+  timeline.innerHTML = renderJobSiteDiary(order, events);
 }
 
-function renderJobEventCard(ev) {
-  const t = new Date(ev.occurredAt);
-  const hhmm = t.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-  const dateLabel = formatDate(ev.occurredAt);
-  const label = JOB_EVENT_LABELS[ev.eventType] || ev.eventType;
+function jobSiteDayText(day) {
+  const date = jobSiteDayName(day.todayKey);
+  if (day.dayLabel.startsWith("day:")) {
+    const [n, count] = day.dayLabel.slice(4).split("/");
+    return `${jsL(`Giorno ${n} di ${count}`, `Day ${n} of ${count}`)} · ${date}`;
+  }
+  if (day.dayLabel === "early") return `${date} · ${jsL(`prima del giorno previsto (${jobSiteDayName(day.days[0])})`, `before the planned day (${jobSiteDayName(day.days[0])})`)}`;
+  if (day.dayLabel === "extra") return `${date} · ${jsL("giorno in più rispetto al previsto", "extra day beyond the plan")}`;
+  return date;
+}
+
+function jobSiteHint(type, day) {
+  switch (type) {
+    case "departure": return jsL("Furgone, km sul cruscotto e attrezzatura caricata.", "Van, odometer and tools loaded.");
+    case "arrival": return jsL("Con una foto del cantiere com'era, se vuoi.", "With a photo of the site as it was, if you like.");
+    case "work_start": return jsL("Per l'ufficio la posa passa a «In corso».", "The office sees the job as «In progress».");
+    case "day_end": {
+      const next = day.dayIndex >= 0 && day.dayIndex + 1 < day.dayCount ? day.dayIndex + 2 : 0;
+      return next
+        ? jsL(`Si riprende domani: giorno ${next} di ${day.dayCount}.`, `Back tomorrow: day ${next} of ${day.dayCount}.`)
+        : jsL("La posa continua un altro giorno.", "The job continues another day.");
+    }
+    case "work_end": return jsL("Poi il verbale da far firmare al cliente.", "Then the completion report for the customer to sign.");
+    case "return": return jsL("Km al rientro e attrezzatura riportata.", "Odometer and tools brought back.");
+    default: return "";
+  }
+}
+
+// Dopo un passaggio il pulsante successivo compare nello stesso punto: per un
+// attimo non risponde, così un doppio tocco non segna due passaggi.
+const JOB_SITE_COOLDOWN_MS = 1500;
+function jobSiteCoolingDown() {
+  return Date.now() < (state.jobSite.cooldownUntil || 0);
+}
+
+function canVoidJobEvent(ev) {
+  const user = state.currentUser || {};
+  if (user.role === "office") return true;
+  if (user.role !== "crew") return false;
+  const mine = ev.userId === user.id || (user.crewName && ev.crewName === user.crewName);
+  return mine && Date.now() - new Date(ev.createdAt || ev.occurredAt).getTime() < 12 * 3600 * 1000;
+}
+
+function renderJobSiteToday(order, events) {
+  const day = siteDayState(events, order.operations?.installation || {}, romeDateKey(new Date()));
+  const sheet = state.jobSite.sheet?.orderId === order.id ? state.jobSite.sheet : null;
+  const phone = String(order.phone || order.customerPhone || order.telefono || "").trim();
+  const destination = composeAddress(order) || order.city || "";
+  const reached = day.nextStep ? DAY_STEPS.indexOf(day.nextStep) : DAY_STEPS.length;
+  const stepNames = [jsL("Partenza", "Departure"), jsL("Arrivo", "Arrival"), jsL("Lavori", "Work"), day.lastDay ? jsL("Fine posa", "Finish") : jsL("Fine giorno", "Day end"), jsL("Rientro", "Return")];
+  const progress = stepNames.map((label, i) => `<li class="${i < reached ? "is-done" : i === reached ? "is-current" : ""}"><span></span>${escapeHtml(label)}</li>`).join("");
+  const links = `
+    ${destination ? `<a class="js-link" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}" target="_blank" rel="noopener">${jsL("Naviga", "Navigate")}</a>` : ""}
+    ${phone ? `<a class="js-link" href="tel:${escapeAttr(phone.replace(/\s+/g, ""))}">${jsL("Chiama", "Call")}</a>` : ""}`;
+  const geoBanner = isGeoAnswered() ? "" : `
+    <div class="js-geo">
+      <span>${jsL("Segnare anche la posizione con i passaggi? Così risulta che eravate in cantiere.", "Also record your location with each step? It proves you were on site.")}</span>
+      <span class="js-geo-actions">
+        <button type="button" class="ghost-button small" data-action="job-site-geo" data-value="yes">${jsL("Sì", "Yes")}</button>
+        <button type="button" class="ghost-button small" data-action="job-site-geo" data-value="no">${jsL("No", "No")}</button>
+      </span>
+    </div>`;
+  let body = "";
+  const verbaleButton = `<button type="button" class="primary-button small" data-action="open-work-report-wizard" data-order-id="${escapeAttr(order.id)}">${jsL("Apri il verbale", "Open the report")}</button>`;
+  if (day.finishedBefore && !day.today.length && !state.jobSite.reopen[order.id]) {
+    body = `
+      <div class="js-finished">
+        <strong>✓ ${jsL(`Posa finita ${jobSiteDayName(romeDateKey(day.finishedAt))}`, `Job finished ${jobSiteDayName(romeDateKey(day.finishedAt))}`)}</strong>
+        <div class="js-row-actions">${verbaleButton}
+          <button type="button" class="ghost-button small" data-action="job-site-reopen" data-order-id="${escapeAttr(order.id)}">${jsL("Un altro giorno in cantiere", "Another day on site")}</button>
+        </div>
+      </div>`;
+  } else if (sheet) {
+    body = renderJobSiteSheet(order, day, sheet);
+  } else if (day.nextType) {
+    const alt = day.nextStep === "departure"
+      ? `<button type="button" class="js-alt" data-action="job-site-step" data-order-id="${escapeAttr(order.id)}" data-type="arrival">${jsL("Già in cantiere? Segna l'arrivo", "Already on site? Mark arrival")}</button>`
+      : day.altEndType
+        ? `<button type="button" class="js-alt" data-action="job-site-step" data-order-id="${escapeAttr(order.id)}" data-type="${day.altEndType}">${day.altEndType === "work_end" ? jsL("Abbiamo finito oggi: Fine posa", "We finished today: Job finished") : jsL("Non abbiamo finito: Fine giornata", "Not finished yet: End of day")}</button>`
+        : "";
+    const finishedToday = day.summary.endType === "work_end";
+    body = `
+      ${finishedToday ? `<div class="js-callout"><span>${jsL("Posa finita: fai firmare il verbale al cliente.", "Job finished: have the customer sign the report.")}</span>${verbaleButton}</div>` : ""}
+      <button type="button" class="js-next ${jobSiteCoolingDown() ? "is-cooling" : ""}" data-action="job-site-step" data-order-id="${escapeAttr(order.id)}" data-type="${day.nextType}">
+        <strong>${escapeHtml(jsL(...JOB_SITE_BUTTONS[day.nextType]))}</strong>
+        <small>${escapeHtml(jobSiteHint(day.nextType, day))}</small>
+      </button>
+      ${alt}`;
+  } else {
+    body = `
+      <div class="js-closed">
+        <strong>${jsL("Giornata chiusa", "Day closed")}</strong>
+        ${renderJobSiteSummary(day.summary)}
+        ${day.summary.endType === "work_end" ? `<div class="js-row-actions">${verbaleButton}</div>` : ""}
+      </div>`;
+  }
+  const last = day.lastToday;
+  let undo = "";
+  if (last && !sheet && canVoidJobEvent(last)) {
+    const armed = state.jobSite.undoArmed === last.id;
+    undo = `<button type="button" class="js-undo ${armed ? "is-armed" : ""}" data-action="job-site-undo" data-order-id="${escapeAttr(order.id)}" data-event-id="${escapeAttr(last.id)}">${armed
+      ? jsL(`Tocca di nuovo per annullare «${jobEventLabel(last.eventType)}»`, `Tap again to undo «${jobEventLabel(last.eventType)}»`)
+      : jsL(`Annulla «${jobEventLabel(last.eventType)}» delle ${jobSiteTime(last.occurredAt)}`, `Undo «${jobEventLabel(last.eventType)}» at ${jobSiteTime(last.occurredAt)}`)}</button>`;
+  }
+  return `
+    <div class="js-card">
+      <div class="js-head">
+        <div>
+          <h4>${jsL("Cantiere di oggi", "Today on site")}</h4>
+          <span class="js-day">${escapeHtml(jobSiteDayText(day))}</span>
+        </div>
+        <div class="js-links">${links}</div>
+      </div>
+      <ol class="js-progress">${progress}</ol>
+      ${geoBanner}
+      ${body}
+      ${undo}
+    </div>`;
+}
+
+function renderJobSiteSummary(summary) {
+  const rows = [];
+  if (summary.travelMinutes != null) rows.push([jsL("Viaggio di andata", "Outbound trip"), formatMinutes(summary.travelMinutes)]);
+  if (summary.workMinutes != null) rows.push([jsL("Lavori", "Work"), formatMinutes(summary.workMinutes)]);
+  if (summary.km != null) {
+    const perKm = fleetCostPerKm(summary.vanId);
+    rows.push([jsL("Km del giorno", "Km today"), `${jobSiteKm(summary.km)} km${perKm != null ? ` · ${formatCurrency(summary.km * perKm)}` : ""}`]);
+  }
+  if (summary.closed && summary.toolsLoaded.length) {
+    rows.push([jsL("Attrezzatura", "Tools"), summary.toolsMissing.length
+      ? jsL(`in cantiere: ${summary.toolsMissing.map(fleetToolName).join(", ")}`, `left on site: ${summary.toolsMissing.map(fleetToolName).join(", ")}`)
+      : jsL("tutta rientrata", "all back")]);
+  }
+  if (!rows.length) return "";
+  return `<dl class="js-summary">${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join("")}</dl>`;
+}
+
+function jobSiteToolsOutWithVan(vanId) {
+  const tools = state.fleet.data?.status?.tools || {};
+  return Object.keys(tools).filter((id) => tools[id].state === "out" && tools[id].vanId === vanId);
+}
+
+// Apre il foglio del passo (Partenza, Arrivo, Rientro) con i valori proposti.
+function openJobSiteSheet(order, type) {
+  const events = state.jobEvents.byOrder[order.id] || [];
+  const day = siteDayState(events, order.operations?.installation || {}, romeDateKey(new Date()));
+  const vans = state.fleet.data?.fleet?.vans || [];
+  const sheet = { orderId: order.id, type, vanId: "", km: "", tools: [], photos: [], error: "" };
+  if (type === "departure") {
+    // Stessa posa di ieri: stesso furgone e stessi attrezzi.
+    const previous = [...events].reverse().find((ev) => ev.eventType === "departure" && !ev.voidedAt && ev.meta?.vanId);
+    sheet.vanId = previous?.meta?.vanId && vans.some((v) => v.id === previous.meta.vanId) ? previous.meta.vanId : (vans[0]?.id || "");
+    sheet.tools = Array.isArray(previous?.meta?.tools) ? [...previous.meta.tools] : [];
+    const lastKm = state.fleet.data?.status?.vans?.[sheet.vanId]?.km;
+    sheet.km = lastKm ? String(lastKm) : "";
+  } else if (type === "return") {
+    const departure = day.today.find((ev) => ev.eventType === "departure");
+    sheet.vanId = departure?.meta?.vanId || "";
+    const loaded = Array.isArray(departure?.meta?.tools) ? departure.meta.tools : jobSiteToolsOutWithVan(sheet.vanId);
+    sheet.loaded = [...new Set([...loaded, ...jobSiteToolsOutWithVan(sheet.vanId)])];
+    sheet.tools = [...sheet.loaded];
+    sheet.kmOut = departure?.meta?.km || state.fleet.data?.status?.vans?.[sheet.vanId]?.km || null;
+  }
+  state.jobSite.sheet = sheet;
+  rerenderJobSiteFor(order.id);
+  requestAnimationFrame(() => document.querySelector(".js-sheet input[name='km']")?.focus({ preventScroll: true }));
+}
+
+function renderJobSiteSheet(order, day, sheet) {
+  const vans = state.fleet.data?.fleet?.vans || [];
+  const tools = state.fleet.data?.fleet?.tools || [];
+  const toolStatus = state.fleet.data?.status?.tools || {};
+  const close = `<button type="button" class="js-sheet-close" data-action="job-site-sheet-close" aria-label="${jsL("Chiudi", "Close")}">×</button>`;
+  const error = sheet.error ? `<div class="js-error">${escapeHtml(sheet.error)}</div>` : "";
+  const confirm = (label) => `<button type="button" class="js-next js-confirm" data-action="job-site-confirm" data-order-id="${escapeAttr(order.id)}"><strong>${escapeHtml(label)}</strong></button>`;
+  const kmField = (label, hint) => `
+    <label class="js-field"><span>${escapeHtml(label)}</span>
+      <input name="km" type="text" inputmode="numeric" autocomplete="off" value="${escapeAttr(sheet.km ? jobSiteKm(sheet.km) : "")}" placeholder="${jsL("es. 148.236", "e.g. 148,236")}" data-job-site-input="km" />
+      ${hint ? `<small id="js-km-hint">${hint}</small>` : ""}
+    </label>`;
+  const toolItem = (tool, checked, note = "") => `
+    <label class="js-tool"><input type="checkbox" data-job-site-tool="${escapeAttr(tool.id)}" ${checked ? "checked" : ""} />
+      <span>${escapeHtml(tool.name)}${tool.qty > 1 ? ` ×${tool.qty}` : ""}${tool.brand ? ` <small>${escapeHtml(tool.brand)}</small>` : ""}${note ? ` <em>${escapeHtml(note)}</em>` : ""}</span>
+    </label>`;
+  if (sheet.type === "departure") {
+    const status = state.fleet.data?.status?.vans?.[sheet.vanId];
+    const lastKmHint = status?.km ? jsL(`Ultimo dato del furgone: ${jobSiteKm(status.km)} km`, `Last van reading: ${jobSiteKm(status.km)} km`) : "";
+    const vanChips = vans.map((van) => `<button type="button" class="js-chip ${van.id === sheet.vanId ? "is-on" : ""}" data-action="job-site-van" data-van-id="${escapeAttr(van.id)}">${escapeHtml(van.name)} <small>${escapeHtml(van.plate || "")}</small></button>`).join("")
+      + `<button type="button" class="js-chip ${!sheet.vanId ? "is-on" : ""}" data-action="job-site-van" data-van-id="">${jsL("Altro mezzo", "Other vehicle")}</button>`;
+    const toolList = tools.map((tool) => {
+      const st = toolStatus[tool.id];
+      const note = st?.state === "left" ? (st.orderId === order.id ? jsL("già in questo cantiere", "already on this site") : jsL("rimasto in un altro cantiere", "left at another site"))
+        : st?.state === "out" && st.vanId !== sheet.vanId ? jsL("fuori con un altro mezzo", "out with another vehicle") : "";
+      return toolItem(tool, sheet.tools.includes(tool.id), note);
+    }).join("");
+    return `
+      <div class="js-sheet">
+        <div class="js-sheet-head"><strong>${jsL("Partenza", "Departure")}</strong>${close}</div>
+        <div class="js-field"><span>${jsL("Con quale mezzo?", "Which vehicle?")}</span><div class="js-chips">${vanChips}</div></div>
+        ${sheet.vanId ? kmField(jsL("Km sul cruscotto", "Odometer (km)"), escapeHtml(lastKmHint)) : ""}
+        ${sheet.vanId && tools.length ? `<div class="js-field"><span>${jsL("Attrezzatura caricata", "Tools loaded")}</span><div class="js-tools">${toolList}</div></div>` : ""}
+        ${state.fleet.loading && !state.fleet.data ? `<small class="js-muted">${jsL("Carico furgoni e attrezzi…", "Loading vans and tools…")}</small>` : ""}
+        ${error}
+        ${confirm(jsL("Conferma partenza", "Confirm departure"))}
+      </div>`;
+  }
+  if (sheet.type === "arrival") {
+    const thumbs = sheet.photos.map((photo, i) => `<span class="js-thumb"><img src="${escapeAttr(photo.dataUrl)}" alt="" /><button type="button" data-action="job-site-photo-remove" data-index="${i}" aria-label="${jsL("Togli", "Remove")}">×</button></span>`).join("");
+    return `
+      <div class="js-sheet">
+        <div class="js-sheet-head"><strong>${jsL("Arrivo in cantiere", "Arrival on site")}</strong>${close}</div>
+        <p class="js-muted">${jsL("Una foto del cantiere prima di iniziare protegge da contestazioni: com'era il terreno, recinzioni, accessi.", "A photo before starting protects against disputes: ground, fences, access.")}</p>
+        <div class="js-photos">${thumbs}
+          ${sheet.photos.length < 3 ? `<label class="js-photo-add">${sheet.photos.length ? jsL("+ Altra foto", "+ Another photo") : jsL("+ Foto del cantiere", "+ Site photo")}<input type="file" accept="image/*" capture="environment" multiple data-job-site-photo hidden /></label>` : ""}
+        </div>
+        ${sheet.busyPhotos ? `<small class="js-muted">${jsL("Preparo le foto…", "Preparing photos…")}</small>` : ""}
+        ${error}
+        ${confirm(jsL("Sono arrivato", "I've arrived"))}
+      </div>`;
+  }
+  // Rientro
+  const loadedTools = (sheet.loaded || []).map((id) => tools.find((tool) => tool.id === id) || { id, name: id }).filter(Boolean);
+  const missing = loadedTools.filter((tool) => !sheet.tools.includes(tool.id));
+  return `
+    <div class="js-sheet">
+      <div class="js-sheet-head"><strong>${jsL("Rientro", "Back at base")}</strong>${close}</div>
+      ${sheet.vanId ? kmField(jsL("Km sul cruscotto al rientro", "Odometer on return (km)"), escapeHtml(jobSiteTripPreview(sheet))) : `<p class="js-muted">${jsL("Partenza senza furgone: niente km da segnare.", "Departure without a van: no km to record.")}</p>`}
+      ${loadedTools.length ? `
+        <div class="js-field"><span>${jsL("Attrezzatura riportata", "Tools brought back")}</span>
+          <div class="js-tools">${loadedTools.map((tool) => toolItem(tool, sheet.tools.includes(tool.id))).join("")}</div>
+          <small class="js-warn" id="js-missing" ${missing.length ? "" : "hidden"}>${escapeHtml(jobSiteMissingText(missing))}</small>
+        </div>` : ""}
+      ${error}
+      ${confirm(jsL("Conferma rientro", "Confirm return"))}
+    </div>`;
+}
+
+function jobSiteMissingText(missing) {
+  return missing.length ? jsL(`Resta in cantiere: ${missing.map((tool) => tool.name).join(", ")}`, `Left on site: ${missing.map((tool) => tool.name).join(", ")}`) : "";
+}
+
+function jobSiteTripPreview(sheet) {
+  const km = Number(sheet.km || 0);
+  const out = Number(sheet.kmOut || 0);
+  if (!out) return "";
+  if (!km) return jsL(`Alla partenza: ${jobSiteKm(out)} km`, `At departure: ${jobSiteKm(out)} km`);
+  if (km < out) return jsL(`Meno dei km alla partenza (${jobSiteKm(out)}): controlla.`, `Lower than at departure (${jobSiteKm(out)}): please check.`);
+  const perKm = fleetCostPerKm(sheet.vanId);
+  return jsL(`Viaggio di oggi: ${jobSiteKm(km - out)} km`, `Today's trip: ${jobSiteKm(km - out)} km`) + (perKm != null ? ` · ${formatCurrency((km - out) * perKm)}` : "");
+}
+
+function parseJobSiteKm(value) {
+  const digits = String(value || "").replace(/[^\d]/g, "");
+  return digits ? Number(digits) : 0;
+}
+
+async function confirmJobSiteSheet(order) {
+  const sheet = state.jobSite.sheet;
+  if (!sheet || sheet.orderId !== order.id) return;
+  sheet.error = "";
+  const km = parseJobSiteKm(sheet.km);
+  if (sheet.type === "departure" || sheet.type === "return") {
+    if (sheet.vanId && !km) {
+      sheet.error = jsL("Scrivi i km sul cruscotto.", "Enter the odometer reading.");
+      rerenderJobSiteFor(order.id);
+      return;
+    }
+    if (sheet.type === "return" && sheet.kmOut && km && km < sheet.kmOut) {
+      sheet.error = jsL(`I km al rientro sono meno di quelli alla partenza (${jobSiteKm(sheet.kmOut)}).`, `Return km are lower than at departure (${jobSiteKm(sheet.kmOut)}).`);
+      rerenderJobSiteFor(order.id);
+      return;
+    }
+  }
+  const meta = sheet.type === "arrival" || !sheet.vanId ? undefined : { vanId: sheet.vanId, km, tools: sheet.tools };
+  const ok = await registerJobEvent(order.id, sheet.type, { photos: sheet.type === "arrival" ? sheet.photos : [], meta });
+  if (ok) state.jobSite.sheet = null;
+  rerenderJobSiteFor(order.id);
+}
+
+function renderJobSiteDiary(order, events) {
+  const days = diaryByDay(events);
+  if (!days.length) return `<div class="job-events-empty">${jsL("Il diario si riempie con i passaggi della squadra: partenza, arrivo, lavori, rientro.", "The diary fills up with the crew's steps: departure, arrival, work, return.")}</div>`;
+  const installDays = installationDays(order.operations?.installation || {});
+  const todayKey = romeDateKey(new Date());
+  return `
+    <h4 class="js-diary-title">${jsL("Diario di cantiere", "Site diary")}</h4>
+    ${days.map((group, index) => {
+      const n = installDays.indexOf(group.dateKey);
+      const label = `${group.dateKey === todayKey ? `${jsL("Oggi", "Today")} · ` : ""}${jobSiteDayName(group.dateKey)}${n >= 0 && installDays.length > 1 ? ` · ${jsL(`giorno ${n + 1} di ${installDays.length}`, `day ${n + 1} of ${installDays.length}`)}` : ""}`;
+      const s = group.summary;
+      const chips = [
+        s.travelMinutes != null ? `${jsL("viaggio", "trip")} ${formatMinutes(s.travelMinutes)}` : "",
+        s.workMinutes != null ? `${jsL("lavori", "work")} ${formatMinutes(s.workMinutes)}` : "",
+        s.km != null ? `${jobSiteKm(s.km)} km` : "",
+      ].filter(Boolean);
+      return `
+        <details class="js-diary-day" ${index === 0 ? "open" : ""}>
+          <summary><strong>${escapeHtml(label)}</strong>${chips.length ? `<span>${escapeHtml(chips.join(" · "))}</span>` : ""}</summary>
+          ${group.events.map((ev, i) => renderJobEventCard(ev, group.events[i - 1])).join("")}
+        </details>`;
+    }).join("")}`;
+}
+
+function renderJobEventCard(ev, previous = null) {
   const def = JOB_EVENT_DEFS.find((d) => d.type === ev.eventType);
-  const icon = def?.icon || "•";
-  // Link "verificato" → Google Maps universal URL.
-  // Su desktop apre maps.google.com nel browser (familiare per office).
-  // Su mobile, se è installata l'app Google Maps, si apre quella con routing
-  // integrato. Niente API key necessarie, gratuito.
-  const geoBadge = ev.lat != null && ev.lng != null
-    ? `<a class="job-event-geo" href="https://www.google.com/maps?q=${ev.lat},${ev.lng}" target="_blank" rel="noopener">📍 verificato${ev.gpsAccuracyM ? ` (±${ev.gpsAccuracyM}m)` : ""}</a>`
+  const details = [];
+  const gap = previous ? minutesBetween(previous.occurredAt, ev.occurredAt) : null;
+  if (ev.eventType === "arrival" && previous?.eventType === "departure" && gap != null) details.push(jsL(`dopo ${formatMinutes(gap)} di viaggio`, `after a ${formatMinutes(gap)} drive`));
+  if (["day_end", "work_end"].includes(ev.eventType) && previous?.eventType === "work_start" && gap != null) details.push(jsL(`lavori ${formatMinutes(gap)}`, `work ${formatMinutes(gap)}`));
+  if (ev.meta?.vanId) details.push([fleetVanName(ev.meta.vanId), ev.meta.km ? `${jobSiteKm(ev.meta.km)} km` : ""].filter(Boolean).join(" · "));
+  if (ev.eventType === "departure" && ev.meta?.tools?.length) details.push(ev.meta.tools.map(fleetToolName).join(", "));
+  const geo = ev.lat != null && ev.lng != null
+    ? `<a class="job-event-geo" href="https://www.google.com/maps?q=${ev.lat},${ev.lng}" target="_blank" rel="noopener">📍 ${jsL("posizione", "location")}${ev.gpsAccuracyM ? ` ±${ev.gpsAccuracyM} m` : ""}</a>`
     : "";
-  const photosHtml = Array.isArray(ev.photos) && ev.photos.length
-    ? `<div class="job-event-photos">${ev.photos.map((p, i) => `<span class="job-event-photo-chip">📷 ${i + 1}</span>`).join("")}</div>`
+  const photos = Array.isArray(ev.photos) && ev.photos.length
+    ? `<div class="job-event-photos">${ev.photos.map((p) => p?.dataUrl ? `<a href="${escapeAttr(p.dataUrl)}" target="_blank" rel="noopener"><img src="${escapeAttr(p.dataUrl)}" alt="" /></a>` : `<span class="job-event-photo-chip">📷</span>`).join("")}</div>`
     : "";
   return `
     <article class="job-event-row">
-      <div class="job-event-time">${escapeHtml(hhmm)}<small>${escapeHtml(dateLabel)}</small></div>
-      <div class="job-event-marker">${icon}</div>
+      <div class="job-event-time">${escapeHtml(jobSiteTime(ev.occurredAt))}</div>
+      <div class="job-event-marker">${def?.icon || "•"}</div>
       <div class="job-event-body">
-        <strong>${escapeHtml(label)}</strong>
-        <span class="job-event-meta">${escapeHtml(ev.userName || "")}${ev.crewName ? ` · ${escapeHtml(ev.crewName)}` : ""}</span>
-        ${geoBadge}
+        <strong>${escapeHtml(jobEventLabel(ev.eventType))}</strong>
+        <span class="job-event-meta">${escapeHtml([ev.userName, ev.crewName].filter(Boolean).join(" · "))}</span>
+        ${details.filter(Boolean).map((text) => `<span class="job-event-detail">${escapeHtml(text)}</span>`).join("")}
+        ${geo}
         ${ev.notes ? `<p class="job-event-notes">${escapeHtml(ev.notes)}</p>` : ""}
-        ${photosHtml}
+        ${photos}
       </div>
-    </article>
-  `;
+    </article>`;
 }
 
 async function registerJobEvent(orderId, eventType, opts = {}) {
-  if (state.jobEvents.busy) return;
+  if (state.jobEvents.busy) return false;
   state.jobEvents.busy = true;
   try {
-    // Geo opt-in: chiedi 1 sola volta al primo uso
-    if (!isGeoOptedIn() && opts.askGeo !== false) {
-      const wantsGeo = window.confirm("Vuoi attivare la geolocalizzazione? Le tue timbrature saranno 'verificate' e potrai dimostrare di essere stato in cantiere. (Attivabile/disattivabile in qualsiasi momento)");
-      setGeoOptIn(wantsGeo);
-    }
     const pos = await getCurrentPosition();
-    const payload = {
+    const event = await apiCreateJobEvent(orderId, {
       eventType,
       lat: pos?.lat,
       lng: pos?.lng,
@@ -22772,73 +23169,489 @@ async function registerJobEvent(orderId, eventType, opts = {}) {
       deviceId: getDeviceId(),
       photos: opts.photos || [],
       notes: opts.notes || "",
-    };
-    const event = await apiCreateJobEvent(orderId, payload);
-    // Aggiorna cache locale
+      meta: opts.meta,
+    });
     if (!state.jobEvents.byOrder[orderId]) state.jobEvents.byOrder[orderId] = [];
     state.jobEvents.byOrder[orderId].push(event);
-    showToast(`✓ ${JOB_EVENT_LABELS[eventType] || eventType}`, "success");
-    // Re-render
-    const order = (state.orders || []).find((o) => o.id === orderId);
-    if (order) renderJobEventsForOrder(order);
+    state.jobSite.undoArmed = "";
+    state.jobSite.cooldownUntil = Date.now() + JOB_SITE_COOLDOWN_MS;
+    window.setTimeout(() => rerenderJobSiteFor(orderId), JOB_SITE_COOLDOWN_MS + 50);
+    showToast(`✓ ${jobEventLabel(eventType)}`, "success");
+    if (opts.meta?.vanId) loadFleet({ force: true });
+    rerenderJobSiteFor(orderId);
+    return true;
   } catch (err) {
-    showToast(`Errore: ${err?.message || err}`, "error");
+    showToast(`${jsL("Errore", "Error")}: ${err?.message || err}`, "error");
+    return false;
   } finally {
     state.jobEvents.busy = false;
   }
 }
 
-// Event delegation per bottoni rapidi
-document.addEventListener("click", (ev) => {
-  const btn = ev.target.closest?.('[data-action="register-job-event"]');
-  if (!btn) return;
-  ev.preventDefault();
-  const orderId = btn.dataset.orderId;
-  const eventType = btn.dataset.eventType;
-  const askPhoto = btn.dataset.askPhoto === "1";
-  if (!orderId || !eventType) return;
-  if (askPhoto) {
-    // Apri input file per foto pre-lavoro (opt-in)
-    const wantsPhoto = window.confirm("Vuoi allegare 1-3 foto del cantiere prima di iniziare? (Consigliato per documentare lo stato iniziale)");
-    if (wantsPhoto) {
-      // Trigger photo input via work-report-photo-input (riusiamo lo stesso)
-      const input = document.getElementById("work-report-photo-input");
-      if (input) {
-        input.dataset.mode = "job-event-photo";
-        input.dataset.orderId = orderId;
-        input.dataset.eventType = eventType;
-        input.click();
-        return; // verrà completato in handler change
-      }
-    }
+async function voidJobSiteEvent(orderId, eventId) {
+  try {
+    await apiFetch(`/api/jobs/${encodeURIComponent(orderId)}/events/${encodeURIComponent(eventId)}/void`, { method: "POST", body: "{}" });
+    const list = state.jobEvents.byOrder[orderId] || [];
+    const voided = list.find((ev) => ev.id === eventId);
+    state.jobEvents.byOrder[orderId] = list.filter((ev) => ev.id !== eventId);
+    showToast(jsL(`Annullato: ${jobEventLabel(voided?.eventType)}`, `Undone: ${jobEventLabel(voided?.eventType)}`), "success");
+    if (voided?.meta?.vanId) loadFleet({ force: true });
+  } catch (err) {
+    showToast(`${jsL("Errore", "Error")}: ${err?.message || err}`, "error");
   }
-  registerJobEvent(orderId, eventType);
+  state.jobSite.undoArmed = "";
+  rerenderJobSiteFor(orderId);
+}
+
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest?.("[data-action^='job-site-']");
+  if (!target) return;
+  const action = target.dataset.action;
+  const orderId = target.dataset.orderId || state.jobSite.sheet?.orderId || state.selectedOrderId || "";
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  ev.preventDefault();
+  if (action === "job-site-geo") {
+    setGeoOptIn(target.dataset.value === "yes");
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-step" && order) {
+    if (jobSiteCoolingDown() || state.jobEvents.busy) return;
+    const type = target.dataset.type;
+    if (["departure", "arrival", "return"].includes(type)) openJobSiteSheet(order, type);
+    else registerJobEvent(order.id, type);
+  } else if (action === "job-site-sheet-close") {
+    state.jobSite.sheet = null;
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-van" && state.jobSite.sheet) {
+    const sheet = state.jobSite.sheet;
+    sheet.vanId = target.dataset.vanId || "";
+    const lastKm = state.fleet.data?.status?.vans?.[sheet.vanId]?.km;
+    sheet.km = lastKm ? String(lastKm) : "";
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-confirm" && order) {
+    confirmJobSiteSheet(order);
+  } else if (action === "job-site-photo-remove" && state.jobSite.sheet) {
+    state.jobSite.sheet.photos.splice(Number(target.dataset.index), 1);
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-reopen") {
+    state.jobSite.reopen[orderId] = true;
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-undo") {
+    const eventId = target.dataset.eventId;
+    if (state.jobSite.undoArmed === eventId) {
+      window.clearTimeout(state.jobSite.undoTimer);
+      voidJobSiteEvent(orderId, eventId);
+      return;
+    }
+    state.jobSite.undoArmed = eventId;
+    window.clearTimeout(state.jobSite.undoTimer);
+    state.jobSite.undoTimer = window.setTimeout(() => {
+      state.jobSite.undoArmed = "";
+      rerenderJobSiteFor(orderId);
+    }, 5000);
+    rerenderJobSiteFor(orderId);
+  }
 });
 
-// Quando l'input foto è in modalità job-event, comprimi + registra event
+document.addEventListener("input", (ev) => {
+  const sheet = state.jobSite.sheet;
+  if (!sheet || ev.target?.dataset?.jobSiteInput !== "km") return;
+  sheet.km = String(parseJobSiteKm(ev.target.value) || "");
+  if (sheet.type === "return") {
+    const hint = document.getElementById("js-km-hint");
+    if (hint) hint.textContent = jobSiteTripPreview(sheet);
+  }
+});
+
 document.addEventListener("change", async (ev) => {
+  const sheet = state.jobSite.sheet;
+  if (!sheet) return;
   const input = ev.target;
-  if (input?.id !== "work-report-photo-input" || input.dataset.mode !== "job-event-photo") return;
-  const files = Array.from(input.files || []);
-  if (!files.length) {
-    input.dataset.mode = "";
+  if (input?.dataset?.jobSiteTool) {
+    const id = input.dataset.jobSiteTool;
+    sheet.tools = input.checked ? [...new Set([...sheet.tools, id])] : sheet.tools.filter((item) => item !== id);
+    const missingNote = document.getElementById("js-missing");
+    if (missingNote) {
+      const tools = state.fleet.data?.fleet?.tools || [];
+      const missing = (sheet.loaded || []).filter((toolId) => !sheet.tools.includes(toolId)).map((toolId) => tools.find((tool) => tool.id === toolId) || { name: toolId });
+      missingNote.textContent = jobSiteMissingText(missing);
+      missingNote.hidden = !missing.length;
+    }
     return;
   }
-  const orderId = input.dataset.orderId;
-  const eventType = input.dataset.eventType;
-  input.dataset.mode = "";
-  input.dataset.orderId = "";
-  input.dataset.eventType = "";
-  // Comprimi foto (max 3) usando lo stesso helper del verbale
-  const photos = [];
-  for (const file of files.slice(0, 3)) {
-    try {
-      const c = await compressPhotoFile(file);
-      photos.push({ name: c.name, type: c.type, dataUrl: c.dataUrl, takenAt: c.takenAt });
-    } catch {}
+  if (input?.dataset && "jobSitePhoto" in input.dataset) {
+    const files = Array.from(input.files || []).slice(0, 3 - sheet.photos.length);
+    if (!files.length) return;
+    sheet.busyPhotos = true;
+    rerenderJobSiteFor(sheet.orderId);
+    for (const file of files) {
+      try {
+        const photo = await compressPhotoFile(file);
+        sheet.photos.push({ name: photo.name, type: photo.type, dataUrl: photo.dataUrl, takenAt: photo.takenAt });
+      } catch {}
+    }
+    sheet.busyPhotos = false;
+    rerenderJobSiteFor(sheet.orderId);
   }
-  input.value = "";
-  registerJobEvent(orderId, eventType, { photos });
+});
+
+// ── Furgoni e attrezzatura (ufficio) ────────────────────────────────────────
+// Tre schede: Furgoni (km, costo al km, scadenze), Viaggi (ricavati da
+// Partenza/Rientro) e Attrezzatura (dove si trova ogni attrezzo).
+
+const FLEET_COST_LABELS = {
+  purchasePrice: ["Prezzo d'acquisto (€)", "Purchase price (€)"],
+  residualValue: ["Valore a fine uso (€)", "Value at end of use (€)"],
+  years: ["Anni di utilizzo", "Years of use"],
+  kmPerYear: ["Km in un anno", "Km per year"],
+  kmPerLiter: ["Km con un litro", "Km per litre"],
+  fuelPrice: ["Prezzo gasolio (€/l)", "Diesel price (€/l)"],
+  insurancePerYear: ["Assicurazione (€/anno)", "Insurance (€/year)"],
+  taxPerYear: ["Bollo (€/anno)", "Road tax (€/year)"],
+  maintenancePerYear: ["Manutenzione e tagliandi (€/anno)", "Maintenance (€/year)"],
+  tyresPerYear: ["Gomme (€/anno)", "Tyres (€/year)"],
+  manualCostPerKm: ["Oppure costo al km scritto a mano (€)", "Or cost per km typed in (€)"],
+};
+const FLEET_DEADLINE_LABELS = {
+  revisione: ["Revisione", "MOT"],
+  assicurazione: ["Assicurazione", "Insurance"],
+  bollo: ["Bollo", "Road tax"],
+  tagliando: ["Tagliando", "Service"],
+};
+
+function fleetOrderLabel(orderId) {
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  return order ? `${composeClientName(order)} · ${getOrderNumber(order)}` : jsL("ordine non trovato", "order not found");
+}
+
+function fleetEuroPerKm(value) {
+  return Number.isFinite(value) ? `${value.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} €/km` : "—";
+}
+
+function renderFleet() {
+  const root = document.getElementById("fleet-root");
+  if (!root) return;
+  const fs = state.fleet;
+  if (!fs.data && !fs.error) {
+    root.innerHTML = `<div class="fleet-empty">${jsL("Caricamento…", "Loading…")}</div>`;
+    loadFleet({ force: true });
+    return;
+  }
+  if (!fs.data) {
+    root.innerHTML = `<div class="fleet-empty">${jsL("Non riesco a caricare i furgoni", "Could not load vans")}: ${escapeHtml(fs.error)} <button type="button" class="ghost-button small" data-action="fleet-reload">${jsL("Riprova", "Retry")}</button></div>`;
+    return;
+  }
+  if (Date.now() - fs.loadedAt > 60000) loadFleet();
+  const tabs = [["vans", jsL("Furgoni", "Vans")], ["trips", jsL("Viaggi", "Trips")], ["tools", jsL("Attrezzatura", "Tools")]];
+  const body = fs.tab === "trips" ? renderFleetTrips() : fs.tab === "tools" ? renderFleetTools() : renderFleetVans();
+  root.innerHTML = `
+    <div class="fleet-tabs" role="tablist">${tabs.map(([key, label]) => `<button type="button" role="tab" class="fleet-tab ${fs.tab === key ? "is-active" : ""}" data-action="fleet-tab" data-tab="${key}" aria-selected="${fs.tab === key}">${escapeHtml(label)}</button>`).join("")}</div>
+    ${fs.data.database === false ? `<div class="fleet-note">${jsL("Senza database i passaggi di cantiere non vengono salvati: viaggi e attrezzi restano vuoti.", "Without the database site steps are not saved: trips and tools stay empty.")}</div>` : ""}
+    ${body}`;
+}
+
+function renderFleetVans() {
+  const { fleet, status, costs } = state.fleet.data;
+  const todayKey = romeDateKey(new Date());
+  const cards = fleet.vans.map((van) => {
+    if (state.fleet.editVan === van.id) return renderFleetVanForm(van);
+    const st = status.vans[van.id] || {};
+    const cost = costs[van.id] || {};
+    const parts = [
+      [jsL("Ammortamento", "Depreciation"), cost.amort],
+      [jsL("Gasolio", "Diesel"), cost.fuel],
+      [jsL("Assicurazione, bollo, manutenzione, gomme", "Insurance, tax, maintenance, tyres"), cost.fixed],
+    ];
+    const deadlines = VAN_DEADLINES.map((key) => {
+      const date = van.deadlines?.[key];
+      const tone = vanDeadlineStatus(date, todayKey);
+      return `<span class="fleet-deadline is-${tone || "none"}"><small>${escapeHtml(jsL(...FLEET_DEADLINE_LABELS[key]))}</small>${date ? escapeHtml(formatDate(date)) : jsL("da segnare", "not set")}</span>`;
+    }).join("");
+    const serviceDue = van.serviceEveryKm && van.lastServiceKm && st.km ? van.lastServiceKm + van.serviceEveryKm - st.km : null;
+    return `
+      <article class="fleet-card ${van.active ? "" : "is-inactive"}">
+        <header class="fleet-card-head">
+          <div>
+            <h3>${escapeHtml(van.name)} <span class="fleet-plate">${escapeHtml(van.plate || "")}</span></h3>
+            <span class="fleet-where ${st.out ? "is-out" : ""}">${st.out
+              ? jsL(`Fuori da ${jobSiteDayName(romeDateKey(st.out.since))} ${jobSiteTime(st.out.since)} · ${fleetOrderLabel(st.out.orderId)}`, `Out since ${jobSiteDayName(romeDateKey(st.out.since))} ${jobSiteTime(st.out.since)} · ${fleetOrderLabel(st.out.orderId)}`)
+              : jsL("In sede", "At base")}</span>
+          </div>
+          <button type="button" class="ghost-button small" data-action="fleet-edit-van" data-van-id="${escapeAttr(van.id)}">${jsL("Modifica", "Edit")}</button>
+        </header>
+        <div class="fleet-kpis">
+          <div><small>${jsL("Km attuali", "Current km")}</small><strong>${st.km ? `${jobSiteKm(st.km)} km` : "—"}</strong>${st.kmAt ? `<p>${jsL("ultimo dato", "last reading")} ${escapeHtml(jobSiteDayName(romeDateKey(st.kmAt)) || formatDate(st.kmAt))}</p>` : ""}</div>
+          <div><small>${jsL("Costo al km", "Cost per km")}</small><strong>${fleetEuroPerKm(cost.total)}</strong><p>${cost.manual ? jsL("scritto a mano", "typed in") : cost.complete ? jsL("calcolato dai costi", "worked out from costs") : cost.total != null ? jsL("calcolo parziale: mancano dei costi", "partial: some costs missing") : jsL("compila i costi in Modifica", "fill in the costs under Edit")}</p></div>
+          ${serviceDue != null ? `<div><small>${jsL("Prossimo tagliando", "Next service")}</small><strong>${serviceDue > 0 ? jsL(`tra ${jobSiteKm(serviceDue)} km`, `in ${jobSiteKm(serviceDue)} km`) : jsL("da fare", "due")}</strong></div>` : ""}
+        </div>
+        ${cost.total != null && !cost.manual ? `<dl class="fleet-cost-parts">${parts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${fleetEuroPerKm(value)}</dd></div>`).join("")}</dl>` : ""}
+        <div class="fleet-deadlines">${deadlines}</div>
+      </article>`;
+  }).join("");
+  return `
+    <div class="fleet-grid">${cards}</div>
+    <div class="fleet-actions"><button type="button" class="ghost-button small" data-action="fleet-add-van">${jsL("+ Aggiungi furgone", "+ Add van")}</button></div>
+    <p class="fleet-note">${jsL("Telepass UnipolMove e carta carburante DKV non hanno un collegamento diretto: si potranno caricare i loro estratti (file) appena ne abbiamo uno di esempio.", "UnipolMove toll pass and DKV fuel card have no direct link: their statements (files) can be loaded as soon as we have a sample.")}</p>`;
+}
+
+function renderFleetVanForm(van) {
+  const field = (name, label, value, attrs = "") => `
+    <label class="field"><span>${escapeHtml(label)}</span><input name="${name}" value="${escapeAttr(value ?? "")}" ${attrs} /></label>`;
+  const num = (value) => (value == null ? "" : String(value).replace(".", ","));
+  return `
+    <form class="fleet-card fleet-form" data-fleet-van-form="${escapeAttr(van.id)}">
+      <header class="fleet-card-head"><h3>${escapeHtml(van.name || jsL("Nuovo furgone", "New van"))}</h3></header>
+      <fieldset><legend>${jsL("Dati", "Details")}</legend>
+        <div class="fleet-form-grid">
+          ${field("name", jsL("Nome", "Name"), van.name)}
+          ${field("plate", jsL("Targa", "Plate"), van.plate)}
+          ${field("odometerKm", jsL("Km letti sul cruscotto", "Odometer reading (km)"), van.odometerKm ?? "", 'inputmode="numeric"')}
+          ${field("odometerDate", jsL("Letti il", "Read on"), van.odometerDate, 'type="date"')}
+          <label class="field fleet-check"><input type="checkbox" name="active" ${van.active ? "checked" : ""} /> <span>${jsL("In uso (compare alla partenza)", "In use (shown at departure)")}</span></label>
+        </div>
+      </fieldset>
+      <fieldset><legend>${jsL("Costo al km", "Cost per km")}</legend>
+        <p class="fleet-note">${jsL("Ammortamento = (prezzo − valore a fine uso) ÷ anni ÷ km in un anno. Gasolio = prezzo al litro ÷ km con un litro. Spese fisse ÷ km in un anno.", "Depreciation = (price − end value) ÷ years ÷ km per year. Diesel = price per litre ÷ km per litre. Fixed costs ÷ km per year.")}</p>
+        <div class="fleet-form-grid">
+          ${VAN_COST_FIELDS.map((key) => field(`cost:${key}`, jsL(...FLEET_COST_LABELS[key]), num(van.costs?.[key]), 'inputmode="decimal"')).join("")}
+        </div>
+      </fieldset>
+      <fieldset><legend>${jsL("Scadenze", "Deadlines")}</legend>
+        <div class="fleet-form-grid">
+          ${VAN_DEADLINES.map((key) => field(`deadline:${key}`, jsL(...FLEET_DEADLINE_LABELS[key]), van.deadlines?.[key] || "", 'type="date"')).join("")}
+          ${field("serviceEveryKm", jsL("Tagliando ogni (km)", "Service every (km)"), van.serviceEveryKm ?? "", 'inputmode="numeric"')}
+          ${field("lastServiceKm", jsL("Ultimo tagliando a (km)", "Last service at (km)"), van.lastServiceKm ?? "", 'inputmode="numeric"')}
+        </div>
+      </fieldset>
+      <div class="fleet-actions">
+        <button type="submit" class="primary-button small" ${state.fleet.busy ? "disabled" : ""}>${jsL("Salva", "Save")}</button>
+        <button type="button" class="ghost-button small" data-action="fleet-cancel-edit">${jsL("Annulla", "Cancel")}</button>
+      </div>
+    </form>`;
+}
+
+function fleetTripMonths(trips) {
+  return [...new Set(trips.map((trip) => romeMonthKey(trip.startAt)).filter(Boolean))].sort().reverse();
+}
+
+function renderFleetTrips() {
+  const { trips, fleet } = state.fleet.data;
+  if (!trips.length) {
+    return `<div class="fleet-empty">${jsL("Ancora nessun viaggio. Si riempie da solo quando la squadra segna Partenza e Rientro con il furgone nella scheda della posa.", "No trips yet. It fills up by itself when the crew marks Departure and Return with the van on the job card.")}</div>`;
+  }
+  const months = fleetTripMonths(trips);
+  const month = months.includes(state.fleet.month) ? state.fleet.month : months[0];
+  const rows = trips.filter((trip) => romeMonthKey(trip.startAt) === month);
+  const total = tripsTotals(rows, () => "all").all || { trips: 0, km: 0, cost: 0, missingKm: 0, missingCost: 0 };
+  const vanName = (id) => fleet.vans.find((van) => van.id === id)?.name || id;
+  return `
+    <div class="fleet-toolbar">
+      <label class="field fleet-month"><span>${jsL("Mese", "Month")}</span>
+        <select data-fleet-month>${months.map((key) => `<option value="${key}" ${key === month ? "selected" : ""}>${escapeHtml(formatMonthLabel(key))}</option>`).join("")}</select>
+      </label>
+      <button type="button" class="ghost-button small" data-action="fleet-trips-csv" data-month="${month}">${jsL("Scarica CSV", "Download CSV")}</button>
+    </div>
+    <div class="fleet-kpis fleet-kpis-row">
+      <div><small>${jsL("Viaggi", "Trips")}</small><strong>${total.trips}</strong></div>
+      <div><small>${jsL("Km", "Km")}</small><strong>${jobSiteKm(total.km)}</strong>${total.missingKm ? `<p>${jsL(`${total.missingKm} senza km`, `${total.missingKm} without km`)}</p>` : ""}</div>
+      <div><small>${jsL("Costo furgone", "Van cost")}</small><strong>${formatCurrency(total.cost)}</strong>${total.missingCost && !total.missingKm ? `<p>${jsL("manca il costo al km", "cost per km missing")}</p>` : ""}</div>
+    </div>
+    <div class="fleet-table-wrap">
+      <table class="fleet-table">
+        <thead><tr><th>${jsL("Partenza", "Departure")}</th><th>${jsL("Furgone", "Van")}</th><th>${jsL("Cantiere", "Site")}</th><th>${jsL("Squadra", "Crew")}</th><th class="num">${jsL("Km", "Km")}</th><th class="num">${jsL("Costo", "Cost")}</th></tr></thead>
+        <tbody>${rows.map((trip) => `
+          <tr>
+            <td>${escapeHtml(jobSiteDayName(romeDateKey(trip.startAt)))} ${escapeHtml(jobSiteTime(trip.startAt))}</td>
+            <td>${escapeHtml(vanName(trip.vanId))}</td>
+            <td><button type="button" class="fleet-link" data-action="fleet-open-order" data-order-id="${escapeAttr(trip.orderId)}">${escapeHtml(fleetOrderLabel(trip.orderId))}</button></td>
+            <td>${escapeHtml(trip.crewName || "")}</td>
+            <td class="num">${trip.km != null ? jobSiteKm(trip.km) : `<span class="fleet-missing">${trip.endAt ? jsL("km mancanti", "km missing") : jsL("in viaggio", "on the road")}</span>`}</td>
+            <td class="num">${trip.cost != null ? formatCurrency(trip.cost) : "—"}</td>
+          </tr>`).join("")}</tbody>
+      </table>
+    </div>`;
+}
+
+function formatMonthLabel(key) {
+  const date = new Date(`${key}-15T12:00:00Z`);
+  return date.toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+function downloadFleetTripsCsv(month) {
+  const { trips, fleet } = state.fleet.data;
+  const rows = trips.filter((trip) => romeMonthKey(trip.startAt) === month);
+  const vanName = (id) => fleet.vans.find((van) => van.id === id)?.name || id;
+  const cell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const lines = [["Data", "Ora", "Furgone", "Cantiere", "Squadra", "Km partenza", "Km rientro", "Km", "Costo €"].map(cell).join(";")]
+    .concat(rows.slice().reverse().map((trip) => [
+      romeDateKey(trip.startAt), jobSiteTime(trip.startAt), vanName(trip.vanId), fleetOrderLabel(trip.orderId), trip.crewName,
+      trip.kmStart ?? "", trip.kmEnd ?? "", trip.km ?? "", trip.cost != null ? String(trip.cost).replace(".", ",") : "",
+    ].map(cell).join(";")));
+  const blob = new Blob([`﻿${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `viaggi-furgone-${month}.csv`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+}
+
+function renderFleetTools() {
+  const { fleet, status } = state.fleet.data;
+  if (state.fleet.editTools) {
+    return `
+      <form class="fleet-card fleet-form" data-fleet-tools-form>
+        <div class="fleet-tools-edit">
+          ${fleet.tools.map((tool, i) => `
+            <div class="fleet-tool-row" data-tool-index="${i}">
+              <input type="hidden" name="id" value="${escapeAttr(tool.id)}" />
+              <label class="field"><span>${jsL("Attrezzo", "Tool")}</span><input name="name" value="${escapeAttr(tool.name)}" /></label>
+              <label class="field"><span>${jsL("Marca", "Brand")}</span><input name="brand" value="${escapeAttr(tool.brand)}" /></label>
+              <label class="field fleet-qty"><span>${jsL("Quanti", "Qty")}</span><input name="qty" inputmode="numeric" value="${tool.qty}" /></label>
+              <label class="field"><span>${jsL("Nota", "Note")}</span><input name="note" value="${escapeAttr(tool.note)}" /></label>
+              <label class="field fleet-check"><input type="checkbox" name="active" ${tool.active ? "checked" : ""} /> <span>${jsL("In uso", "In use")}</span></label>
+            </div>`).join("")}
+        </div>
+        <div class="fleet-actions">
+          <button type="button" class="ghost-button small" data-action="fleet-add-tool">${jsL("+ Aggiungi attrezzo", "+ Add tool")}</button>
+          <button type="submit" class="primary-button small" ${state.fleet.busy ? "disabled" : ""}>${jsL("Salva", "Save")}</button>
+          <button type="button" class="ghost-button small" data-action="fleet-cancel-edit">${jsL("Annulla", "Cancel")}</button>
+        </div>
+      </form>`;
+  }
+  const rows = fleet.tools.filter((tool) => tool.active).map((tool) => {
+    const st = status.tools[tool.id] || { state: "warehouse" };
+    const where = st.state === "out"
+      ? jsL(`Sul furgone · ${fleetOrderLabel(st.orderId)} (dal ${jobSiteDayName(romeDateKey(st.since))})`, `On the van · ${fleetOrderLabel(st.orderId)} (since ${jobSiteDayName(romeDateKey(st.since))})`)
+      : st.state === "left"
+        ? jsL(`Rimasto in cantiere · ${fleetOrderLabel(st.orderId)} (dal ${jobSiteDayName(romeDateKey(st.since))})`, `Left on site · ${fleetOrderLabel(st.orderId)} (since ${jobSiteDayName(romeDateKey(st.since))})`)
+        : jsL("In magazzino", "In the warehouse");
+    return `
+      <div class="fleet-tool is-${st.state}">
+        <div><strong>${escapeHtml(tool.name)}${tool.qty > 1 ? ` ×${tool.qty}` : ""}</strong><small>${escapeHtml([tool.brand, tool.note].filter(Boolean).join(" · "))}</small></div>
+        <span class="fleet-tool-where">${escapeHtml(where)}</span>
+        ${st.state !== "warehouse" ? `<button type="button" class="ghost-button small" data-action="fleet-tool-home" data-tool-id="${escapeAttr(tool.id)}">${jsL("È in magazzino", "It's in the warehouse")}</button>` : "<span></span>"}
+      </div>`;
+  }).join("");
+  return `
+    <div class="fleet-tools">${rows || `<div class="fleet-empty">${jsL("Nessun attrezzo in uso.", "No tools in use.")}</div>`}</div>
+    <div class="fleet-actions"><button type="button" class="ghost-button small" data-action="fleet-edit-tools">${jsL("Modifica elenco", "Edit list")}</button></div>
+    <p class="fleet-note">${jsL("Dove sono gli attrezzi si ricava da Partenza (attrezzatura caricata) e Rientro (attrezzatura riportata).", "Tool locations come from Departure (tools loaded) and Return (tools brought back).")}</p>`;
+}
+
+async function saveFleet(payload) {
+  state.fleet.busy = true;
+  renderFleet();
+  try {
+    const res = await apiFetch("/api/fleet", { method: "PUT", body: JSON.stringify(payload) });
+    state.fleet.data = { ...state.fleet.data, fleet: res.fleet, costs: res.costs };
+    state.fleet.editVan = "";
+    state.fleet.editTools = false;
+    showToast(jsL("Salvato", "Saved"), "success");
+    loadFleet({ force: true });
+  } catch (err) {
+    showToast(`${jsL("Errore", "Error")}: ${err?.message || err}`, "error");
+  } finally {
+    state.fleet.busy = false;
+    renderFleet();
+  }
+}
+
+function readFleetVanForm(form) {
+  const data = new FormData(form);
+  const van = (state.fleet.data.fleet.vans || []).find((item) => item.id === form.dataset.fleetVanForm) || {};
+  const number = (value) => String(value || "").replace(/\./g, "").replace(",", ".");
+  const costs = {};
+  for (const key of VAN_COST_FIELDS) costs[key] = number(data.get(`cost:${key}`));
+  const deadlines = {};
+  for (const key of VAN_DEADLINES) deadlines[key] = data.get(`deadline:${key}`) || "";
+  return {
+    ...van,
+    name: data.get("name"),
+    plate: data.get("plate"),
+    active: data.get("active") === "on",
+    odometerKm: number(data.get("odometerKm")),
+    odometerDate: data.get("odometerDate"),
+    serviceEveryKm: number(data.get("serviceEveryKm")),
+    lastServiceKm: number(data.get("lastServiceKm")),
+    costs,
+    deadlines,
+  };
+}
+
+function readFleetToolsForm(form) {
+  return Array.from(form.querySelectorAll(".fleet-tool-row")).map((row) => ({
+    id: row.querySelector("[name=id]").value,
+    name: row.querySelector("[name=name]").value,
+    brand: row.querySelector("[name=brand]").value,
+    qty: row.querySelector("[name=qty]").value,
+    note: row.querySelector("[name=note]").value,
+    active: row.querySelector("[name=active]").checked,
+  })).filter((tool) => tool.name.trim());
+}
+
+document.addEventListener("click", async (ev) => {
+  const target = ev.target.closest?.("[data-action^='fleet-']");
+  if (!target || !state.fleet.data && target.dataset.action !== "fleet-reload") return;
+  const action = target.dataset.action;
+  ev.preventDefault();
+  if (action === "fleet-reload") { state.fleet.error = ""; renderFleet(); return; }
+  if (action === "fleet-tab") { state.fleet.tab = target.dataset.tab; state.fleet.editVan = ""; state.fleet.editTools = false; renderFleet(); return; }
+  if (action === "fleet-edit-van") { state.fleet.editVan = target.dataset.vanId; renderFleet(); return; }
+  if (action === "fleet-cancel-edit") {
+    state.fleet.editVan = "";
+    state.fleet.editTools = false;
+    state.fleet.data.fleet.vans = state.fleet.data.fleet.vans.filter((van) => !van.isNew);
+    state.fleet.data.fleet.tools = state.fleet.data.fleet.tools.filter((tool) => !tool.isNew);
+    renderFleet();
+    return;
+  }
+  if (action === "fleet-add-van") {
+    const id = `furgone-${Date.now().toString(36)}`;
+    state.fleet.data.fleet.vans.push({ id, name: "", plate: "", active: true, costs: {}, deadlines: {}, isNew: true });
+    state.fleet.editVan = id;
+    renderFleet();
+    return;
+  }
+  if (action === "fleet-edit-tools") { state.fleet.editTools = true; renderFleet(); return; }
+  if (action === "fleet-add-tool") {
+    const form = target.closest("form");
+    if (form) state.fleet.data.fleet.tools = readFleetToolsForm(form).map((tool) => ({ ...tool, qty: Number(tool.qty) || 1 }));
+    state.fleet.data.fleet.tools.push({ id: "", name: "", brand: "", qty: 1, note: "", active: true, isNew: true });
+    renderFleet();
+    requestAnimationFrame(() => document.querySelector(".fleet-tool-row:last-child [name=name]")?.focus());
+    return;
+  }
+  if (action === "fleet-tool-home") {
+    try {
+      const res = await apiFetch(`/api/fleet/tools/${encodeURIComponent(target.dataset.toolId)}/in-warehouse`, { method: "POST", body: "{}" });
+      state.fleet.data = { ...state.fleet.data, fleet: { ...state.fleet.data.fleet, toolMoves: res.fleet.toolMoves }, status: res.status };
+      renderFleet();
+    } catch (err) {
+      showToast(`${jsL("Errore", "Error")}: ${err?.message || err}`, "error");
+    }
+    return;
+  }
+  if (action === "fleet-open-order") { openInstallationOrderFromSubView(target.dataset.orderId); return; }
+  if (action === "fleet-trips-csv") downloadFleetTripsCsv(target.dataset.month);
+});
+
+document.addEventListener("submit", (ev) => {
+  const form = ev.target;
+  if (form?.dataset?.fleetVanForm) {
+    ev.preventDefault();
+    const edited = readFleetVanForm(form);
+    const vans = state.fleet.data.fleet.vans.map((van) => (van.id === form.dataset.fleetVanForm ? edited : van));
+    saveFleet({ vans: vans.map(({ isNew, ...van }) => van) });
+  } else if (form && "fleetToolsForm" in (form.dataset || {})) {
+    ev.preventDefault();
+    saveFleet({ tools: readFleetToolsForm(form) });
+  }
+});
+
+document.addEventListener("change", (ev) => {
+  if (ev.target?.matches?.("[data-fleet-month]")) {
+    state.fleet.month = ev.target.value;
+    renderFleet();
+  }
 });
 
 // ── View Cantieri Live (office + crew) ──────────────────────────────────────
@@ -23272,6 +24085,7 @@ const VIEW_ICONS = {
   "installations-scheduled": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="8 14 11 17 16 12"/></svg>',
   "installations-repairs": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
   "installations-completed": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  fleet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>',
   sopralluoghi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   communications: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   "sales-requests": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
@@ -23309,7 +24123,7 @@ const NAV_SECTIONS = [
     { view: "orders" },
     { view: "warehouse" },
     { view: "shipping" },
-    { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed"] },
+    { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "fleet"] },
     { view: "sopralluoghi" },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
@@ -23663,7 +24477,7 @@ function applyNavGroupState() {
     const key = g.dataset.navGroup;
     let expanded = stateMap[key];
     // Auto-expand se la view corrente è figlia del gruppo
-    if (key === "installations" && isInstallationViewId(currentView)) expanded = true;
+    if (key === "installations" && (isInstallationViewId(currentView) || currentView === "fleet")) expanded = true;
     if (expanded === undefined) expanded = true; // default expanded
     g.classList.toggle("is-collapsed", !expanded);
     const toggle = g.querySelector(".nav-group-toggle");
@@ -29239,6 +30053,12 @@ function applySessionPayload(session = {}) {
     state.surveySchedule = null;
     // Analisi: preventivi visibili e numeri dipendono da chi è collegato.
     state.analytics = { period: "12m", data: null, loading: false, error: "", key: "", loadedAt: 0 };
+    // Furgoni (costi e viaggi solo ufficio) e diario cantiere: per chi è collegato.
+    state.fleet = { data: null, loading: false, loadedAt: 0, error: "", tab: "vans", editVan: "", editTools: false, month: "", busy: false };
+    state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {} };
+    if (state.jobEvents) { state.jobEvents.byOrder = {}; state.jobEvents.loadedAt = {}; }
+    // I viaggi del furgone servono al conto posa: l'ufficio li carica subito.
+    if (nextUser?.role === "office") window.setTimeout(() => loadFleet(), 1500);
     state.inventoryValueReportedOn = "";
     state.salesRequestPendingTab = null;
     state.pendingCurrentViewRefresh = false;
@@ -31301,6 +32121,7 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "installations-scheduled": renderInstallationsScheduled(); break;
       case "installations-repairs": _renderInstallationsRepairsFull(); break;
       case "installations-completed": renderInstallationsCompleted(); break;
+      case "fleet": renderFleet(); break;
       case "installations-live": renderInstallationsLive(); break;
       case "sopralluoghi": renderSopralluoghi(); break;
       default: renderDashboard(); break;
@@ -39138,7 +39959,7 @@ function reportInventoryValue() {
 // preventivi dal server (/api/analytics), magazzino dal calcolo di Inventario.
 // Grafici in lib/analytics-charts.js; colori controllati per chi distingue
 // male i colori (blu/arancio validati insieme), testi sempre in grigio/nero.
-const ANALYTICS_COLORS = { gross: "#2a78d6", collected: "#eb6834", profit: "#2f7a55", requests: "#6250d6", stock: "#2a78d6" };
+const ANALYTICS_COLORS = { gross: "#2a78d6", collected: "#eb6834", profit: "#2f7a55", requests: "#6250d6", stock: "#2a78d6", van: "#eb6834" };
 const ANALYTICS_SOURCE_LABELS = {
   imap: ["Sito (modulo contatti)", "Website (contact form)"],
   "google-sheets": ["Foglio Google (storico)", "Google Sheet (history)"],
@@ -39325,6 +40146,22 @@ function renderAnalytics() {
         : `<p class="an-note">${escapeHtml(L(`Lo storico si costruisce da solo: il valore si salva ogni giorno che l'ufficio apre Inventario o Analisi${history[0] ? ` (primo giorno: ${formatDate(history[0].date)})` : ""}.`, `History builds up by itself: the value is saved every day the office opens Inventory or Analytics${history[0] ? ` (first day: ${formatDate(history[0].date)})` : ""}.`))}</p>`}`
     : `<p class="an-note">${escapeHtml(L("Carico i costi…", "Loading costs…"))}</p>`;
 
+  // 7. Furgone: km e costo dai viaggi (Partenza/Rientro con furgone).
+  const vanRows = data?.van || [];
+  const vanKm = vanRows.reduce((sum, row) => sum + (row.km || 0), 0);
+  const vanCost = vanRows.reduce((sum, row) => sum + (row.cost || 0), 0);
+  const vanTrips = vanRows.reduce((sum, row) => sum + (row.trips || 0), 0);
+  const vanBody = !data ? waiting : vanTrips
+    ? `<div class="an-stock"><strong>${escapeHtml(`${count(vanKm)} km`)}</strong><span>${escapeHtml(L(`${count(vanTrips)} viaggi · ${money(vanCost)} di furgone`, `${count(vanTrips)} trips · ${money(vanCost)} van cost`))}</span></div>
+      <div class="an-chart">${columnChart({
+        months, width: chartWidth, height: 170, lang: state.lang, format: count, integer: true,
+        ariaLabel: L("Km del furgone per mese", "Van km by month"),
+        series: [{ label: L("Km", "Km"), color: ANALYTICS_COLORS.van, values: vanRows.map((row) => row.km) }],
+        extra: (i) => [[L("Viaggi", "Trips"), count(vanRows[i].trips)], [L("Costo", "Cost"), money(vanRows[i].cost)]],
+      })}</div>
+      ${dataTable({ summary: L("Vedi i numeri", "See the numbers"), head: [L("Mese", "Month"), L("Viaggi", "Trips"), L("Km", "Km"), L("Costo", "Cost")], rows: vanRows.map((row) => [monthLong(row.month), count(row.trips), count(row.km), money(row.cost)]) })}`
+    : empty(L("Ancora nessun viaggio: si contano da quando la squadra segna Partenza e Rientro con il furgone.", "No trips yet: they count from when the crew marks Departure and Return with the van."));
+
   root.innerHTML = `
     <div class="an-filters">
       <label class="an-period"><span>${escapeHtml(L("Periodo", "Period"))}</span>
@@ -39347,6 +40184,7 @@ function renderAnalytics() {
       ${panel(L("Prodotti più venduti", "Best-selling products"), periodLabel, productsBody)}
       ${panel(L("Da dove arrivano le richieste", "Where requests come from"), periodLabel, sourcesBody)}
       ${panel(L("Valore di magazzino", "Stock value"), L("Merce in magazzino al costo dell'ultima fattura fornitore.", "Goods in stock at the latest supplier invoice cost."), stockBody)}
+      ${panel(L("Furgone", "Van"), L("Km dai passaggi di cantiere, costo dal costo al km di Furgoni e attrezzatura.", "Km from site steps, cost from the cost per km in Vans & tools."), vanBody)}
     </div>`;
 }
 
