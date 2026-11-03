@@ -4,6 +4,7 @@ import { profitPaymentBalance } from "./lib/profit-history.js";
 import { registerState, mutateRegister } from "./lib/accounting-register.js";
 import { findFiscalIds, isOnlyFiscalId } from "./lib/fiscal-ids.js";
 import { monthRange, quotesByMonth } from "./lib/analytics.js";
+import { normalizeInstallEndDate } from "./lib/install-days.js";
 import { extractSupplierInvoice } from "./lib/supplier-invoice-extract.js";
 import { computeSupplierLandedCosts, hasSupplierInvoiceCosts, normalizeSupplierInvoiceCosts } from "./lib/supplier-landed-cost.js";
 import { renderQuoteLinkErrorPage, renderQuotePublicPage } from "./lib/quote-public-page.js";
@@ -12088,6 +12089,8 @@ function normalizeOperations(order, linkedJob = null) {
       selected: Boolean(current.installation?.selected ?? defaults.installation.selected),
       crew: current.installation?.crew || defaults.installation.crew,
       installDate: current.installation?.installDate || defaults.installation.installDate,
+      // Ultimo giorno di una posa su più giorni (vuoto = un giorno solo).
+      installEndDate: normalizeInstallEndDate(current.installation?.installDate || defaults.installation.installDate, current.installation?.installEndDate),
       installTime: current.installation?.installTime || defaults.installation.installTime,
       clientConfirmed: Boolean(current.installation?.clientConfirmed ?? defaults.installation.clientConfirmed),
       status: current.installation?.status || defaults.installation.status,
@@ -15450,6 +15453,7 @@ async function handleApi(req, res, url) {
         siteAddress,
         installation: {
           installDate: inst.installDate || null,
+          installEndDate: inst.installEndDate || null,
           installTime: inst.installTime || null,
           crew: inst.crew || null,
         },

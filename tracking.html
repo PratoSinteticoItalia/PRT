@@ -552,8 +552,8 @@
               </div>` : ""}
               ${inst.installDate ? `
               <div class="info-cell">
-                <div class="info-label">Data posa</div>
-                <div class="info-value" style="font-size:15px">${esc(fmtDate(inst.installDate))}${inst.installTime ? `<small>Ore ${esc(inst.installTime)}</small>` : ""}</div>
+                <div class="info-label">${inst.installEndDate ? "Giorni di posa" : "Data posa"}</div>
+                <div class="info-value" style="font-size:15px">${inst.installEndDate ? `dal ${esc(fmtDate(inst.installDate))} al ${esc(fmtDate(inst.installEndDate))}` : esc(fmtDate(inst.installDate))}${inst.installTime ? `<small>${inst.installEndDate ? "Arrivo il primo giorno alle " : "Ore "}${esc(inst.installTime)}</small>` : ""}</div>
               </div>` : ""}
               ${inst.crew ? `
               <div class="info-cell">
