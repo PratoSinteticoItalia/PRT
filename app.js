@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261103-cantiere-e-furgoni";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261103-cantiere-e-furgoni";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261103-cantiere-e-furgoni";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261103-cantiere-e-furgoni";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261103-cantiere-e-furgoni";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261103-cantiere-e-furgoni";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261103-cantiere-e-furgoni';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-scheda-posa-schede-2";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-scheda-posa-schede-2";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-scheda-posa-schede-2";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-scheda-posa-schede-2";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-scheda-posa-schede-2";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-scheda-posa-schede-2";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-scheda-posa-schede-2';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261103-cantiere-e-furgoni";
+} from "./lib/order-money.js?v=20261104-scheda-posa-schede-2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261103-cantiere-e-furgoni";
+import { regionForCity } from "./lib/geo.js?v=20261104-scheda-posa-schede-2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261103-cantiere-e-furgoni";
+} from "./lib/shipping-eligibility.js?v=20261104-scheda-posa-schede-2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261103-cantiere-e-furgoni";
+} from "./lib/profit-split.js?v=20261104-scheda-posa-schede-2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261103-cantiere-e-furgoni";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261103-cantiere-e-furgoni";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261103-cantiere-e-furgoni";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261103-cantiere-e-furgoni";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261103-cantiere-e-furgoni";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261103-cantiere-e-furgoni";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261103-cantiere-e-furgoni";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261103-cantiere-e-furgoni";
+} from "./lib/preventivo-pricing.js?v=20261104-scheda-posa-schede-2";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-scheda-posa-schede-2";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-scheda-posa-schede-2";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-scheda-posa-schede-2";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-scheda-posa-schede-2";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-scheda-posa-schede-2";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-scheda-posa-schede-2";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-scheda-posa-schede-2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261103-cantiere-e-furgoni";
+} from "./lib/sales-assignment.js?v=20261104-scheda-posa-schede-2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261103-cantiere-e-furgoni";
+} from "./lib/surveys.js?v=20261104-scheda-posa-schede-2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261103-cantiere-e-furgoni";
+const APP_SHELL_VERSION = "20261104-scheda-posa-schede-2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1906,7 +1906,6 @@ const ui = {
   installationStatusField: document.querySelector("#installation-form [name='status']")?.closest("label"),
   installationSubmitButton: document.querySelector("#installation-form button[type='submit']"),
   installationStatus: document.getElementById("installation-status"),
-  installationMapsButton: document.getElementById("installation-maps-button"),
   installationRouteButton: document.getElementById("installation-route-button"),
   installationCallButton: document.getElementById("installation-call-button"),
   installationEmailButton: document.getElementById("installation-email-button"),
@@ -9523,30 +9522,46 @@ function setAccountingPane(pane = "summary") {
   updateAccountingPaneVisibility();
 }
 
+// Scheda posa a quattro schede (4 nov 2026), su telefono e computer: prima era
+// un elenco unico lunghissimo. "summary"/"expenses" sono i nomi di prima.
+const INSTALLATION_PANES = ["site", "plan", "docs", "costs"];
+function normalizeInstallationPane(pane = "") {
+  if (pane === "summary") return "site";
+  if (pane === "expenses") return "costs";
+  return INSTALLATION_PANES.includes(pane) ? pane : "site";
+}
+
 function updateInstallationPaneVisibility() {
-  const isMobile = window.innerWidth <= 980;
-  const allowed = new Set(["summary", "expenses"]);
-  if (!allowed.has(state.installationMobilePane)) {
-    state.installationMobilePane = "summary";
-  }
-  const pane = state.installationMobilePane || "summary";
+  const pane = normalizeInstallationPane(state.installationMobilePane);
+  state.installationMobilePane = pane;
   ui.installationMobileTabs.forEach((button) => {
-    const buttonPane = button.dataset.pane || "summary";
-    const visible = allowed.has(buttonPane);
-    button.hidden = !visible;
-    button.classList.toggle("hidden", !visible);
-    button.classList.toggle("is-active", visible && buttonPane === pane);
+    const active = button.dataset.pane === pane;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll("#installations [data-installation-pane]").forEach((node) => {
-    const nodePane = node.dataset.installationPane || "summary";
-    node.toggleAttribute("hidden", isMobile && nodePane !== pane);
+    node.toggleAttribute("hidden", node.dataset.installationPane !== pane);
   });
 }
 
-function setInstallationPane(pane = "summary") {
-  const allowed = new Set(["summary", "expenses"]);
-  state.installationMobilePane = allowed.has(pane) ? pane : "summary";
+function setInstallationPane(pane = "site") {
+  state.installationMobilePane = normalizeInstallationPane(pane);
   updateInstallationPaneVisibility();
+  document.querySelector("#installations .install-detail-panel .ip-tabs")?.scrollIntoView?.({ block: "nearest" });
+}
+
+// Numeretti sulle schede: allegati e verbali in Documenti, spese in Costi.
+function updateInstallationTabCounts(order) {
+  const counts = {
+    docs: order ? mapAttachmentsForContext(order, "installation").length + (state.workReportsByOrder?.[order.id]?.reports?.length || 0) : 0,
+    costs: order ? getTravelExpensesForOrder(order).length : 0,
+  };
+  ui.installationMobileTabs.forEach((button) => {
+    const count = counts[button.dataset.pane];
+    const label = button.dataset.label || button.textContent.trim();
+    button.dataset.label = label;
+    button.innerHTML = `${escapeHtml(label)}${count ? ` <span class="ip-tab-count">${count}</span>` : ""}`;
+  });
 }
 
 function hasExplicitMeterDimension(value = "") {
@@ -20860,6 +20875,38 @@ function canCurrentUserSeeInstallationProfitSplit(order) {
   return orderBelongsToCrew(order, getCrewForCurrentUser());
 }
 
+function getInstallationPhone(order) {
+  return String(order?.phone || order?.customerPhone || order?.telefono || "").trim();
+}
+
+// Dati del lavoro nella scheda Cantiere: poche righe, il materiale (che è
+// lungo) si apre a richiesta.
+function renderInstallationInfoHtml(order, isCrewView) {
+  const it = state.lang === "it";
+  const install = order.operations?.installation || {};
+  const dateValue = install.installDate
+    ? `${formatInstallRange(install, state.lang)}${installationDays(install).length > 1 ? ` · ${installationDays(install).length} ${it ? "giorni" : "days"}` : ""}`
+    : t("installationDatePending");
+  const rows = [
+    [it ? "Cliente" : "Customer", composeClientName(order), composeAddress(order) || addressIncompleteText()],
+    [it ? "Posa" : "Install", dateValue, [install.installTime ? `${it ? "arrivo" : "arrival"} ${install.installTime}` : t("timePending"), install.crew || (it ? "squadra da assegnare" : "crew to assign")].join(" · ")],
+    [it ? "Prodotto" : "Product", order.operations?.product || undefinedText(), `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.surface || (it ? "terra" : "ground")}`],
+    [it ? "Spedizione" : "Logistics", getShippingModeLabel(order), isCrewView ? "" : getShippingTargetLabel(order)],
+  ];
+  const materials = String(getShippingSummary(order) || "").split(" · ").map((item) => item.trim()).filter(Boolean);
+  const note = String(install.reportNote || "").trim();
+  return `
+    <dl class="ip-kv">${rows.map(([label, value, meta]) => `
+      <div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</dd></div>`).join("")}
+    </dl>
+    ${materials.length ? `
+      <details class="ip-materials">
+        <summary>${escapeHtml(it ? `Materiale · ${materials.length} ${materials.length === 1 ? "voce" : "voci"}` : `Materials · ${materials.length} ${materials.length === 1 ? "item" : "items"}`)}</summary>
+        <ul>${materials.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </details>` : ""}
+    ${note ? `<div class="ip-note"><strong>${escapeHtml(it ? "Note" : "Notes")}</strong><p>${escapeHtml(note)}</p></div>` : ""}`;
+}
+
 function renderInstallationProfitSplit(order) {
   if (!ui.installationProfitSplitShell || !ui.installationProfitSplitSummary || !ui.installationProfitSplitBreakdown) return;
   const visible = canCurrentUserSeeInstallationProfitSplit(order);
@@ -20886,15 +20933,14 @@ function renderInstallationProfitSplit(order) {
   }
 
   if (!storedDraft) {
-    ui.installationProfitSplitSummary.innerHTML = [
-      {
-        label: state.lang === "it" ? "Conto posa" : "Profit split",
-        value: state.lang === "it" ? "Non ancora salvato" : "Not saved yet",
-        meta: isCrewView
-          ? (state.lang === "it" ? "L'ufficio non ha ancora salvato un conto posa su questa commessa." : "Office has not saved a profit split on this job yet.")
-          : (state.lang === "it" ? "Salva il conto nella commessa da Conti posa per condividerlo con la squadra." : "Save the split to the job from Profit split to share it with the crew."),
-      },
-    ].map(renderDetailBox).join("");
+    // Non ancora salvato: una riga sola (prima era un riquadro grande).
+    ui.installationProfitSplitSummary.innerHTML = `
+      <div class="ip-empty-row">
+        <span>${escapeHtml(isCrewView
+          ? (state.lang === "it" ? "L'ufficio non ha ancora salvato il conto posa di questo lavoro." : "Office has not saved a profit split on this job yet.")
+          : (state.lang === "it" ? "Conto posa non ancora salvato." : "Profit split not saved yet."))}</span>
+        ${isCrewView ? "" : `<button type="button" class="ghost-button small" data-action="open-profit-split-order" data-id="${escapeAttr(order.id)}">${state.lang === "it" ? "Apri Conti posa" : "Open profit split"}</button>`}
+      </div>`;
     ui.installationProfitSplitBreakdown.innerHTML = "";
     return;
   }
@@ -21938,52 +21984,25 @@ function renderInstallations() {
   // così è leggibile (e copiabile da chi vuole) anche senza avviare la chiamata,
   // che su mobile apre il dialer chiedendo permessi.
   if (ui.installationCallButton) {
-    const phone = String(order.phone || order.customerPhone || order.telefono || "").trim();
-    if (phone) {
-      ui.installationCallButton.textContent = `${state.lang === "it" ? "Chiama" : "Call"} ${phone}`;
-      ui.installationCallButton.disabled = false;
-    } else {
-      ui.installationCallButton.textContent = state.lang === "it" ? "Telefono mancante" : "No phone";
-      ui.installationCallButton.disabled = true;
-    }
+    const phone = getInstallationPhone(order);
+    ui.installationCallButton.textContent = phone ? `${state.lang === "it" ? "Chiama" : "Call"} ${phone}` : (state.lang === "it" ? "Telefono mancante" : "No phone");
+    ui.installationCallButton.disabled = !phone;
+  }
+  if (ui.installationRouteButton) {
+    ui.installationRouteButton.disabled = !(composeAddress(order) || order.city);
+  }
+  if (ui.installationEmailButton) {
+    ui.installationEmailButton.disabled = !order.email;
   }
   if (ui.installationDetailMeta) {
-    ui.installationDetailMeta.textContent = isCrewView
-      ? `${order.operations?.product || undefinedText()} · ${composeAddress(order) || addressIncompleteText()}`
-      : t("installationPlanningDetail");
+    ui.installationDetailMeta.textContent = [
+      order.operations?.product || undefinedText(),
+      `${formatInventoryNumber(getSafeOrderSqm(order))} mq`,
+      order.city || "",
+    ].filter(Boolean).join(" · ");
   }
   if (ui.installationDetailSummary) {
-    // Numero di telefono come riga VISIBILE e selezionabile nel dettaglio (oltre
-    // al pulsante "Chiama"): utile soprattutto alla squadra in cantiere.
-    const detailPhone = String(order.phone || order.customerPhone || order.telefono || "").trim();
-    const phoneCard = {
-      label: state.lang === "it" ? "Telefono cliente" : "Customer phone",
-      value: detailPhone || "—",
-      meta: detailPhone ? (state.lang === "it" ? "Tieni premuto per copiare · oppure usa Chiama" : "Long-press to copy · or use Call") : "",
-    };
-    const summaryCards = isCrewView
-      ? [
-          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
-          { label: state.lang === "it" ? "Cantiere" : "Site", value: composeAddress(order) || addressIncompleteText(), meta: composeClientName(order) },
-          phoneCard,
-          { label: state.lang === "it" ? "Programmazione" : "Schedule", value: order.operations?.installation?.installDate ? formatDate(order.operations.installation.installDate) : t("installationDatePending"), meta: order.operations?.installation?.installTime || t("timePending") },
-          { label: state.lang === "it" ? "Stato cantiere" : "Site status", value: getUnifiedOrderStage(order).label, meta: String(order.operations?.installation?.status || "").trim() || t("updateNeeded") },
-          { label: state.lang === "it" ? "Materiale in uscita" : "Outbound goods", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
-        ]
-      : [
-          { label: state.lang === "it" ? "Prodotto" : "Product", value: order.operations?.product || undefinedText(), meta: `${formatInventoryNumber(getSafeOrderSqm(order))} mq · ${order.operations?.surface || (state.lang === "it" ? "terra" : "ground")}` },
-          { label: state.lang === "it" ? "Cliente" : "Customer", value: composeClientName(order), meta: composeAddress(order) || addressIncompleteText() },
-          phoneCard,
-          { label: state.lang === "it" ? "Preparazione ufficio" : "Office preparation", value: getShippingTargetLabel(order), meta: getShippingSummary(order) },
-          { label: state.lang === "it" ? "Gestione spedizione" : "Logistics handling", value: getShippingModeLabel(order), meta: order.operations?.installation?.installDate ? `${formatDate(order.operations.installation.installDate)} · ${order.operations?.installation?.installTime || t("timePending")}` : t("installationDatePending") },
-        ];
-    // Coppie etichetta/valore come nel dettaglio di Inbox Ordini (prima ogni
-    // voce era un riquadro a sé e il pannello superava i 3.600 px).
-    const wideLabels = new Set(["Cliente", "Customer", "Cantiere", "Site", "Materiale in uscita", "Outbound goods", "Preparazione ufficio", "Office preparation"]);
-    // Voci brevi affiancate in alto, quelle lunghe (indirizzo, materiale) sotto a tutta riga.
-    const orderedCards = [...summaryCards].sort((a, b) => Number(wideLabels.has(a.label)) - Number(wideLabels.has(b.label)));
-    ui.installationDetailSummary.innerHTML = `<dl class="oi-kv">${orderedCards.map((card) => `
-      <div class="${wideLabels.has(card.label) ? "oi-kv-wide" : ""}"><dt>${escapeHtml(card.label)}</dt><dd>${escapeHtml(card.value)}${card.meta ? `<small>${escapeHtml(card.meta)}</small>` : ""}</dd></div>`).join("")}</dl>`;
+    ui.installationDetailSummary.innerHTML = renderInstallationInfoHtml(order, isCrewView);
   }
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   if (ui.installationForm.installEndDate) ui.installationForm.installEndDate.value = order.operations?.installation?.installEndDate || "";
@@ -22022,6 +22041,7 @@ function renderInstallations() {
   renderWorkReportsForOrder(order);
   renderJobEventsForOrder(order);
   renderClientTrackingSection(order);
+  updateInstallationTabCounts(order);
   clearStatus(ui.installationStatus);
   updateInstallationPaneVisibility();
   applyInstallDrawerState();
@@ -22791,9 +22811,11 @@ function renderJobEventsForOrder(order) {
   const role = state.currentUser?.role || "";
   if (!order || !["office", "crew", "warehouse"].includes(role)) {
     section.hidden = true;
+    timeline.hidden = true;
     return;
   }
   section.hidden = false;
+  timeline.hidden = false;
   if (state.jobSite.sheet && state.jobSite.sheet.orderId !== order.id) state.jobSite.sheet = null;
   const cached = state.jobEvents.byOrder[order.id];
   const stale = Date.now() - (state.jobEvents.loadedAt?.[order.id] || 0) > 60000;
@@ -22830,8 +22852,11 @@ function jobSiteDayText(day) {
     const [n, count] = day.dayLabel.slice(4).split("/");
     return `${jsL(`Giorno ${n} di ${count}`, `Day ${n} of ${count}`)} · ${date}`;
   }
-  if (day.dayLabel === "early") return `${date} · ${jsL(`prima del giorno previsto (${jobSiteDayName(day.days[0])})`, `before the planned day (${jobSiteDayName(day.days[0])})`)}`;
-  if (day.dayLabel === "extra") return `${date} · ${jsL("giorno in più rispetto al previsto", "extra day beyond the plan")}`;
+  // Fuori dai giorni previsti: si dice quando era prevista la posa.
+  if (day.dayLabel === "early" || day.dayLabel === "extra") {
+    const range = formatInstallRange({ installDate: day.days[0], installEndDate: day.days[day.days.length - 1] }, state.lang);
+    return `${date} · ${jsL(`posa prevista ${range}`, `install planned ${range}`)}`;
+  }
   return date;
 }
 
@@ -22870,14 +22895,9 @@ function canVoidJobEvent(ev) {
 function renderJobSiteToday(order, events) {
   const day = siteDayState(events, order.operations?.installation || {}, romeDateKey(new Date()));
   const sheet = state.jobSite.sheet?.orderId === order.id ? state.jobSite.sheet : null;
-  const phone = String(order.phone || order.customerPhone || order.telefono || "").trim();
-  const destination = composeAddress(order) || order.city || "";
   const reached = day.nextStep ? DAY_STEPS.indexOf(day.nextStep) : DAY_STEPS.length;
   const stepNames = [jsL("Partenza", "Departure"), jsL("Arrivo", "Arrival"), jsL("Lavori", "Work"), day.lastDay ? jsL("Fine posa", "Finish") : jsL("Fine giorno", "Day end"), jsL("Rientro", "Return")];
   const progress = stepNames.map((label, i) => `<li class="${i < reached ? "is-done" : i === reached ? "is-current" : ""}"><span></span>${escapeHtml(label)}</li>`).join("");
-  const links = `
-    ${destination ? `<a class="js-link" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}" target="_blank" rel="noopener">${jsL("Naviga", "Navigate")}</a>` : ""}
-    ${phone ? `<a class="js-link" href="tel:${escapeAttr(phone.replace(/\s+/g, ""))}">${jsL("Chiama", "Call")}</a>` : ""}`;
   const geoBanner = isGeoAnswered() ? "" : `
     <div class="js-geo">
       <span>${jsL("Segnare anche la posizione con i passaggi? Così risulta che eravate in cantiere.", "Also record your location with each step? It proves you were on site.")}</span>
@@ -22935,7 +22955,6 @@ function renderJobSiteToday(order, events) {
           <h4>${jsL("Cantiere di oggi", "Today on site")}</h4>
           <span class="js-day">${escapeHtml(jobSiteDayText(day))}</span>
         </div>
-        <div class="js-links">${links}</div>
       </div>
       <ol class="js-progress">${progress}</ol>
       ${geoBanner}
@@ -23756,7 +23775,7 @@ function renderClientTrackingSection(order) {
           <p class="section-copy">Crea un link che il cliente può aprire per vedere stato cantiere, foto live e verbale firmato.</p>
         </div>
         <div class="subsection-actions">
-          <button type="button" class="primary-button" data-action="generate-tracking-link" data-order-id="${escapeAttr(order.id)}">🔗 Genera link tracking</button>
+          <button type="button" class="ghost-button small" data-action="generate-tracking-link" data-order-id="${escapeAttr(order.id)}">Crea link</button>
         </div>
       </div>
     `;
@@ -24648,6 +24667,7 @@ function renderWorkReportsForOrder(order) {
         state.workReportsByOrder[order.id] = { reports: res?.reports || [], loadedAt: Date.now() };
         if (state.currentView === "installations" && state.selectedOrderId === order.id) {
           renderWorkReportsListInto(list, order, state.workReportsByOrder[order.id].reports);
+          updateInstallationTabCounts(order);
         }
       })
       .catch((err) => {
@@ -41829,17 +41849,13 @@ bindEvent(ui.installationNextWeekButton, "click", () => {
   state.installationWeekOffset += 1;
   renderInstallations();
 });
-bindEvent(ui.installationMapsButton, "click", () => {
-  const order = getSelectedOrder();
-  if (order) openMaps(order);
-});
 bindEvent(ui.installationRouteButton, "click", () => {
   const order = getSelectedOrder();
   if (order) openRoute(order);
 });
 bindEvent(ui.installationCallButton, "click", () => {
-  const order = getSelectedOrder();
-  if (order?.phone) window.open(`tel:${order.phone}`);
+  const phone = getInstallationPhone(getSelectedOrder());
+  if (phone) window.location.href = `tel:${phone.replace(/\s+/g, "")}`;
 });
 bindEvent(ui.installationEmailButton, "click", () => {
   const order = getSelectedOrder();

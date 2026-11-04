@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261103-cantiere-e-furgoni" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261103-cantiere-e-furgoni" />
+    <link rel="preload" href="./styles.css?v=20261104-scheda-posa-schede-2" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261104-scheda-posa-schede-2" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1466,32 +1466,33 @@
               </div>
             </div>
 
-              <div id="installation-mobile-tabs" class="detail-mobile-tabs">
-                <button class="detail-mobile-tab is-active" type="button" data-action="set-installation-pane" data-pane="summary">Dettaglio</button>
-                <button class="detail-mobile-tab" type="button" data-action="set-installation-pane" data-pane="expenses">Costi</button>
-              </div>
+            <!-- Scheda posa (4 nov 2026): contatti in alto, poi quattro schede
+                 al posto dell'elenco unico. Vedi updateInstallationPaneVisibility. -->
+            <div class="ip-contact">
+              <button type="button" id="installation-call-button" class="ip-chip">Chiama</button>
+              <button type="button" id="installation-route-button" class="ip-chip">Naviga</button>
+              <button type="button" id="installation-email-button" class="ip-chip">Email</button>
+            </div>
 
-              <div class="installation-pane-group" data-installation-pane="summary">
-              <!-- Cantiere di oggi (prossimo passo, Naviga/Chiama, Annulla) e
-                   diario della posa giorno per giorno. Vedi renderJobSiteToday. -->
+            <div id="installation-mobile-tabs" class="ip-tabs" role="tablist">
+              <button class="ip-tab is-active" type="button" role="tab" data-action="set-installation-pane" data-pane="site">Cantiere</button>
+              <button class="ip-tab" type="button" role="tab" data-action="set-installation-pane" data-pane="plan">Programma</button>
+              <button class="ip-tab" type="button" role="tab" data-action="set-installation-pane" data-pane="docs">Documenti</button>
+              <button class="ip-tab" type="button" role="tab" data-action="set-installation-pane" data-pane="costs">Costi</button>
+            </div>
+
+            <!-- Cantiere: passi di oggi, dati del lavoro, diario -->
+            <div class="installation-pane-group" data-installation-pane="site">
               <section id="job-events-section" class="panel-subsection job-site" hidden>
                 <div id="job-events-quickbar" class="job-site-today"></div>
-                <div id="job-events-timeline" class="job-events-timeline" aria-live="polite"></div>
               </section>
-              <div id="installation-detail-summary" class="detail-grid"></div>
+              <div id="installation-detail-summary" class="ip-info"></div>
+              <div id="job-events-timeline" class="job-events-timeline" aria-live="polite"></div>
+            </div>
 
-              <div id="installation-profit-split-shell" class="panel-subsection installation-profit-split-shell" hidden>
-                <div class="subsection-head">
-                  <div>
-                    <h4>Conto posa commessa</h4>
-                    <p class="section-copy">Riepilogo economico salvato sull'ordine, condiviso con la squadra assegnata.</p>
-                  </div>
-                </div>
-                <div id="installation-profit-split-summary" class="detail-grid"></div>
-                <div id="installation-profit-split-breakdown" class="profit-split-breakdown"></div>
-              </div>
-
-              <form id="installation-form" class="inline-form-grid">
+            <!-- Programma: date, squadra, stato, note; conferma e link al cliente -->
+            <div class="installation-pane-group" data-installation-pane="plan" hidden>
+              <form id="installation-form" class="inline-form-grid ip-form">
                 <label class="field">
                   <span>Data posa</span>
                   <input class="text-input" type="date" name="installDate" />
@@ -1524,36 +1525,38 @@
                 </label>
                 <label class="field field-full">
                   <span>Note squadra / cantiere</span>
-                  <textarea class="text-input" name="reportNote" rows="4" placeholder="Accesso, riprogrammazione, note posa, report cantiere..."></textarea>
+                  <textarea class="text-input" name="reportNote" rows="3" placeholder="Accesso, riprogrammazione, note posa, report cantiere..."></textarea>
                 </label>
                 <div id="installation-status" class="panel-note hidden field-full"></div>
-                <div class="inline-actions field-full">
+                <div class="ip-actions field-full">
                   <button type="submit" class="primary-button small-button">Salva posa</button>
-                  <button type="button" id="installation-maps-button" class="ghost-button small">Apri Maps</button>
-                  <button type="button" id="installation-route-button" class="ghost-button small">Apri itinerario</button>
-                  <button type="button" id="installation-call-button" class="ghost-button small">Chiama cliente</button>
                   <button type="button" id="installation-confirm-button" class="ghost-button small" data-action="installation-confirm-customer">Conferma al cliente</button>
-                  <button type="button" id="installation-email-button" class="ghost-button small">Invia email</button>
-                  <button type="button" id="installation-attachment-button" class="ghost-button small">Carica foto</button>
-                  <button type="button" id="installation-export-button" class="ghost-button small">Esporta scheda</button>
                 </div>
               </form>
-
-              <div id="installation-attachments" class="attachment-grid"></div>
-
               <!-- Tracking cliente: link pubblico manuale (office only, fornitura+posa) -->
               <section id="client-tracking-section" class="panel-subsection client-tracking-section" hidden></section>
+            </div>
 
-              <!-- ─────────────────────────────────────────────────────────
-                   Verbali fine cantiere (work_completion_reports) — MVP
-                   Sezione inline: lista verbali esistenti per l'ordine +
-                   bottone "Termina lavoro" che apre il wizard a tutto schermo.
-                   ───────────────────────────────────────────────────────── -->
-              <section id="work-reports-section" class="panel-subsection work-reports-section" hidden>
+            <!-- Documenti: foto, verbali, scheda da stampare -->
+            <div class="installation-pane-group" data-installation-pane="docs" hidden>
+              <section class="panel-subsection ip-section">
+                <div class="subsection-head">
+                  <div>
+                    <h4>Foto e allegati</h4>
+                  </div>
+                  <div class="subsection-actions">
+                    <button type="button" id="installation-attachment-button" class="ghost-button small">Carica foto</button>
+                  </div>
+                </div>
+                <div id="installation-attachments" class="attachment-grid"></div>
+              </section>
+
+              <!-- Verbali fine cantiere (work_completion_reports): lista + "Termina lavoro" che apre il wizard. -->
+              <section id="work-reports-section" class="panel-subsection work-reports-section ip-section" hidden>
                 <div class="subsection-head">
                   <div>
                     <h4>Verbali fine cantiere</h4>
-                    <p class="section-copy">Documento firmato dal cliente a chiusura del lavoro, archiviato come PDF nella scheda ordine.</p>
+                    <p class="section-copy">Firmato dal cliente a fine lavoro, resta come PDF nella scheda.</p>
                   </div>
                   <div class="subsection-actions">
                     <button type="button" id="work-report-new-button" class="primary-button small" data-action="open-work-report-wizard">
@@ -1563,16 +1566,33 @@
                 </div>
                 <div id="work-reports-list" class="work-reports-list" aria-live="polite"></div>
               </section>
+
+              <div class="ip-actions">
+                <button type="button" id="installation-export-button" class="ghost-button small">Esporta scheda</button>
+              </div>
+            </div>
+
+            <!-- Costi: conto posa e spese della squadra -->
+            <div class="installation-pane-group" data-installation-pane="costs" hidden>
+              <div id="installation-profit-split-shell" class="panel-subsection installation-profit-split-shell" hidden>
+                <div class="subsection-head">
+                  <div>
+                    <h4>Conto posa commessa</h4>
+                    <p class="section-copy">Riepilogo economico salvato sull'ordine, condiviso con la squadra assegnata.</p>
+                  </div>
+                </div>
+                <div id="installation-profit-split-summary" class="detail-grid"></div>
+                <div id="installation-profit-split-breakdown" class="profit-split-breakdown"></div>
               </div>
 
-              <div class="panel-subsection installation-expenses-section installation-pane-group" data-installation-pane="expenses">
+              <div class="panel-subsection installation-expenses-section">
                 <div class="subsection-head">
                   <div>
                     <h4>Costi trasferta squadra</h4>
-                    <p class="section-copy">Registra spese vive di cantiere collegate a questo ordine.</p>
+                    <p class="section-copy">Spese vive di cantiere collegate a questo ordine.</p>
                   </div>
                 </div>
-                <form id="installation-expense-form" class="inline-form-grid">
+                <form id="installation-expense-form" class="inline-form-grid ip-form">
                   <label class="field">
                     <span>Categoria</span>
                     <select class="text-input" name="category">
@@ -1593,7 +1613,7 @@
                   </label>
                   <label class="field field-full">
                     <span>Nota spesa</span>
-                    <textarea class="text-input" name="note" rows="3" placeholder="Hotel, distributore, casello, motivo spesa..."></textarea>
+                    <textarea class="text-input" name="note" rows="2" placeholder="Hotel, distributore, casello, motivo spesa..."></textarea>
                   </label>
                   <div id="installation-expense-status" class="panel-note hidden field-full"></div>
                   <div class="inline-actions field-full">
@@ -1603,6 +1623,7 @@
                 <div id="installation-expense-summary" class="detail-grid"></div>
                 <div id="installation-expense-list" class="detail-stack"></div>
               </div>
+            </div>
           </section>
 
 
@@ -2792,7 +2813,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261103-cantiere-e-furgoni" defer></script>
-    <script src="./app.js?v=20261103-cantiere-e-furgoni" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261104-scheda-posa-schede-2" defer></script>
+    <script src="./app.js?v=20261104-scheda-posa-schede-2" type="module"></script>
   </body>
 </html>
