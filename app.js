@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-oggi-in-bacheca-2";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261104-oggi-in-bacheca-2";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-oggi-in-bacheca-2";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-oggi-in-bacheca-2";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-oggi-in-bacheca-2";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-oggi-in-bacheca-2";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-oggi-in-bacheca-2';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-prossimo-passo-6";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-prossimo-passo-6";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-prossimo-passo-6";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-prossimo-passo-6";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-prossimo-passo-6";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-prossimo-passo-6";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-prossimo-passo-6';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261104-oggi-in-bacheca-2";
+} from "./lib/order-money.js?v=20261104-prossimo-passo-6";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261104-oggi-in-bacheca-2";
+import { regionForCity } from "./lib/geo.js?v=20261104-prossimo-passo-6";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261104-oggi-in-bacheca-2";
+} from "./lib/shipping-eligibility.js?v=20261104-prossimo-passo-6";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261104-oggi-in-bacheca-2";
+} from "./lib/profit-split.js?v=20261104-prossimo-passo-6";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261104-oggi-in-bacheca-2";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-oggi-in-bacheca-2";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-oggi-in-bacheca-2";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-oggi-in-bacheca-2";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-oggi-in-bacheca-2";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-oggi-in-bacheca-2";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-oggi-in-bacheca-2";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-oggi-in-bacheca-2";
+} from "./lib/preventivo-pricing.js?v=20261104-prossimo-passo-6";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-prossimo-passo-6";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-prossimo-passo-6";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-prossimo-passo-6";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-prossimo-passo-6";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-prossimo-passo-6";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-prossimo-passo-6";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-prossimo-passo-6";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261104-oggi-in-bacheca-2";
+} from "./lib/sales-assignment.js?v=20261104-prossimo-passo-6";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261104-oggi-in-bacheca-2";
+} from "./lib/surveys.js?v=20261104-prossimo-passo-6";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261104-oggi-in-bacheca-2";
+const APP_SHELL_VERSION = "20261104-prossimo-passo-6";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -20765,6 +20765,7 @@ function clearInstallationDetail() {
   if (ui.installationForm?.installDate) ui.installationForm.installDate.value = "";
   if (ui.installationForm?.installEndDate) ui.installationForm.installEndDate.value = "";
   if (ui.installationForm?.installTime) ui.installationForm.installTime.value = "";
+  if (ui.installationForm?.clientConfirmed) ui.installationForm.clientConfirmed.checked = false;
   if (ui.installationForm?.status) ui.installationForm.status.value = "da-pianificare";
   if (ui.installationCrew) ui.installationCrew.innerHTML = buildInstallationCrewOptions("");
   if (ui.installationForm?.reportNote) ui.installationForm.reportNote.value = "";
@@ -21286,6 +21287,82 @@ function getInstallationLaneMeta(lane) {
   }
 }
 
+// ── Prossimo passo sulla card della bacheca (novembre 2026) ─────────────────
+// Una sola cosa da fare per posa, nell'ordine in cui va fatta. Data e squadra
+// stanno già nei pulsanti della card; poi avvisare il cliente, il materiale,
+// il verbale a fine posa, il conto posa a lavoro finito. Ogni pulsante porta
+// dove si fa la cosa.
+function isInstallClientConfirmed(install = {}) {
+  return Boolean(install.clientConfirmed) && (!install.clientConfirmedFor || install.clientConfirmedFor === install.installDate);
+}
+
+// Materiale della posa: "none" se è solo posa, "unrouted" se ha merce ma
+// non è mai stato mandato al magazzino (Spedizioni non lo vede), "todo" da
+// preparare, "ready" pronto in magazzino, "loaded" caricato/spedito/ritirato.
+function installationMaterialState(order) {
+  const routed = isRoutedToWarehouse(order);
+  if (!routed && !getPhysicalOrderLines(order).length) return "none";
+  if (isLogisticsOrderCompleted(order)) return "loaded";
+  if (!routed) return "unrouted";
+  const warehouse = order.operations?.warehouse || {};
+  if (warehouse.readyToShip || ["pronto", "da-ritirare", "in-attesa-di-ritiro"].includes(String(warehouse.status || "").trim())) return "ready";
+  return "todo";
+}
+
+function installationNextStep(order) {
+  const install = order.operations?.installation || {};
+  const lane = getInstallationLane(order);
+  const todayKey = localDateKey();
+  const ids = `data-id="${escapeAttr(order.id)}" data-order-id="${escapeAttr(order.id)}"`;
+  // Posa con la data passata e mai partita: va riprogrammata (la data sulla
+  // card è già in rosso), nessun altro passo.
+  if (lane === "scheduled" && install.crew && lastInstallationDay(install) >= todayKey) {
+    const confirm = isInstallClientConfirmed(install) ? null : { key: "confirm", label: jsL("Avvisa il cliente", "Tell the customer"), attrs: `data-action="install-next-confirm" ${ids}` };
+    const materialState = installationMaterialState(order);
+    const material = materialState === "unrouted"
+      ? { key: "material", label: jsL("Manda in magazzino", "Send to the warehouse"), attrs: `data-action="install-next-warehouse" ${ids}` }
+      : materialState === "todo"
+        ? { key: "material", label: jsL("Materiale da preparare", "Materials to prepare"), attrs: `data-action="select-order" data-view="shipping" ${ids}` }
+        : null;
+    // A due giorni dalla posa il materiale passa davanti.
+    const soon = install.installDate && install.installDate <= localDateKey(new Date(Date.now() + 2 * 86400000));
+    return (soon ? material || confirm : confirm || material);
+  }
+  if (lane === "progress") {
+    const finishedToday = (installTodayEventsByOrder().get(order.id) || []).some((ev) => ev.eventType === "work_end");
+    if (finishedToday || (install.installDate && lastInstallationDay(install) < todayKey)) {
+      return { key: "report", label: jsL("Verbale da firmare", "Report to be signed"), attrs: `data-action="select-order" data-view="installations" data-pane="docs" ${ids}` };
+    }
+    return null;
+  }
+  if (lane === "done" && !install.profitSplit && state.currentUser?.role === "office") {
+    return { key: "split", label: jsL("Conto posa da fare", "Job account to do"), attrs: `data-action="open-profit-split-order" ${ids}` };
+  }
+  return null;
+}
+
+function installationNextStepHtml(order) {
+  if (state.currentUser?.role !== "office") return "";
+  const step = installationNextStep(order);
+  if (!step) return "";
+  return `<button type="button" class="inst-next is-${step.key}" ${step.attrs}>${escapeHtml(step.label)} <span aria-hidden="true">→</span></button>`;
+}
+
+// Cambiando la data nel modulo l'avviso al cliente non vale più: la casella
+// si toglie (si rispunta a mano se il cliente è già stato avvisato).
+document.addEventListener("change", (ev) => {
+  if (ev.target?.name !== "installDate" || !ev.target.closest?.("#installation-form")) return;
+  const order = getSelectedOrder();
+  const box = ui.installationForm?.clientConfirmed;
+  if (!order || !box) return;
+  const install = order.operations?.installation || {};
+  box.checked = ev.target.value === install.installDate && isInstallClientConfirmed(install);
+  const note = document.getElementById("installation-confirmed-note");
+  if (note) note.textContent = ev.target.value !== install.installDate && install.installDate
+    ? (state.lang === "it" ? "· data cambiata: avvisa il cliente" : "· date changed: tell the customer")
+    : "";
+});
+
 function renderInstallationKanbanCard(order) {
   const install = order.operations?.installation || {};
   const selected = order.id === state.selectedOrderId ? "selected" : "";
@@ -21317,6 +21394,7 @@ function renderInstallationKanbanCard(order) {
       <div class="sv2-line sv2-material">${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}</div>
       <div class="sv2-line sv2-place${addressMissing ? " is-warn" : ""}" title="${escapeHtml(destination)}">${escapeHtml(place)}</div>
       ${installTodayLineHtml(order)}
+      ${installationNextStepHtml(order)}
       <div class="sv2-foot">
         <button type="button" class="inst-chip inst-chip-crew${crewName ? "" : " is-warn"}" data-action="install-quick-crew" data-quick-anchor data-id="${escapeAttr(order.id)}" title="${escapeAttr(it ? "Cambia squadra" : "Change crew")}"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewName || (it ? "Assegna squadra" : "Assign crew"))}</button>
         ${installStatus === "problema" ? `<span class="is-alert">${escapeHtml(statusLabel)}</span>` : ""}
@@ -21695,6 +21773,20 @@ async function confirmInstallationToCustomer(orderId = "") {
   } else {
     window.open(url, "psi_sales_request_whatsapp", "noopener");
   }
+  // Messaggio pronto su WhatsApp: la posa risulta avvisata per questa data
+  // (si toglie dalla casella «Cliente avvisato» se poi non è partito).
+  const install = order.operations?.installation || {};
+  if (isInstallClientConfirmed(install)) return;
+  try {
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({ installation: { clientConfirmed: true, clientConfirmedFor: install.installDate } }),
+    });
+    state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
+    renderCurrentViewOnly(state.currentView);
+  } catch (error) {
+    showToast(it ? `Avviso non segnato: ${String(error?.message || "").trim()}` : `Not marked as notified: ${String(error?.message || "").trim()}`, "warning");
+  }
 }
 
 async function saveInstallQuickChange(orderId = "", change = {}) {
@@ -22013,6 +22105,17 @@ function renderInstallations() {
   ui.installationForm.installDate.value = order.operations?.installation?.installDate || "";
   if (ui.installationForm.installEndDate) ui.installationForm.installEndDate.value = order.operations?.installation?.installEndDate || "";
   ui.installationForm.installTime.value = order.operations?.installation?.installTime || "";
+  if (ui.installationForm.clientConfirmed) {
+    const install = order.operations?.installation || {};
+    ui.installationForm.clientConfirmed.checked = isInstallClientConfirmed(install);
+    const note = document.getElementById("installation-confirmed-note");
+    if (note) {
+      note.textContent = install.clientConfirmed && install.clientConfirmedFor && install.clientConfirmedFor !== install.installDate
+        ? (state.lang === "it" ? `· era per il ${formatDate(install.clientConfirmedFor)}, la data è cambiata` : `· was for ${formatDate(install.clientConfirmedFor)}, the date changed`)
+        : "";
+    }
+    document.getElementById("installation-confirmed-field")?.toggleAttribute("hidden", state.currentUser?.role !== "office");
+  }
   if (ui.installationForm.status) {
     ui.installationForm.status.value = order.operations?.installation?.status || (order.operations?.installation?.installDate ? "programmata" : "da-pianificare");
   }
@@ -22790,12 +22893,17 @@ function renderInstallationToday() {
     const days = installationDays(install);
     const dayN = days.length > 1 && days.includes(todayKey) ? ` · ${jsL(`giorno ${days.indexOf(todayKey) + 1} di ${days.length}`, `day ${days.indexOf(todayKey) + 1} of ${days.length}`)}` : "";
     const crew = String(install.crew || "").trim();
+    // Il prossimo passo (es. «Verbale da firmare») sta sotto la card: un
+    // bottone non può stare dentro un altro bottone.
     return `
+      <div class="inst-today-item">
       <button type="button" class="inst-today-card is-${status.tone}${order.id === state.selectedOrderId ? " selected" : ""}" data-action="select-order" data-id="${escapeAttr(order.id)}" data-view="installations">
         <span class="inst-today-name">${escapeHtml(composeClientName(order))} <small>${escapeHtml(getOrderNumber(order))}</small></span>
         <span class="inst-today-state">${status.icon} ${escapeHtml(status.text)}</span>
         <span class="inst-today-meta"><span class="crew-dot" style="background:${getCrewColor(install.crew)}"></span>${escapeHtml(crew || jsL("Squadra da assegnare", "Crew to assign"))}${order.city ? ` · ${escapeHtml(order.city)}` : ""}${escapeHtml(dayN)}</span>
-      </button>`;
+      </button>
+      ${installationNextStepHtml(order)}
+      </div>`;
   }).join("")}</div>`;
 }
 
@@ -22807,9 +22915,11 @@ function paintInstallationToday() {
   const orders = state.orders || [];
   document.querySelectorAll("#installation-list .inst-card[data-id]").forEach((card) => {
     card.querySelector(".inst-live")?.remove();
+    card.querySelector(".inst-next")?.remove();
     const order = orders.find((item) => item.id === card.dataset.id);
-    const line = order ? installTodayLineHtml(order) : "";
-    if (line) card.querySelector(".sv2-place")?.insertAdjacentHTML("afterend", line);
+    if (!order) return;
+    // Anche il prossimo passo: «Fine posa» segnata oggi → «Verbale da firmare».
+    card.querySelector(".sv2-foot")?.insertAdjacentHTML("beforebegin", installTodayLineHtml(order) + installationNextStepHtml(order));
   });
 }
 
@@ -33581,7 +33691,9 @@ function setView(view, { pushHistory = true } = {}) {
     currentViewRenderFrame = 0;
   }
   if (nextView === "accounting") state.accountingMobilePane = "summary";
-  if (nextView === "installations") state.installationMobilePane = "summary";
+  // Entrando nella Bacheca si riparte dalla scheda Cantiere; restandoci vale
+  // quella chiesta dal pulsante (es. «Verbale da firmare» → Documenti).
+  if (nextView === "installations" && nextView !== previousView) state.installationMobilePane = "summary";
   if (nextView === "communications" && nextView !== previousView && window.innerWidth <= 900) {
     state.selectedCommunicationThreadId = "";
   }
@@ -35684,6 +35796,10 @@ async function saveInstallation(event) {
           status: form.get("status"),
           crew: getCrewForCurrentUser() || form.get("crew") || activeCrewLabelFromFilter(),
           reportNote: form.get("reportNote"),
+          ...(isOffice ? {
+            clientConfirmed: form.get("clientConfirmed") === "on",
+            clientConfirmedFor: form.get("clientConfirmed") === "on" ? String(form.get("installDate") || "") : "",
+          } : {}),
         },
         ...(isOffice ? {
           reseller: {
@@ -36791,8 +36907,24 @@ function handleGlobalClick(event) {
     if (survey) openCustomerWhatsApp(survey.phone, buildSurveyConfirmMessage(survey));
     return;
   }
-  if (action === "installation-confirm-customer") {
+  if (action === "installation-confirm-customer" || action === "install-next-confirm") {
     void confirmInstallationToCustomer(id || state.selectedOrderId || "");
+    return;
+  }
+  if (action === "install-next-warehouse") {
+    // Instrada al magazzino (solo Spedizioni: la posa resta com'è) e apre la
+    // scheda dell'ordine in Spedizioni, dove si sceglie uscita e materiale.
+    button.disabled = true;
+    updateOrderRoutingById(id, { warehouse: { selected: true } })
+      .then((saved) => {
+        state.selectedOrderId = saved.id;
+        state.shippingDrawerOpen = true;
+        setView("shipping");
+      })
+      .catch((error) => {
+        button.disabled = false;
+        showToast(error?.message || jsL("Non riesco a mandarlo in magazzino.", "Could not send it to the warehouse."), "error");
+      });
     return;
   }
   if (action === "survey-show-done") {
@@ -37900,7 +38032,7 @@ function handleGlobalClick(event) {
       if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.accountingDrawerOpen = true;
     }
     if (nextView === "installations") {
-      state.installationMobilePane = "summary";
+      state.installationMobilePane = button.dataset.pane || "summary";
       // Desktop/tablet: cliccando un job si apre il drawer dettaglio a destra
       // (su mobile <=768px subentra il drill-down fullscreen, vedi sotto).
       if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
