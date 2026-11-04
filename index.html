@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261104-elenco-pose-3" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261104-elenco-pose-3" />
+    <link rel="preload" href="./styles.css?v=20261104-griglia-squadre-3" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261104-griglia-squadre-3" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1432,26 +1432,24 @@
           <nav class="view-tabs" data-nav-tabs role="tablist" hidden></nav>
           <div class="page-header">
             <div>
-              <h1>Calendario Pose</h1>
-              <div class="page-header-sub">Settimana operativa squadre</div>
+              <h1>Pose</h1>
             </div>
-            <div class="detail-actions">
-              <button class="btn" id="installation-prev-week-button">← Sett. prec.</button>
-              <button class="btn" id="installation-next-week-button">Sett. succ. →</button>
+            <div class="week-nav">
+              <button class="week-nav-btn" type="button" id="installation-prev-week-button" title="Settimana precedente" aria-label="Settimana precedente">‹</button>
+              <span class="week-nav-label" id="installation-week-label"></span>
+              <button class="week-nav-btn" type="button" id="installation-next-week-button" title="Settimana successiva" aria-label="Settimana successiva">›</button>
+              <button class="week-nav-today" type="button" id="installation-this-week-button" hidden>Questa settimana</button>
             </div>
           </div>
+
+          <!-- Griglia squadre: una riga per squadra, una colonna per giorno
+               (buildInstallationCrewGrid). La squadra sul telefono usa
+               l'agenda qui sotto. -->
+          <div id="installation-crew-grid" class="sg" hidden></div>
+          <div id="installation-calendar" class="cal-grid"></div>
 
           <!-- Oggi: i cantieri del giorno e a che punto sono (renderInstallationToday) -->
           <section id="installation-today" class="inst-today" hidden></section>
-
-          <div class="view-toolbar installation-toolbar">
-            <div id="installation-crew-filters" class="filter-bar"></div>
-            <div id="installation-capacity-hint" class="search-pill compact-pill">
-              Vista generale squadra e saturazione della settimana.
-            </div>
-          </div>
-
-          <div id="installation-calendar" class="cal-grid"></div>
 
           <div class="section section-flat installation-kanban-section">
             <div class="section-header">
@@ -2816,7 +2814,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261104-elenco-pose-3" defer></script>
-    <script src="./app.js?v=20261104-elenco-pose-3" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261104-griglia-squadre-3" defer></script>
+    <script src="./app.js?v=20261104-griglia-squadre-3" type="module"></script>
   </body>
 </html>

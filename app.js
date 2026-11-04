@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-elenco-pose-3";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261104-elenco-pose-3";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-elenco-pose-3";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-elenco-pose-3";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-elenco-pose-3";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-elenco-pose-3";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-elenco-pose-3';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-griglia-squadre-3";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-griglia-squadre-3";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-griglia-squadre-3";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-griglia-squadre-3";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-griglia-squadre-3";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-griglia-squadre-3";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-griglia-squadre-3';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261104-elenco-pose-3";
+} from "./lib/order-money.js?v=20261104-griglia-squadre-3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261104-elenco-pose-3";
+import { regionForCity } from "./lib/geo.js?v=20261104-griglia-squadre-3";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261104-elenco-pose-3";
+} from "./lib/shipping-eligibility.js?v=20261104-griglia-squadre-3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261104-elenco-pose-3";
+} from "./lib/profit-split.js?v=20261104-griglia-squadre-3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261104-elenco-pose-3";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-elenco-pose-3";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-elenco-pose-3";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-elenco-pose-3";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-elenco-pose-3";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-elenco-pose-3";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-elenco-pose-3";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-elenco-pose-3";
+} from "./lib/preventivo-pricing.js?v=20261104-griglia-squadre-3";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-griglia-squadre-3";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-griglia-squadre-3";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-griglia-squadre-3";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-griglia-squadre-3";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-griglia-squadre-3";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-griglia-squadre-3";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-griglia-squadre-3";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261104-elenco-pose-3";
+} from "./lib/sales-assignment.js?v=20261104-griglia-squadre-3";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261104-elenco-pose-3";
+} from "./lib/surveys.js?v=20261104-griglia-squadre-3";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261104-elenco-pose-3";
+const APP_SHELL_VERSION = "20261104-griglia-squadre-3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -591,7 +591,6 @@ const translations = {
     routeWarehouseShort: "Inventario",
     routeInstallShort: "Posa",
     routeClearShort: "Togli",
-    allCrews: "Tutte le squadre",
     crewViewCopy: "Vista operativa per ufficio e squadra, senza installazione obbligatoria su PC.",
     prepareBy: "Preparare entro",
     routeWarehouseStatusOn: "Inviato al magazzino",
@@ -748,10 +747,7 @@ const translations = {
     "reseller-profile": "Il mio profilo",
     topbarSearch: "Cerca ordini, clienti, prodotti...",
     ordersSubtitle: "Ordini Shopify sincronizzati e in lavorazione",
-    installationsCalendarTitle: "Calendario Pose",
-    installationsWeekSubtitle: "Settimana operativa squadre",
-    previousWeek: "← Sett. prec.",
-    nextWeek: "Sett. succ. →",
+    installationsCalendarTitle: "Pose",
     travelExpensesTitle: "Costi trasferta squadra",
     travelExpensesCopy: "Registra spese vive di cantiere collegate a questo ordine.",
     expenseCategory: "Categoria",
@@ -856,7 +852,6 @@ const translations = {
     routeWarehouseShort: "Warehouse",
     routeInstallShort: "Install",
     routeClearShort: "Remove",
-    allCrews: "All crews",
     crewViewCopy: "Operational view for office and crew, without mandatory PC installation.",
     prepareBy: "Prepare by",
     routeWarehouseStatusOn: "Sent to warehouse",
@@ -1013,10 +1008,7 @@ const translations = {
     "reseller-profile": "My profile",
     topbarSearch: "Search orders, customers, products...",
     ordersSubtitle: "Shopify orders synced and in progress",
-    installationsCalendarTitle: "Installation calendar",
-    installationsWeekSubtitle: "Crew operating week",
-    previousWeek: "← Prev. week",
-    nextWeek: "Next week →",
+    installationsCalendarTitle: "Installations",
     travelExpensesTitle: "Crew travel expenses",
     travelExpensesCopy: "Log travel costs associated with this order.",
     expenseCategory: "Category",
@@ -1895,8 +1887,9 @@ const ui = {
   coverageJobsList: document.getElementById("coverage-jobs-list"),
   coverageJobCount: document.getElementById("coverage-job-count"),
   installationCalendar: document.getElementById("installation-calendar"),
-  installationCrewFilters: document.getElementById("installation-crew-filters"),
-  installationCapacityHint: document.getElementById("installation-capacity-hint"),
+  installationCrewGrid: document.getElementById("installation-crew-grid"),
+  installationWeekLabel: document.getElementById("installation-week-label"),
+  installationThisWeekButton: document.getElementById("installation-this-week-button"),
   installationList: document.getElementById("installation-list"),
   installationPrevWeekButton: document.getElementById("installation-prev-week-button"),
   installationNextWeekButton: document.getElementById("installation-next-week-button"),
@@ -2154,13 +2147,9 @@ function staticLabels() {
     ["#order-attachment-button", t("uploadAttachment")],
     ["#installations .toolbar-row .search-pill", t("crewViewCopy")],
     ["#installations .page-header h1", t("installationsCalendarTitle")],
-    ["#installations .page-header .page-header-sub", t("installationsWeekSubtitle")],
-    ["#installation-prev-week-button", t("previousWeek")],
-    ["#installation-next-week-button", t("nextWeek")],
     ["#installations .installation-expenses-section h4", t("travelExpensesTitle")],
     ["#installations .installation-expenses-section .section-copy", t("travelExpensesCopy")],
     ["#installation-expense-form button[type='submit']", t("addExpense")],
-    ["[data-installation-filter='all']", t("allCrews")],
     ["#installation-attachment-button", t("uploadPhoto")],
     ["#warehouse .panel-head .panel-eyebrow", t("physicalStock")],
     ["#warehouse-search", null, state.lang === "it" ? "Cerca prodotto, misura o residuo" : "Search product, size or offcut"],
@@ -20804,19 +20793,6 @@ function getInstallationCapacityBadgeCopy(ratio = 0) {
   return state.lang === "it" ? "Verde" : "Green";
 }
 
-function buildInstallationCrewFilterButtons() {
-  const forcedCrew = getCrewForCurrentUser();
-  const crewNames = getInstallationCrewNames();
-  const filters = forcedCrew ? [forcedCrew] : ["all", ...crewNames];
-  const active = forcedCrew || state.filters.installation || "all";
-  return filters.map((filterValue) => {
-    const isAll = filterValue === "all";
-    const label = isAll ? t("allCrews") : filterValue;
-    const activeClass = active === filterValue ? "is-active" : "";
-    return `<button class="filter-btn ${activeClass}" type="button" data-action="set-installation-crew-filter" data-installation-filter="${escapeHtml(filterValue)}">${escapeHtml(label)}</button>`;
-  }).join("");
-}
-
 function getInstallationExpensesForMonth(monthKey = new Date().toISOString().slice(0, 7)) {
   return state.orders.flatMap((order) => getTravelExpensesForOrder(order)
     .filter((expense) => String(expense.date || "").slice(0, 7) === monthKey)
@@ -21271,6 +21247,159 @@ function buildInstallationCalendar(orders, crewName = "") {
       </article>
     `;
   }).join("");
+}
+
+// ── Griglia squadre (novembre 2026) ─────────────────────────────────────────
+// Al posto della striscia dei 7 giorni, che sommava i mq di tutte le squadre
+// (quasi sempre "0/390 mq") e non diceva chi fosse libero: una riga per
+// squadra e una colonna per giorno. Casella libera = clic per segnare la
+// squadra assente (di nuovo per toglierlo); una card trascinata su una casella
+// prende data e squadra insieme; il nome della squadra filtra la bacheca.
+// Le pose completate restano nel loro giorno, più chiare.
+const UNASSIGNED_CREW_ROW = "\u0000senza-squadra";
+
+function installationWeekLabel(weekKeys = getInstallationWeekKeys()) {
+  const locale = state.lang === "it" ? "it-IT" : "en-GB";
+  const first = new Date(`${weekKeys[0]}T00:00:00`);
+  const last = new Date(`${weekKeys[weekKeys.length - 1]}T00:00:00`);
+  const sameMonth = first.getMonth() === last.getMonth();
+  const from = sameMonth ? String(first.getDate()) : first.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  return `${from} – ${last.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+function buildInstallationCrewGrid() {
+  const it = state.lang === "it";
+  const locale = it ? "it-IT" : "en-GB";
+  const role = normalizeUserRole(state.currentUser?.role || "");
+  const ownCrew = role === "crew" ? getCrewForCurrentUser() : "";
+  const weekKeys = getInstallationWeekKeys();
+  const todayKey = localDateKey();
+  const activeFilter = getActiveInstallationCrewFilter();
+  const weekOrders = getInstallationsList()
+    .filter((order) => installationDays(order.operations?.installation).some((day) => weekKeys.includes(day)));
+
+  const rows = ownCrew ? [ownCrew] : [...getInstallationCrewNames()];
+  const rowFor = (crewName) => {
+    const name = String(crewName || "").trim();
+    if (!name) return UNASSIGNED_CREW_ROW;
+    const match = rows.find((row) => row !== UNASSIGNED_CREW_ROW && isSameCrewName(row, name));
+    if (match) return match;
+    if (ownCrew) return "";
+    rows.push(name);
+    return name;
+  };
+  const byCell = new Map();
+  const addToCell = (row, day, kind, item) => {
+    if (!row) return;
+    const key = `${row}|${day}`;
+    const cell = byCell.get(key) || { orders: [], surveys: [] };
+    cell[kind].push(item);
+    byCell.set(key, cell);
+  };
+  weekOrders.forEach((order) => {
+    const install = order.operations?.installation || {};
+    const row = rowFor(install.crew);
+    installationDays(install).filter((day) => weekKeys.includes(day)).forEach((day) => addToCell(row, day, "orders", order));
+  });
+  (Array.isArray(state.surveys) ? state.surveys : [])
+    .filter((survey) => weekKeys.includes(survey.scheduledDate) && survey.status !== "annullato")
+    .forEach((survey) => addToCell(rowFor(survey.crewName), survey.scheduledDate, "surveys", survey));
+  if (!ownCrew && [...byCell.keys()].some((key) => key.startsWith(`${UNASSIGNED_CREW_ROW}|`))) rows.push(UNASSIGNED_CREW_ROW);
+  if (!rows.length) {
+    return `<div class="info-card">${it ? "Nessuna squadra: aggiungile in Impostazioni → Squadre." : "No crews yet: add them in Settings → Crews."}</div>`;
+  }
+
+  const byTime = (a, b) => String(a.operations?.installation?.installTime || "99").localeCompare(String(b.operations?.installation?.installTime || "99"));
+  const head = weekKeys.map((day) => {
+    const date = new Date(`${day}T00:00:00`);
+    const weekday = date.toLocaleDateString(locale, { weekday: "short" });
+    const isWeekend = [0, 6].includes(date.getDay());
+    return `<div class="sg-day${day === todayKey ? " is-today" : ""}${isWeekend ? " is-weekend" : ""}" role="columnheader"><small>${escapeHtml(weekday)}</small><strong>${date.getDate()}</strong>${day === todayKey ? `<em>${it ? "oggi" : "today"}</em>` : ""}</div>`;
+  }).join("");
+
+  const body = rows.map((row) => {
+    const isUnassigned = row === UNASSIGNED_CREW_ROW;
+    const crewName = isUnassigned ? "" : row;
+    const canToggle = !isUnassigned && (role === "office" || (role === "crew" && isSameCrewName(crewName, ownCrew)));
+    const canDrop = role === "office";
+    const capacity = crewName ? getCrewDailyCapacity(crewName) : 0;
+    const weekCount = new Set(weekKeys.flatMap((day) => (byCell.get(`${row}|${day}`)?.orders || []).map((order) => order.id))).size;
+    const isActive = role !== "crew" && Boolean(activeFilter) && isSameCrewName(activeFilter, crewName);
+    const countLabel = weekCount ? `${weekCount} ${it ? (weekCount === 1 ? "posa" : "pose") : (weekCount === 1 ? "job" : "jobs")}` : "";
+    const rowHead = isUnassigned
+      ? `<div class="sg-crew is-unassigned" role="rowheader"><span class="crew-dot" style="background:${getCrewColor("")}"></span><span class="sg-crew-name">${it ? "Senza squadra" : "No crew"}</span></div>`
+      : role === "crew"
+        ? `<div class="sg-crew" role="rowheader"><span class="crew-dot" style="background:${getCrewColor(crewName)}"></span><span class="sg-crew-name">${escapeHtml(crewName)}</span>${countLabel ? `<small>${countLabel}</small>` : ""}</div>`
+        : `<button class="sg-crew${isActive ? " is-active" : ""}" type="button" role="rowheader" data-action="set-installation-crew-filter" data-installation-filter="${escapeAttr(isActive ? "all" : crewName)}" title="${escapeAttr(isActive ? (it ? "Mostra tutte le squadre nella bacheca" : "Show all crews on the board") : (it ? `Mostra solo ${crewName} nella bacheca` : `Show only ${crewName} on the board`))}"><span class="crew-dot" style="background:${getCrewColor(crewName)}"></span><span class="sg-crew-name">${escapeHtml(crewName)}</span>${countLabel ? `<small>${countLabel}</small>` : ""}</button>`;
+    const cells = weekKeys.map((day) => {
+      const cell = byCell.get(`${row}|${day}`) || { orders: [], surveys: [] };
+      const orders = cell.orders.slice().sort(byTime);
+      const surveys = cell.surveys.slice().sort((a, b) => String(a.scheduledTime || "99").localeCompare(String(b.scheduledTime || "99")));
+      const unavailable = Boolean(crewName) && isCrewUnavailable(crewName, day);
+      const load = orders.reduce((sum, order) => sum + getSafeOrderSqm(order) / Math.max(1, installationDays(order.operations?.installation).length), 0);
+      const over = capacity > 0 && load > capacity;
+      const date = new Date(`${day}T00:00:00`);
+      const isWeekend = [0, 6].includes(date.getDay());
+      const dayLabel = formatDate(day);
+      const items = orders.map((order) => {
+        const install = order.operations?.installation || {};
+        const days = installationDays(install);
+        const dayIndex = days.indexOf(day) + 1;
+        const done = getInstallationLane(order) === "done";
+        const dayTag = days.length > 1 ? (it ? `giorno ${dayIndex}/${days.length}` : `day ${dayIndex}/${days.length}`) : "";
+        const meta = [`${Math.round(getSafeOrderSqm(order))} mq`, order.city || "", dayTag].filter(Boolean).join(" · ");
+        const title = `${composeClientName(order)} · ${getOrderNumber(order)}${install.crew ? ` · ${install.crew}` : ""}${done ? (it ? " · completata" : " · completed") : ""}`;
+        return `<button class="sg-item${done ? " is-done" : ""}" type="button" data-action="select-order" data-id="${escapeAttr(order.id)}" data-view="installations" ${canDrop ? `draggable="true" data-installation-drag-id="${escapeAttr(order.id)}"` : ""} style="--crew:${getCrewColor(install.crew)}" title="${escapeAttr(title)}"><strong>${install.installTime && dayIndex === 1 ? `<em>${escapeHtml(install.installTime)}</em> ` : ""}${done ? "✓ " : ""}${escapeHtml(composeClientName(order))}</strong><span>${escapeHtml(meta)}</span></button>`;
+      }).join("");
+      const surveyItems = surveys.map((survey) => `<button class="sg-item is-survey${survey.status === "completato" ? " is-done" : ""}" type="button" data-action="cal-open-survey" data-id="${escapeAttr(survey.id)}" title="${escapeAttr(`${it ? "Sopralluogo" : "Site survey"} · ${survey.customerName}`)}"><strong>${survey.scheduledTime ? `<em>${escapeHtml(survey.scheduledTime)}</em> ` : ""}${escapeHtml(survey.customerName)}</strong><span>${it ? "Sopralluogo" : "Site survey"}${survey.city ? ` · ${escapeHtml(survey.city)}` : ""}</span></button>`).join("");
+      const toggleAttrs = `data-action="toggle-crew-unavailable" data-crew="${escapeAttr(crewName)}" data-date="${escapeAttr(day)}"`;
+      let offSlot = "";
+      let freeSlot = "";
+      if (unavailable) {
+        offSlot = canToggle
+          ? `<button class="sg-off" type="button" ${toggleAttrs} title="${escapeAttr(it ? `Rendi ${crewName} disponibile il ${dayLabel}` : `Mark ${crewName} available on ${dayLabel}`)}">${it ? "Assente" : "Off"}</button>`
+          : `<span class="sg-off">${it ? "Assente" : "Off"}</span>`;
+      } else if (!orders.length && !surveys.length && canToggle) {
+        freeSlot = `<button class="sg-free" type="button" ${toggleAttrs} title="${escapeAttr(it ? `Segna ${crewName} assente il ${dayLabel}` : `Mark ${crewName} off on ${dayLabel}`)}" aria-label="${escapeAttr(it ? `Segna ${crewName} assente il ${dayLabel}` : `Mark ${crewName} off on ${dayLabel}`)}"><span>${it ? "Segna assente" : "Mark off"}</span></button>`;
+      }
+      const classes = ["sg-cell", day === todayKey ? "is-today" : "", isWeekend ? "is-weekend" : "", unavailable ? "is-off" : "", over ? "is-over" : ""].filter(Boolean).join(" ");
+      const overTitle = over ? ` title="${escapeAttr(it ? `${Math.round(load)} mq: oltre la capacità di ${crewName} (${Math.round(capacity)} mq al giorno)` : `${Math.round(load)} sqm: over ${crewName}'s capacity (${Math.round(capacity)} sqm a day)`)}"` : "";
+      const dropAttrs = canDrop ? ` data-drop-date="${escapeAttr(day)}"${crewName ? ` data-drop-crew="${escapeAttr(crewName)}"` : ""}` : "";
+      return `<div class="${classes}" role="gridcell"${dropAttrs}${overTitle}>${offSlot}${items}${surveyItems}${freeSlot}</div>`;
+    }).join("");
+    return `<div class="sg-row${isActive ? " is-active" : ""}" role="row">${rowHead}${cells}</div>`;
+  }).join("");
+
+  const hint = role === "office"
+    ? (it ? "Clic su una casella libera per segnare la squadra assente · trascina una card su una casella per darle giorno e squadra" : "Click an empty box to mark the crew off · drag a card onto a box to set its day and crew")
+    : "";
+  const filterNote = activeFilter && role !== "crew"
+    ? `<span class="sg-filter-note">${it ? "Bacheca:" : "Board:"} <strong>${escapeHtml(activeFilter)}</strong> <button type="button" data-action="set-installation-crew-filter" data-installation-filter="all">${it ? "Mostra tutte" : "Show all"}</button></span>`
+    : "";
+  return `
+    <div class="sg-scroll">
+      <div class="sg-table" role="grid">
+        <div class="sg-row sg-head" role="row"><div class="sg-corner" role="columnheader">${it ? "Squadra" : "Crew"}</div>${head}</div>
+        ${body}
+      </div>
+    </div>
+    ${hint || filterNote ? `<div class="sg-foot">${filterNote}${hint ? `<span class="sg-hint">${hint}</span>` : ""}</div>` : ""}
+  `;
+}
+
+// Sul telefono la griglia scorre di lato: porta in vista oggi (o il lunedì)
+// solo quando cambia settimana, così l'aggiornamento ogni minuto non la sposta.
+let installationGridScrolledWeek = "";
+function scrollInstallationCrewGridToToday() {
+  const scroller = ui.installationCrewGrid?.querySelector(".sg-scroll");
+  if (!scroller) return;
+  const weekKey = getInstallationWeekKeys()[0];
+  if (installationGridScrolledWeek === weekKey) return;
+  installationGridScrolledWeek = weekKey;
+  if (scroller.scrollWidth <= scroller.clientWidth) return;
+  const today = scroller.querySelector(".sg-head .sg-day.is-today");
+  const corner = scroller.querySelector(".sg-corner");
+  scroller.scrollLeft = today ? Math.max(0, today.offsetLeft - (corner?.offsetWidth || 0)) : 0;
 }
 
 // ─── KANBAN POSE ─────────────────────────────────────────────────────────────
@@ -21982,43 +22111,31 @@ function renderInstallations() {
   if (ui.installationSubmitButton) ui.installationSubmitButton.textContent = isCrewView
     ? (state.lang === "it" ? "Salva aggiornamento cantiere" : "Save site update")
     : (state.lang === "it" ? "Salva posa" : "Save installation");
-  if (ui.installationCrewFilters) {
-    ui.installationCrewFilters.innerHTML = buildInstallationCrewFilterButtons();
-    ui.installationCrewFilters.classList.toggle("hidden", isCrewView);
-  }
-  if (ui.installationCapacityHint) {
-    const capacityValue = Math.round(getInstallationCapacityForScope(calendarCrewScope));
-    const crewCount = getInstallationCrewNames().length;
-    // Senza una squadra selezionata non si può segnare l'indisponibilità (è per
-    // squadra): lo diciamo nel sottotitolo capacità così l'utente sa cosa fare.
-    ui.installationCapacityHint.textContent = calendarCrewScope
-      ? `${calendarCrewScope} · ${capacityValue} mq/${state.lang === "it" ? "giorno" : "day"}`
-      : `${crewCount} ${state.lang === "it" ? "squadre attive" : "active crews"} · ${capacityValue} mq/${state.lang === "it" ? "giorno · seleziona una squadra per segnarne l’indisponibilità" : "day · pick a crew to set its availability"}`;
-  }
-  const sectionTitle = document.querySelector("#installations .section-title");
-  if (sectionTitle) {
-    sectionTitle.textContent = isCrewView
-      ? (state.lang === "it" ? "Le tue pose" : "Your installs")
-      : (state.lang === "it" ? "Bacheca pose" : "Installation board");
+  // Un solo titolo in cima ("Pose"): la bacheca dell'ufficio non ripete il
+  // suo; la squadra tiene "Le tue pose" sopra il proprio elenco.
+  const sectionHeader = document.querySelector("#installations .installation-kanban-section .section-header");
+  if (sectionHeader) {
+    sectionHeader.style.display = isCrewView ? "" : "none";
+    const sectionTitle = sectionHeader.querySelector(".section-title");
+    if (sectionTitle) sectionTitle.textContent = state.lang === "it" ? "Le tue pose" : "Your installs";
   }
   getSelectedInstallationCrew();
   scheduleCoverageRender();
+  if (ui.installationCrewGrid) {
+    ui.installationCrewGrid.hidden = false;
+    ui.installationCrewGrid.classList.toggle("is-crew", isCrewView);
+    ui.installationCrewGrid.innerHTML = buildInstallationCrewGrid();
+    scrollInstallationCrewGridToToday();
+  }
   if (ui.installationCalendar) {
-    ui.installationCalendar.innerHTML = buildInstallationCalendar(orders, calendarCrewScope);
-    // Squadra sul telefono: agenda verticale della settimana invece della
-    // striscia da scorrere di lato (vedi CSS ".is-agenda").
+    // Solo la squadra sul telefono: agenda verticale della settimana (CSS
+    // ".is-agenda"); da 761 px in su e per l'ufficio c'è la griglia.
+    ui.installationCalendar.hidden = !isCrewView;
+    ui.installationCalendar.innerHTML = isCrewView ? buildInstallationCalendar(orders, calendarCrewScope) : "";
     ui.installationCalendar.classList.toggle("is-agenda", isCrewView);
   }
-  if (ui.installationPrevWeekButton) {
-    const start = getInstallationWeekStart();
-    ui.installationPrevWeekButton.dataset.weekStart = localDateKey(start);
-  }
-  if (ui.installationNextWeekButton) {
-    const start = getInstallationWeekStart();
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    ui.installationNextWeekButton.dataset.weekEnd = localDateKey(end);
-  }
+  if (ui.installationWeekLabel) ui.installationWeekLabel.textContent = installationWeekLabel();
+  if (ui.installationThisWeekButton) ui.installationThisWeekButton.hidden = state.installationWeekOffset === 0;
   const todayCrewFilter = getActiveInstallationCrewFilter();
   state.jobEvents.live.baseOrders = isCrewView
     ? orders
@@ -36239,10 +36356,12 @@ async function removeInstallationExpense(orderId, expenseId) {
   renderCurrentViewOnly(state.currentView);
 }
 
-async function assignInstallationOrderToDate(orderId, dateKey) {
+// crewName: squadra della casella della griglia su cui è caduta la card
+// (vuota = riga "Senza squadra" o calendario: resta quella della posa).
+async function assignInstallationOrderToDate(orderId, dateKey, crewName = "") {
   const order = state.orders.find((item) => item.id === orderId);
   if (!order || !dateKey) return;
-  const suggestedCrew = getActiveInstallationCrewFilter() || order.operations?.installation?.crew || "";
+  const suggestedCrew = crewName || getActiveInstallationCrewFilter() || order.operations?.installation?.crew || "";
   // Una posa di più giorni trascinata su un altro giorno resta lunga uguale.
   const shifted = shiftInstallationDays(order.operations?.installation || {}, dateKey);
   // Il drop sul calendario non controllava mai il flag "squadra non
@@ -37122,14 +37241,14 @@ function handleInstallationBacklogDragStart(event) {
 function handleInstallationBacklogDragEnd(event) {
   const card = event.target.closest("[data-installation-drag-id]");
   if (card) card.classList.remove("is-dragging");
-  document.querySelectorAll(".cal-day.is-drop-target").forEach((node) => node.classList.remove("is-drop-target"));
+  document.querySelectorAll("[data-drop-date].is-drop-target").forEach((node) => node.classList.remove("is-drop-target"));
 }
 
 function handleInstallationCalendarDragOver(event) {
   const day = event.target.closest("[data-drop-date]");
   if (!day) return;
   event.preventDefault();
-  document.querySelectorAll(".cal-day.is-drop-target").forEach((node) => {
+  document.querySelectorAll("[data-drop-date].is-drop-target").forEach((node) => {
     if (node !== day) node.classList.remove("is-drop-target");
   });
   day.classList.add("is-drop-target");
@@ -37137,7 +37256,7 @@ function handleInstallationCalendarDragOver(event) {
 
 function handleInstallationCalendarDragLeave(event) {
   const day = event.target.closest("[data-drop-date]");
-  if (!day) return;
+  if (!day || day.contains(event.relatedTarget)) return;
   day.classList.remove("is-drop-target");
 }
 
@@ -37148,7 +37267,7 @@ function handleInstallationCalendarDrop(event) {
   const orderId = event.dataTransfer?.getData("text/plain") || "";
   day.classList.remove("is-drop-target");
   if (!orderId) return;
-  assignInstallationOrderToDate(orderId, day.dataset.dropDate || "");
+  assignInstallationOrderToDate(orderId, day.dataset.dropDate || "", day.dataset.dropCrew || "");
 }
 
 function handleGlobalClick(event) {
@@ -37780,7 +37899,7 @@ function handleGlobalClick(event) {
     // attualmente selezionata nel calendario (lo scope che mostra il pulsante).
     let crewName = "";
     if (role === "crew") crewName = getCrewForCurrentUser();
-    else if (role === "office") crewName = getActiveInstallationCrewFilter() || getSelectedInstallationCrew();
+    else if (role === "office") crewName = button.dataset.crew || getActiveInstallationCrewFilter() || getSelectedInstallationCrew();
     if (!crewName) return;
     const dateKey = button.dataset.date || "";
     toggleCrewUnavailable(crewName, dateKey);
@@ -42369,6 +42488,11 @@ bindEvent(ui.installationList, "dragend", handleInstallationBacklogDragEnd);
 bindEvent(ui.installationCalendar, "dragover", handleInstallationCalendarDragOver);
 bindEvent(ui.installationCalendar, "dragleave", handleInstallationCalendarDragLeave);
 bindEvent(ui.installationCalendar, "drop", handleInstallationCalendarDrop);
+bindEvent(ui.installationCrewGrid, "dragstart", handleInstallationBacklogDragStart);
+bindEvent(ui.installationCrewGrid, "dragend", handleInstallationBacklogDragEnd);
+bindEvent(ui.installationCrewGrid, "dragover", handleInstallationCalendarDragOver);
+bindEvent(ui.installationCrewGrid, "dragleave", handleInstallationCalendarDragLeave);
+bindEvent(ui.installationCrewGrid, "drop", handleInstallationCalendarDrop);
 bindEvent(ui.coverageTeamForm, "submit", saveCoverageTeamFromForm);
 bindEvent(ui.coverageAddTeamButton, "click", addCoverageTeam);
 bindEvent(ui.coverageRemoveTeamButton, "click", removeCoverageTeam);
@@ -42409,6 +42533,10 @@ bindEvent(ui.installationPrevWeekButton, "click", () => {
 });
 bindEvent(ui.installationNextWeekButton, "click", () => {
   state.installationWeekOffset += 1;
+  renderInstallations();
+});
+bindEvent(ui.installationThisWeekButton, "click", () => {
+  state.installationWeekOffset = 0;
   renderInstallations();
 });
 bindEvent(ui.installationRouteButton, "click", () => {
