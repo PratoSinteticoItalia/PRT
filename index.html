@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261104-passaggi-correggibili" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261104-passaggi-correggibili" />
+    <link rel="preload" href="./styles.css?v=20261104-oggi-in-bacheca-2" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261104-oggi-in-bacheca-2" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1441,6 +1441,9 @@
             </div>
           </div>
 
+          <!-- Oggi: i cantieri del giorno e a che punto sono (renderInstallationToday) -->
+          <section id="installation-today" class="inst-today" hidden></section>
+
           <div class="view-toolbar installation-toolbar">
             <div id="installation-crew-filters" class="filter-bar"></div>
             <div id="installation-capacity-hint" class="search-pill compact-pill">
@@ -2520,19 +2523,6 @@
         </section>
 
         <!-- Le mie presenze (warehouse) -->
-        <!-- Pose: Cantieri Live (timeline real-time eventi cantiere) -->
-        <section class="view" id="installations-live">
-          <nav class="view-tabs" data-nav-tabs role="tablist" hidden></nav>
-          <div class="page-header">
-            <div>
-              <h1>Cantieri Live</h1>
-              <div class="page-header-sub">Timeline real-time eventi cantiere di oggi.</div>
-            </div>
-            <button type="button" class="ghost-button" data-action="live-refresh">↻ Aggiorna</button>
-          </div>
-          <div id="installations-live-content"></div>
-        </section>
-
         <!-- Pose: Programmate (future con installDate valorizzato) -->
         <section class="view" id="installations-scheduled">
           <nav class="view-tabs" data-nav-tabs role="tablist" hidden></nav>
@@ -2819,7 +2809,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261104-passaggi-correggibili" defer></script>
-    <script src="./app.js?v=20261104-passaggi-correggibili" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261104-oggi-in-bacheca-2" defer></script>
+    <script src="./app.js?v=20261104-oggi-in-bacheca-2" type="module"></script>
   </body>
 </html>
