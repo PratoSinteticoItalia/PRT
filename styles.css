@@ -24570,13 +24570,12 @@ body {
   width: 100%;
   padding: 11px 16px !important;
 }
-/* Save preparazione: sticky in cima alla sezione materiali così è sempre
-   raggiungibile senza scrollare in fondo a una lista lunga. */
+/* Era sticky per tenere a portata "Salva preparazione"; ora la lista si salva
+   da sola e il pulsante è nascosto. Sticky a top 0 finiva sotto l'intestazione
+   del dettaglio (anch'essa sticky a top 0) e, trasparente, scorrendo il
+   titolo "Materiali da preparare" si sovrapponeva al nome del cliente
+   (segnalato dall'utente, novembre 2026). */
 #orders .panel-subsection-prep .subsection-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--card, #fff);
   padding-bottom: 10px;
   margin-bottom: 4px;
 }

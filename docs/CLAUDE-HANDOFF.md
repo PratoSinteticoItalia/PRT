@@ -621,3 +621,9 @@ L'utente (screenshot della Bacheca): "questo elemento calendario in alto non mi 
 - Nome della squadra = filtro della bacheca e di «Oggi» (`set-installation-crew-filter`); nota «Bacheca: X · Mostra tutte» sotto la griglia.
 - Telefono: la griglia scorre di lato con la colonna squadre ferma e porta in vista oggi solo al cambio settimana (`scrollInstallationCrewGridToToday`). La squadra sul telefono continua a vedere l'agenda (`#installation-calendar.is-agenda`); da 761 px in su vede la griglia con la sua riga.
 - «Oggi» ora sta sotto la griglia.
+
+## Inbox Ordini: titolo sovrapposto; Richieste: menu ⋯ fuori schermo — 5 novembre
+
+- Inbox Ordini, dettaglio: scorrendo, «Materiali da preparare» (e la sua descrizione) finiva sopra il nome del cliente. `#orders .panel-subsection-prep .subsection-head` era sticky a top 0 come `.oi-detail-header` e con sfondo trasparente; era sticky solo per «Salva preparazione», che ora è nascosto (la lista si salva da sola) → tolto lo sticky.
+- Richieste su telefono: il menu «⋯» in testata (Importa richieste, Ripristina date/nomi) si apriva allineato a destra del pulsante, che sul telefono sta a sinistra → fuori schermo e illeggibile (`#sales-requests .srq-more .action-overflow-menu { right: 0 }` batteva la regola mobile). Ora un ascolto `toggle` in cattura (in `initActionOverflowMenus`) riallinea qualsiasi menu `.action-overflow` dal lato opposto se esce dallo schermo.
+- Giro di controllo su tutte le pagine dell'ufficio a 375 px e a 1440 px (scorrimento compreso): nessun'altra pagina esce dallo schermo, nessun'altra sovrapposizione reale. Sul telefono scorre `.main-content`, non la pagina: i controlli automatici devono scorrere quello. Con il pannello del browser nascosto `requestAnimationFrame` è rallentato (es. DDT che scende al modulo dopo 2-3 s): non è un difetto dell'app.
