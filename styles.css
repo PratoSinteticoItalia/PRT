@@ -22278,7 +22278,7 @@ body {
 .job-events-error { color: var(--red, #a74b4b); }
 .job-event-row {
   display: grid;
-  grid-template-columns: 48px 28px 1fr;
+  grid-template-columns: 48px 28px minmax(0, 1fr) auto;
   gap: var(--space-2);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line);
@@ -22300,6 +22300,28 @@ body {
 .job-event-notes { font-size: 13px; margin: 4px 0 0; color: var(--text2, #555); }
 .job-event-photos { display: flex; gap: 4px; margin-top: 4px; }
 .job-event-photo-chip { font-size: 11px; padding: 2px 6px; background: rgba(0,0,0,0.05); border-radius: 4px; }
+/* «Correggi» un passaggio del diario */
+.job-event-fix {
+  align-self: start;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  box-shadow: none;
+  transform: none;
+}
+.job-event-fix:hover { color: var(--brand, #2d6a4f); border-color: var(--brand, #2d6a4f); }
+.job-event-edited { display: block; font-size: 11px; color: var(--muted); font-style: italic; margin-top: 4px; }
+.job-event-row.is-editing { background: #f6f9f5; border-radius: 10px; padding-left: 6px; padding-right: 6px; }
+.job-event-editor { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.job-event-editor input { min-height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; max-width: 260px; }
+.job-event-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-event-editor-actions .job-event-delete { margin-left: auto; color: var(--red, #a74b4b); }
+.job-event-editor-actions .job-event-delete.is-armed { background: var(--red, #a74b4b); border-color: var(--red, #a74b4b); color: #fff; }
 
 /* View Cantieri Live */
 .live-loading, .live-empty, .live-error {

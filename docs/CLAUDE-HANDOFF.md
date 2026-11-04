@@ -576,3 +576,10 @@ Proposta dell'utente: "rendere la pagina posa un'unica pagina e le sottopagine n
 - Le viste restano separate (stessi id, `#installations-scheduled` ecc. e i collegamenti della Dashboard funzionano): `renderNavTabs()` (chiamata da `updateShell`) riempie la `<nav class="view-tabs" data-nav-tabs>` in cima alla vista attiva con le schede permesse al ruolo (squadre senza Furgoni, rivenditori senza Cantieri Live); la prima si chiama "Bacheca" (`NAV_TAB_FIRST_LABEL`). Clic su `[data-nav-tab]` → `setView`.
 - `navParentView(view)` tiene accesa "Pose" nel menu e nella barra in basso del telefono; le sottopagine non stanno più in "Altro" e non accendono "Altro".
 - Stile `.view-tabs` = schede di Contabilità (`.acw-tabs`); sotto 980 px scorrono di lato e la scheda aperta viene portata in vista.
+
+## Passaggi di cantiere correggibili — 4 novembre
+
+L'utente: "questi stati sono tutti non modificabili quindi se c'è un errore diventa difficile da gestire" (caso reale: partenza di prova su Alvaro Labanti, del giorno prima, che l'«Annulla» della scheda Cantiere di oggi non raggiunge più).
+- Ogni riga del diario ha **Correggi** (`job-site-edit`, solo se `canVoidJobEvent`): giorno e ora (`datetime-local`, niente futuro), km se il passaggio ha il furgone, **Elimina passaggio** a doppio tocco (riusa `voidJobSiteEvent`). Bozza in `state.jobSite.edit` (azzerata al cambio account e al cambio posa), il giorno del diario con la riga in correzione resta aperto ai refresh.
+- Server: `PATCH /api/jobs/:orderId/events/:eventId` {occurredAt, km} → `updateJobEvent` (colonne `edited_at`, `edited_by`; il furgone e gli attrezzi non si cambiano, solo i km). Permessi in `canChangeJobEvent` condivisa con il void: ufficio qualsiasi, squadra solo i propri delle ultime 12 ore. Registro modifiche "edit" con prima/dopo. Nel diario compare "corretto da …".
+- Proposta in sospeso (attende OK utente): togliere Cantieri Live e mettere «Oggi» in cima alla Bacheca, prossimo passo sulle card (conferma cliente, materiale, verbale, conto posa), Programmate+Completati in un solo Elenco, sistemazioni collegate alla posa.
