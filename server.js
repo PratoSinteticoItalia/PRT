@@ -4607,7 +4607,6 @@ async function listLiveJobEventsToday({ crewName = null } = {}) {
     }
     sql += ` ORDER BY occurred_at ASC LIMIT 2000`;
     const { rows } = await pool.query(sql, params);
-    console.log(`[db] listLiveJobEventsToday: sinceTs=${sinceTs} crew=${crewName || "(any)"} found=${rows.length}`);
     return rows.map(dbRowToJobEvent);
   } catch (err) {
     console.warn("[db] listLiveJobEventsToday:", err?.message);
@@ -15426,8 +15425,10 @@ async function handleApi(req, res, url) {
     }
   }
 
-  // GET /api/jobs/live → eventi delle ultime 18h, raggruppati per ordine.
-  // Office vede tutti, crew vede solo i propri.
+  // GET /api/jobs/live → passaggi delle ultime 24 ore, raggruppati per ordine:
+  // alimenta «Oggi» in cima alla Bacheca, che lo richiede ogni minuto, quindi
+  // senza le foto (restano nel diario della posa). Office vede tutti, crew
+  // vede solo i propri.
   if (url.pathname === "/api/jobs/live" && req.method === "GET") {
     if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
     if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
@@ -15435,8 +15436,7 @@ async function handleApi(req, res, url) {
       const crewName = currentUser.role === "crew"
         ? (currentUser.crewName || currentUser.name || "")
         : (url.searchParams.get("crew") || null);
-      const events = await listLiveJobEventsToday({ crewName });
-      console.log(`[cantieri-live] user=${currentUser.email || currentUser.id} role=${currentUser.role} crewFilter=${crewName || "(none)"} events=${events.length}`);
+      const events = (await listLiveJobEventsToday({ crewName })).map(({ photos, ...ev }) => ({ ...ev, photos: [], photoCount: photos.length }));
       // Raggruppa per orderId, mantieni l'ordine cronologico
       const byOrder = new Map();
       for (const ev of events) {

@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-passaggi-correggibili";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261104-passaggi-correggibili";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-passaggi-correggibili";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-passaggi-correggibili";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-passaggi-correggibili";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-passaggi-correggibili";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-passaggi-correggibili';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-oggi-in-bacheca-2";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-oggi-in-bacheca-2";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-oggi-in-bacheca-2";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-oggi-in-bacheca-2";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-oggi-in-bacheca-2";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-oggi-in-bacheca-2";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-oggi-in-bacheca-2';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261104-passaggi-correggibili";
+} from "./lib/order-money.js?v=20261104-oggi-in-bacheca-2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261104-passaggi-correggibili";
+import { regionForCity } from "./lib/geo.js?v=20261104-oggi-in-bacheca-2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261104-passaggi-correggibili";
+} from "./lib/shipping-eligibility.js?v=20261104-oggi-in-bacheca-2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261104-passaggi-correggibili";
+} from "./lib/profit-split.js?v=20261104-oggi-in-bacheca-2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261104-passaggi-correggibili";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-passaggi-correggibili";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-passaggi-correggibili";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-passaggi-correggibili";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-passaggi-correggibili";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-passaggi-correggibili";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-passaggi-correggibili";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-passaggi-correggibili";
+} from "./lib/preventivo-pricing.js?v=20261104-oggi-in-bacheca-2";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-oggi-in-bacheca-2";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-oggi-in-bacheca-2";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-oggi-in-bacheca-2";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-oggi-in-bacheca-2";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-oggi-in-bacheca-2";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-oggi-in-bacheca-2";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-oggi-in-bacheca-2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261104-passaggi-correggibili";
+} from "./lib/sales-assignment.js?v=20261104-oggi-in-bacheca-2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261104-passaggi-correggibili";
+} from "./lib/surveys.js?v=20261104-oggi-in-bacheca-2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261104-passaggi-correggibili";
+const APP_SHELL_VERSION = "20261104-oggi-in-bacheca-2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -477,14 +477,11 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "fleet", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "fleet", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
   // Il modulo ordini materiale rivenditore resta implementato ma in standby:
   // order-requests e reseller-orders non sono esposti nei rispettivi account.
-  // "installations-live" (Cantieri Live) resta fuori: è il work-report con
-  // spese/rimborsi squadra, un flusso di compenso interno che non c'entra
-  // con un account rivenditore esterno, a differenza dello stato posa base.
   rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "analytics", "fleet", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
@@ -535,7 +532,6 @@ const translations = {
     "timesheet-office": "Presenze",
     "installations-scheduled": "Programmate",
     "installations-repairs": "Sistemazioni",
-    "installations-live": "Cantieri Live",
     "installations-completed": "Completati",
     fleet: "Furgoni e attrezzatura",
     sopralluoghi: "Sopralluoghi",
@@ -801,7 +797,6 @@ const translations = {
     "timesheet-office": "Time tracking",
     "installations-scheduled": "Scheduled",
     "installations-repairs": "Repairs",
-    "installations-live": "Live sites",
     "installations-completed": "Completed",
     fleet: "Vans & tools",
     sopralluoghi: "Site surveys",
@@ -1262,12 +1257,17 @@ function readLaunchParams() {
   };
 }
 
+// Pagine tolte: un vecchio link porta dove sono finite.
+const RETIRED_VIEWS = { "installations-live": "installations" };
+
 function normalizeLaunchView(value = "") {
+  let view;
   try {
-    return decodeURIComponent(String(value || "").replace(/^#/, "")).trim();
+    view = decodeURIComponent(String(value || "").replace(/^#/, "")).trim();
   } catch {
-    return String(value || "").replace(/^#/, "").trim();
+    view = String(value || "").replace(/^#/, "").trim();
   }
+  return RETIRED_VIEWS[view] || view;
 }
 
 const launchParams = readLaunchParams();
@@ -11480,7 +11480,6 @@ function isInstallationViewId(view = "") {
     "installations-scheduled",
     "installations-repairs",
     "installations-completed",
-    "installations-live",
   ].includes(String(view || ""));
 }
 
@@ -12314,7 +12313,6 @@ function renderDashboardCommandModules(model) {
       actions: [
         makeDashboardCommandOpenViewAction("Pose", "Installs", "installations"),
         makeDashboardCommandOpenViewAction("Programmate", "Scheduled", "installations-scheduled"),
-        makeDashboardCommandOpenViewAction("Live", "Live", "installations-live"),
       ],
     },
     {
@@ -21318,6 +21316,7 @@ function renderInstallationKanbanCard(order) {
       </div>
       <div class="sv2-line sv2-material">${escapeHtml(`${order.operations?.product || t("undefined")} · ${Math.round(getSafeOrderSqm(order))} mq`)}</div>
       <div class="sv2-line sv2-place${addressMissing ? " is-warn" : ""}" title="${escapeHtml(destination)}">${escapeHtml(place)}</div>
+      ${installTodayLineHtml(order)}
       <div class="sv2-foot">
         <button type="button" class="inst-chip inst-chip-crew${crewName ? "" : " is-warn"}" data-action="install-quick-crew" data-quick-anchor data-id="${escapeAttr(order.id)}" title="${escapeAttr(it ? "Cambia squadra" : "Change crew")}"><span class="crew-dot" style="background:${crewColor}"></span>${escapeHtml(crewName || (it ? "Assegna squadra" : "Assign crew"))}</button>
         ${installStatus === "problema" ? `<span class="is-alert">${escapeHtml(statusLabel)}</span>` : ""}
@@ -21916,6 +21915,12 @@ function renderInstallations() {
     end.setDate(start.getDate() + 6);
     ui.installationNextWeekButton.dataset.weekEnd = localDateKey(end);
   }
+  const todayCrewFilter = getActiveInstallationCrewFilter();
+  state.jobEvents.live.baseOrders = isCrewView
+    ? orders
+    : (todayCrewFilter ? getInstallationsList().filter((o) => orderBelongsToCrew(o, todayCrewFilter)) : getInstallationsList());
+  renderInstallationToday();
+  loadInstallationToday();
   withScrollPreservation(ui.installationList, () => {
   if (!isCrewView) {
     // Vista ufficio = KANBAN per stato (board principale delle Pose).
@@ -22619,7 +22624,7 @@ window.buildOpenRepairButton = buildOpenRepairButton;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // JOB EVENTS — diario di cantiere real-time (Sprint 1)
-// 4 bottoni rapidi crew + timeline + view office "Cantieri Live"
+// Passaggi della squadra, diario della posa e «Oggi» in cima alla Bacheca
 // ═══════════════════════════════════════════════════════════════════════════
 
 const JOB_EVENT_DEFS = [
@@ -22704,9 +22709,130 @@ if (!state.jobEvents) {
   state.jobEvents = {
     byOrder: {},        // { orderId: [events] }
     busy: false,
-    live: { groups: [], loadedAt: 0, autoRefresh: 0 },
+    live: { groups: [], loadedAt: 0, loading: false, baseOrders: [] },
   };
 }
+
+// ── Oggi in cima alla Bacheca (novembre 2026) ───────────────────────────────
+// I cantieri del giorno (posa in programma oggi o passaggi segnati oggi) con
+// il punto della giornata: in viaggio, in posa, rientrati… La stessa riga va
+// sulla card della bacheca. Ha preso il posto della pagina Cantieri Live.
+// I passaggi arrivano da /api/jobs/live (ultime 24 ore, senza foto) e si
+// aggiornano ogni minuto finché la Bacheca è aperta, senza ridisegnarla.
+const INSTALL_TODAY_REFRESH_MS = 60000;
+
+function installTodayEventsByOrder() {
+  const live = state.jobEvents.live;
+  const todayKey = romeDateKey(new Date());
+  if (live.todayMap && live.todayMapKey === `${live.loadedAt}|${todayKey}`) return live.todayMap;
+  const map = new Map();
+  for (const group of live.groups || []) {
+    const events = (group.events || []).filter((ev) => romeDateKey(ev.occurredAt) === todayKey);
+    if (events.length) map.set(group.orderId, events);
+  }
+  live.todayMap = map;
+  live.todayMapKey = `${live.loadedAt}|${todayKey}`;
+  return map;
+}
+
+// Punto della giornata di una posa: icona, testo e tono.
+function installTodayStatus(order, events = []) {
+  const last = events[events.length - 1];
+  if (!last) {
+    const install = order.operations?.installation || {};
+    const start = install.installTime || "09:00";
+    if (jobSiteTime(new Date()) > start) return { icon: "⏰", text: jsL("Non ancora partiti", "Not on the road yet"), tone: "warn" };
+    return { icon: "🕗", text: install.installTime ? jsL(`Partenza prevista alle ${install.installTime}`, `Departure planned at ${install.installTime}`) : jsL("Da partire", "Not left yet"), tone: "" };
+  }
+  const at = jobSiteTime(last.occurredAt);
+  const since = formatMinutes(Math.max(1, minutesBetween(last.occurredAt, new Date()) || 0));
+  switch (last.eventType) {
+    case "departure": return { icon: "🚛", text: jsL(`In viaggio da ${since}`, `On the road for ${since}`), tone: "move" };
+    case "arrival": return { icon: "📍", text: jsL(`In cantiere dalle ${at}`, `On site since ${at}`), tone: "work" };
+    case "work_start": return { icon: "🔨", text: jsL(`In posa dalle ${at}`, `Working since ${at}`), tone: "work" };
+    case "day_end": return { icon: "🌙", text: jsL(`Giornata chiusa alle ${at}`, `Day closed at ${at}`), tone: "done" };
+    case "work_end": return { icon: "✅", text: jsL(`Posa finita alle ${at}`, `Finished at ${at}`), tone: "done" };
+    case "return": return { icon: "🏠", text: jsL(`Rientrati alle ${at}`, `Back at ${at}`), tone: "done" };
+    default: return { icon: "•", text: `${jobEventLabel(last.eventType)} · ${at}`, tone: "" };
+  }
+}
+
+function installTodayLineHtml(order) {
+  const events = installTodayEventsByOrder().get(order.id);
+  if (!events) return "";
+  const status = installTodayStatus(order, events);
+  return `<div class="sv2-line inst-live is-${status.tone}">${status.icon} ${escapeHtml(status.text)}</div>`;
+}
+
+function renderInstallationToday() {
+  const root = document.getElementById("installation-today");
+  if (!root) return;
+  if (!["office", "crew"].includes(state.currentUser?.role)) {
+    root.hidden = true;
+    return;
+  }
+  root.hidden = false;
+  const todayKey = romeDateKey(new Date());
+  const byOrder = installTodayEventsByOrder();
+  const rank = { move: 0, work: 0, warn: 1, "": 2, done: 3 };
+  const items = (state.jobEvents.live.baseOrders || [])
+    .filter((order) => byOrder.has(order.id)
+      || (!isInstallationCompleted(order) && installationDays(order.operations?.installation || {}).includes(todayKey)))
+    .map((order) => ({ order, status: installTodayStatus(order, byOrder.get(order.id)) }))
+    .sort((a, b) => rank[a.status.tone] - rank[b.status.tone]);
+  const head = `<div class="inst-today-head"><h3>${jsL("Oggi", "Today")}</h3><span>${escapeHtml(jobSiteDayName(todayKey))}</span></div>`;
+  if (!items.length) {
+    root.innerHTML = `${head}<p class="inst-today-empty">${jsL("Nessuna posa in programma oggi.", "No installs planned today.")}</p>`;
+    return;
+  }
+  root.innerHTML = `${head}<div class="inst-today-list">${items.map(({ order, status }) => {
+    const install = order.operations?.installation || {};
+    const days = installationDays(install);
+    const dayN = days.length > 1 && days.includes(todayKey) ? ` · ${jsL(`giorno ${days.indexOf(todayKey) + 1} di ${days.length}`, `day ${days.indexOf(todayKey) + 1} of ${days.length}`)}` : "";
+    const crew = String(install.crew || "").trim();
+    return `
+      <button type="button" class="inst-today-card is-${status.tone}${order.id === state.selectedOrderId ? " selected" : ""}" data-action="select-order" data-id="${escapeAttr(order.id)}" data-view="installations">
+        <span class="inst-today-name">${escapeHtml(composeClientName(order))} <small>${escapeHtml(getOrderNumber(order))}</small></span>
+        <span class="inst-today-state">${status.icon} ${escapeHtml(status.text)}</span>
+        <span class="inst-today-meta"><span class="crew-dot" style="background:${getCrewColor(install.crew)}"></span>${escapeHtml(crew || jsL("Squadra da assegnare", "Crew to assign"))}${order.city ? ` · ${escapeHtml(order.city)}` : ""}${escapeHtml(dayN)}</span>
+      </button>`;
+  }).join("")}</div>`;
+}
+
+// Aggiorna striscia e righe sulle card senza ridisegnare la Bacheca (che
+// rimetterebbe i valori nel modulo della scheda aperta).
+function paintInstallationToday() {
+  if (state.currentView !== "installations") return;
+  renderInstallationToday();
+  const orders = state.orders || [];
+  document.querySelectorAll("#installation-list .inst-card[data-id]").forEach((card) => {
+    card.querySelector(".inst-live")?.remove();
+    const order = orders.find((item) => item.id === card.dataset.id);
+    const line = order ? installTodayLineHtml(order) : "";
+    if (line) card.querySelector(".sv2-place")?.insertAdjacentHTML("afterend", line);
+  });
+}
+
+async function loadInstallationToday({ force = false } = {}) {
+  const live = state.jobEvents.live;
+  if (!["office", "crew"].includes(state.currentUser?.role) || live.loading) return;
+  if (!force && Date.now() - live.loadedAt < INSTALL_TODAY_REFRESH_MS - 1000) return;
+  live.loading = true;
+  try {
+    const res = await apiListLiveJobs();
+    live.groups = res?.groups || [];
+    live.loadedAt = Date.now();
+    paintInstallationToday();
+  } catch (err) {
+    console.warn("[oggi] aggiornamento non riuscito:", err?.message || err);
+  } finally {
+    live.loading = false;
+  }
+}
+
+window.setInterval(() => {
+  if (state.currentView === "installations" && document.visibilityState === "visible") loadInstallationToday({ force: true });
+}, INSTALL_TODAY_REFRESH_MS);
 
 // ── Cantiere di oggi + diario (novembre 2026) ───────────────────────────────
 // In cima al dettaglio posa: un solo pulsante con il prossimo passo della
@@ -23764,43 +23890,6 @@ document.addEventListener("change", (ev) => {
   }
 });
 
-// ── View Cantieri Live (office + crew) ──────────────────────────────────────
-
-async function renderInstallationsLive() {
-  const root = document.getElementById("installations-live-content");
-  if (!root) return;
-  root.innerHTML = '<div class="live-loading">Caricamento cantieri live…</div>';
-  try {
-    const res = await apiListLiveJobs();
-    state.jobEvents.live.groups = res?.groups || [];
-    state.jobEvents.live.loadedAt = Date.now();
-    _renderLiveInner(root);
-    // Auto-refresh più frequente: 15s + refresh anche al focus tab
-    if (state.jobEvents.live.autoRefresh) clearInterval(state.jobEvents.live.autoRefresh);
-    state.jobEvents.live.autoRefresh = window.setInterval(() => {
-      if (state.currentView !== "installations-live") {
-        clearInterval(state.jobEvents.live.autoRefresh);
-        state.jobEvents.live.autoRefresh = 0;
-        return;
-      }
-      apiListLiveJobs().then((r) => {
-        state.jobEvents.live.groups = r?.groups || [];
-        _renderLiveInner(root);
-      }).catch((err) => console.warn("[cantieri-live] poll error:", err?.message || err));
-    }, 15000);
-  } catch (err) {
-    console.error("[cantieri-live] initial fetch failed:", err);
-    root.innerHTML = `<div class="live-error">Errore caricamento: ${escapeHtml(String(err?.message || err))}</div>`;
-  }
-}
-
-// Refresh Cantieri Live anche quando il tab torna visibile
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && state.currentView === "installations-live") {
-    renderInstallationsLive();
-  }
-});
-
 // Ricorda quali "pezzi singoli" dell'inventario sono espansi (l'evento toggle non
 // fa bubbling → capture). Così la sezione resta aperta dopo un re-render (es. dopo
 // l'eliminazione di un pezzo).
@@ -23925,64 +24014,6 @@ document.addEventListener("click", (ev) => {
       catch { showToast("Copia manualmente dal campo", "info"); }
     }
   }
-});
-
-function _renderLiveInner(root) {
-  const groups = state.jobEvents.live.groups || [];
-  if (!groups.length) {
-    root.innerHTML = `<div class="live-empty">
-      <h2>Nessun cantiere attivo</h2>
-      <p>Quando una squadra inizia a timbrare un evento, comparirà qui in tempo reale.</p>
-    </div>`;
-    return;
-  }
-  const orders = state.orders || [];
-  root.innerHTML = `<div class="live-grid">${groups.map((g) => {
-    const order = orders.find((o) => o.id === g.orderId) || {};
-    const customer = composeClientName(order) || g.orderId;
-    const address = composeAddress(order) || "—";
-    const lastType = g.lastEventType || "";
-    const isOpen = lastType !== "return";
-    const statusLabel = lastType === "return" ? "Cantiere chiuso"
-      : lastType === "work_start" ? "🔨 In posa"
-      : lastType === "arrival" ? "📍 In cantiere"
-      : lastType === "departure" ? "🚛 In viaggio"
-      : lastType === "work_end" ? "✓ Posa finita"
-      : "—";
-    const lastAt = g.lastAt ? new Date(g.lastAt) : null;
-    const sinceMin = lastAt ? Math.floor((Date.now() - lastAt.getTime()) / 60000) : null;
-    const sinceLabel = sinceMin != null
-      ? (sinceMin < 60 ? `${sinceMin}min fa` : `${Math.floor(sinceMin / 60)}h ${sinceMin % 60}min fa`)
-      : "";
-    return `
-      <article class="live-card ${isOpen ? "is-open" : "is-closed"}">
-        <header class="live-card-head">
-          <div>
-            <strong>${escapeHtml(customer)}</strong>
-            <span class="live-card-meta">${escapeHtml(address)}</span>
-          </div>
-          <span class="live-card-badge">${escapeHtml(statusLabel)}</span>
-        </header>
-        <div class="live-card-crew">Squadra: <b>${escapeHtml(g.crewName || "—")}</b></div>
-        <div class="live-card-timeline">
-          ${g.events.map((ev) => {
-            const t = new Date(ev.occurredAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
-            const def = JOB_EVENT_DEFS.find((d) => d.type === ev.eventType);
-            return `<div class="live-tick"><span class="live-tick-time">${escapeHtml(t)}</span><span class="live-tick-icon">${def?.icon || "•"}</span><span class="live-tick-label">${escapeHtml(JOB_EVENT_LABELS[ev.eventType] || ev.eventType)}</span>${ev.lat != null ? ' <span class="live-tick-geo">📍</span>' : ""}</div>`;
-          }).join("")}
-        </div>
-        ${sinceLabel ? `<footer class="live-card-foot"><span>Ultimo aggiornamento: ${escapeHtml(sinceLabel)}</span></footer>` : ""}
-      </article>
-    `;
-  }).join("")}</div>`;
-}
-
-// Listener bottone refresh manuale
-document.addEventListener("click", (ev) => {
-  const btn = ev.target.closest?.('[data-action="live-refresh"]');
-  if (!btn) return;
-  ev.preventDefault();
-  renderInstallationsLive();
 });
 
 // ── PWA install prompt + onboarding crew (#51) ──────────────────────────────
@@ -24191,7 +24222,6 @@ const VIEW_ICONS = {
   warehouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
   installations: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
   "installations-todo": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-  "installations-live": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4"/></svg>',
   "installations-scheduled": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="8 14 11 17 16 12"/></svg>',
   "installations-repairs": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
   "installations-completed": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
@@ -24235,7 +24265,7 @@ const NAV_SECTIONS = [
     { view: "shipping" },
     // Pose: una sola voce nel menu; le sottopagine sono schede in cima alla
     // pagina (renderNavTabs), non più sottovoci della sidebar.
-    { view: "installations", tabs: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "fleet"] },
+    { view: "installations", tabs: ["installations-scheduled", "installations-repairs", "installations-completed", "fleet"] },
     { view: "sopralluoghi" },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
@@ -30144,7 +30174,7 @@ function applySessionPayload(session = {}) {
     // Furgoni (costi e viaggi solo ufficio) e diario cantiere: per chi è collegato.
     state.fleet = { data: null, loading: false, loadedAt: 0, error: "", tab: "vans", editVan: "", editTools: false, month: "", busy: false };
     state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {}, edit: null };
-    if (state.jobEvents) { state.jobEvents.byOrder = {}; state.jobEvents.loadedAt = {}; }
+    if (state.jobEvents) { state.jobEvents.byOrder = {}; state.jobEvents.loadedAt = {}; state.jobEvents.live = { groups: [], loadedAt: 0, loading: false, baseOrders: [] }; }
     // I viaggi del furgone servono al conto posa: l'ufficio li carica subito.
     if (nextUser?.role === "office") window.setTimeout(() => loadFleet(), 1500);
     state.inventoryValueReportedOn = "";
@@ -32210,7 +32240,6 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "installations-repairs": _renderInstallationsRepairsFull(); break;
       case "installations-completed": renderInstallationsCompleted(); break;
       case "fleet": renderFleet(); break;
-      case "installations-live": renderInstallationsLive(); break;
       case "sopralluoghi": renderSopralluoghi(); break;
       default: renderDashboard(); break;
     }
@@ -33522,6 +33551,7 @@ function clearAllSearchRenderTimers() {
 }
 
 function setView(view, { pushHistory = true } = {}) {
+  view = RETIRED_VIEWS[view] || view;
   const allowed = getAllowedViewsForRole();
   const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
   const previousView = state.currentView;
