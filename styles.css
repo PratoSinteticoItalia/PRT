@@ -22332,6 +22332,8 @@ body {
 .inst-today-head span { font-size: 13px; color: var(--muted); }
 .inst-today-empty { margin: 0; font-size: 13px; color: var(--muted); }
 .inst-today-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.inst-today-item { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.inst-today-item .inst-today-card { flex: 1 1 auto; }
 .inst-today-card {
   display: flex;
   flex-direction: column;
@@ -22361,11 +22363,38 @@ body {
 .inst-today-meta { display: flex; align-items: center; gap: 6px; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
 .inst-today-meta .crew-dot { flex: 0 0 auto; }
 .inst-live { font-size: 12.5px; font-weight: 600; color: #1f6b47; }
+/* Prossimo passo sulla card (installationNextStep) */
+.inst-card .inst-next,
+.inst-today-item .inst-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 5px 10px;
+  border: 1px solid #e9c98f;
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #7a4a00;
+  font: 600 12.5px/1.2 inherit;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: none;
+  transform: none;
+}
+.inst-card .inst-next:hover, .inst-today-item .inst-next:hover { background: #ffefd2; }
+.inst-card .inst-next.is-split, .inst-today-item .inst-next.is-split { border-color: #dce4dd; background: #f3f7f2; color: #214d3d; }
+.inst-card .inst-next.is-split:hover, .inst-today-item .inst-next.is-split:hover { background: #e8f0e9; }
+/* Casella «Cliente avvisato» nel Programma della scheda posa */
+#installations .install-detail-panel .ip-check { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; }
+#installations .install-detail-panel .ip-check[hidden] { display: none; }
+#installations .install-detail-panel .ip-check input { width: 18px; height: 18px; margin: 0; accent-color: #214d3d; }
+#installations .install-detail-panel .ip-check small { color: var(--muted); font-size: 12.5px; }
 .inst-live.is-done { color: var(--muted); }
 @media (max-width: 980px) {
   .inst-today-list { display: flex; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
   .inst-today-list::-webkit-scrollbar { display: none; }
-  .inst-today-card { flex: 0 0 min(80%, 300px); }
+  .inst-today-item { flex: 0 0 min(80%, 300px); }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

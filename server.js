@@ -12035,6 +12035,7 @@ function buildDefaultOperations(order, linkedJob = null) {
       installDate: linkedJob?.installDate || "",
       installTime: linkedJob?.installTime || "",
       clientConfirmed: false,
+      clientConfirmedFor: "",
       status: linkedJob?.installStatus || "da-pianificare",
       reportNote: "",
       travelExpenses: [],
@@ -12176,6 +12177,9 @@ function normalizeOperations(order, linkedJob = null) {
       installEndDate: normalizeInstallEndDate(current.installation?.installDate || defaults.installation.installDate, current.installation?.installEndDate),
       installTime: current.installation?.installTime || defaults.installation.installTime,
       clientConfirmed: Boolean(current.installation?.clientConfirmed ?? defaults.installation.clientConfirmed),
+      // Data per cui il cliente è stato avvisato: se la posa si sposta va
+      // riavvisato (la bacheca torna a dire «Avvisa il cliente»).
+      clientConfirmedFor: String(current.installation?.clientConfirmedFor || "").slice(0, 10),
       status: current.installation?.status || defaults.installation.status,
       reportNote: current.installation?.reportNote || defaults.installation.reportNote,
       travelExpenses: sourceExpenses,
