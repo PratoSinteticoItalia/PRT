@@ -22186,13 +22186,6 @@ body {
 .js-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .js-head h4 { margin: 0; font-size: 15px; font-weight: 700; color: var(--brand-strong, #1a2e23); }
 .js-day { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
-.js-links { display: flex; gap: 6px; flex-shrink: 0; }
-.js-link {
-  display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px;
-  border: 1px solid var(--line); border-radius: 999px; background: #fff;
-  font-size: 13px; font-weight: 600; color: var(--brand-strong, #1a2e23); text-decoration: none;
-}
-.js-link:hover { border-color: var(--brand); color: var(--brand); }
 .js-progress { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .js-progress li { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: var(--muted); text-align: center; position: relative; }
 .js-progress li span { width: 12px; height: 12px; border-radius: 50%; background: #dfe5df; position: relative; z-index: 1; }
@@ -22285,8 +22278,6 @@ body {
 @media (max-width: 600px) {
   .js-card { padding: 12px; border-radius: 12px; }
   .js-head { flex-direction: column; }
-  .js-links { width: 100%; }
-  .js-link { flex: 1; justify-content: center; min-height: 40px; }
   .js-tools { grid-template-columns: 1fr; }
   .js-progress li { font-size: 10px; }
 }
@@ -30889,4 +30880,67 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
   .fleet-tool .ghost-button { justify-self: start; }
   .fleet-tool-row { grid-template-columns: 1fr 1fr; }
   .fleet-card { padding: 14px; }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Scheda posa a schede (4 novembre 2026): contatti in alto, poi Cantiere /
+   Pianificazione / Documenti / Costi al posto dell'elenco unico.
+   ═════════════════════════════════════════════════════════════════════════ */
+#installations .install-detail-panel .ip-contact { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+#installations .install-detail-panel .ip-chip {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--brand-strong, #1a2e23); cursor: pointer;
+}
+#installations .install-detail-panel .ip-chip:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+#installations .install-detail-panel .ip-chip:disabled { color: var(--muted); background: #f6f7f6; cursor: default; }
+#installations .install-detail-panel .ip-chip.hidden { display: none; }
+#installations .install-detail-panel .ip-tabs {
+  display: flex; gap: 2px; margin: 0 0 16px; padding: 3px; border-radius: 12px; background: #eef2ee;
+  position: sticky; top: 0; z-index: 3;
+}
+#installations .install-detail-panel .ip-tab {
+  flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 8px; border: 0; border-radius: 9px; background: none;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#installations .install-detail-panel .ip-tab:not(.is-active),
+#installations .install-detail-panel .ip-tab:not(.is-active):focus { background: none; box-shadow: none; }
+#installations .install-detail-panel .ip-tab:not(.is-active):hover { color: var(--text); }
+#installations .install-detail-panel .ip-tab.is-active { background: #fff; color: var(--brand-strong, #1a2e23); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+#installations .install-detail-panel .ip-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+#installations .install-detail-panel .ip-tab-count {
+  display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px;
+  background: rgba(45, 106, 79, 0.12); color: var(--brand); font-size: 11px; line-height: 18px; text-align: center;
+}
+#installations .install-detail-panel .installation-pane-group[hidden] { display: none !important; }
+#installations .install-detail-panel .ip-info { margin: 0 0 16px; }
+#installations .install-detail-panel .ip-kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin: 0; }
+#installations .install-detail-panel .ip-kv > div { padding: 10px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+#installations .install-detail-panel .ip-kv dt { font-size: 12px; color: var(--muted); }
+#installations .install-detail-panel .ip-kv dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+#installations .install-detail-panel .ip-kv dd small { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; color: var(--muted); }
+#installations .install-detail-panel .ip-materials { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+#installations .install-detail-panel .ip-materials summary { padding: 10px 12px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+#installations .install-detail-panel .ip-materials ul { margin: 0; padding: 0 12px 10px 30px; font-size: 13px; line-height: 1.6; color: var(--text2, #3f4a3f); }
+#installations .install-detail-panel .ip-note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--amber-soft, #fbf1e2); font-size: 13px; }
+#installations .install-detail-panel .ip-note p { margin: 2px 0 0; white-space: pre-line; }
+#installations .install-detail-panel .ip-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+#installations .install-detail-panel .ip-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+#installations .install-detail-panel .ip-form > .field-full,
+#installations .install-detail-panel .ip-form > .ip-actions,
+#installations .install-detail-panel .ip-form > .panel-note { grid-column: 1 / -1; }
+#installations .install-detail-panel .ip-form .field { min-width: 0; }
+#installations .install-detail-panel .ip-form > .inline-actions { grid-column: 1 / -1; }
+#installations .install-detail-panel .ip-empty-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: #f4f7f4; font-size: 13px; color: var(--text2, #3f4a3f); }
+#installations .install-detail-panel .ip-section + .ip-section { margin-top: 16px; }
+#installations .install-detail-panel .ip-section .subsection-head { align-items: center; margin-bottom: 8px; }
+#installations .install-detail-panel .client-tracking-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+#installations .install-detail-panel .client-tracking-section .subsection-actions button { white-space: nowrap; }
+#installations .install-detail-panel .job-site { margin-bottom: 16px; }
+@media (max-width: 600px) {
+  #installations .install-detail-panel .ip-kv { grid-template-columns: 1fr; }
+  #installations .install-detail-panel .ip-form { grid-template-columns: 1fr; }
+  #installations .install-detail-panel .ip-chip { flex: 1 1 auto; justify-content: center; min-height: 40px; }
+  #installations .install-detail-panel .ip-tab { flex: 1 1 auto; font-size: 12.5px; padding: 0 6px; text-overflow: clip; }
 }

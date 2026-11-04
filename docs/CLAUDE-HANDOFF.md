@@ -559,3 +559,12 @@ Fasi 2 e 3 del piano approvato ("Ok, procedi. Abbiamo un fiat ducato targato EB2
 - **Conto posa**: `getProfitSplitExpensesForOrder` aggiunge la riga collegata "Furgone · N viaggi · km" (pagata da te) col costo dei viaggi della commessa; se i viaggi non sono caricati resta la riga già salvata. **Analisi**: riquadro "Furgone" (km per mese, viaggi, costo).
 - UnipolMove e DKV: nessuna API pubblica per i clienti. Piano: import degli estratti (file) quando l'utente ne manda uno di esempio; per DKV chiedere al commerciale l'accesso API.
 - Menu: il sottomenu Pose aveva `max-height: 200px` e tagliava la quinta voce → 320px.
+
+## Scheda posa a schede — 4 novembre
+
+L'utente (screenshot della scheda): "un elenco lunghissimo, i bottoni sono tantissimi e male organizzati".
+- In alto, sotto il titolo (prodotto · mq · città per tutti): tre pulsanti contatto `.ip-chip` = Chiama <numero> (spento se manca), Naviga (itinerario Maps, spento senza indirizzo), Email (solo ufficio, spento senza email). Tolto "Apri Maps" (doppione di Naviga); Naviga/Chiama tolti anche dalla scheda "Cantiere di oggi".
+- Quattro schede a tutte le larghezze (`#installation-mobile-tabs` `.ip-tab`, `data-installation-pane` = site/plan/docs/costs; "summary"/"expenses" di prima → `normalizeInstallationPane`): **Cantiere** (passi di oggi, dati del lavoro in 4 righe a due colonne — Cliente, Posa, Prodotto, Spedizione — con il materiale chiuso in "Materiale · N voci" e le note, poi il diario), **Programma** (modulo a due colonne + Salva posa / Conferma al cliente, link tracciamento con pulsante "Crea link" piccolo), **Documenti** (Foto e allegati con Carica foto, Verbali con Termina lavoro / Apri sistemazione, Esporta scheda), **Costi** (conto posa: se non salvato una riga sola con "Apri Conti posa"; spese squadra a due colonne). Numeretti su Documenti (allegati + verbali) e Costi (spese): `updateInstallationTabCounts`.
+- Dati del lavoro: `renderInstallationInfoHtml` (sostituisce le card con `wideLabels`). Telefono non più ripetuto (sta nel pulsante Chiama).
+- "Cantiere di oggi" fuori dai giorni previsti dice "posa prevista 8 apr" (prima "giorno in più rispetto al previsto" anche per pose di mesi prima).
+- Stili tutti sotto `#installations .install-detail-panel .ip-*` per non farsi battere dalle vecchie regole. Su telefono le schede prendono la larghezza del testo ("Programma" veniva tagliato di 2 px).
