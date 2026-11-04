@@ -22365,7 +22365,8 @@ body {
 .inst-live { font-size: 12.5px; font-weight: 600; color: #1f6b47; }
 /* Prossimo passo sulla card (installationNextStep) */
 .inst-card .inst-next,
-.inst-today-item .inst-next {
+.inst-today-item .inst-next,
+.install-row .inst-next {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -22382,9 +22383,9 @@ body {
   box-shadow: none;
   transform: none;
 }
-.inst-card .inst-next:hover, .inst-today-item .inst-next:hover { background: #ffefd2; }
-.inst-card .inst-next.is-split, .inst-today-item .inst-next.is-split { border-color: #dce4dd; background: #f3f7f2; color: #214d3d; }
-.inst-card .inst-next.is-split:hover, .inst-today-item .inst-next.is-split:hover { background: #e8f0e9; }
+.inst-card .inst-next:hover, .inst-today-item .inst-next:hover, .install-row .inst-next:hover { background: #ffefd2; }
+.inst-card .inst-next.is-split, .inst-today-item .inst-next.is-split, .install-row .inst-next.is-split { border-color: #dce4dd; background: #f3f7f2; color: #214d3d; }
+.inst-card .inst-next.is-split:hover, .inst-today-item .inst-next.is-split:hover, .install-row .inst-next.is-split:hover { background: #e8f0e9; }
 /* Casella «Cliente avvisato» nel Programma della scheda posa */
 #installations .install-detail-panel .ip-check { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; }
 #installations .install-detail-panel .ip-check[hidden] { display: none; }
@@ -29729,8 +29730,8 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
 #installations .install-detail-panel .oi-kv dd small { display: block; margin-top: 1px; color: var(--oi-faint); font-size: 11.5px; font-weight: 500; }
 
 /* Pose · Programmate / Sistemazioni / Completati: elenco unico a righe. */
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-list { display: block; gap: 0; overflow: hidden; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row {
+:is(#installations-scheduled, #installations-repairs) .install-list { display: block; gap: 0; overflow: hidden; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; }
+:is(#installations-scheduled, #installations-repairs) .install-row {
   position: relative;
   margin: 0;
   padding: 11px 14px 11px 16px;
@@ -29741,21 +29742,47 @@ body.ops-light-view #warehouse.ops-light-page .iv-detail .inv-card {
   box-shadow: none;
   cursor: pointer;
 }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row:last-child { border-bottom: 0; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row::before { content: none; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row:hover { background: var(--ui-hover); }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row.is-selected { background: var(--brand-soft, #e8f2ec); box-shadow: inset 3px 0 var(--brand, #2f7a55); }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-head { display: flex; align-items: baseline; gap: 8px; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-head strong { color: var(--ui-text); font-size: 14px; font-weight: 650; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-num { color: var(--ui-faint); font-size: 12px; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-badge { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 0; border: 0; background: none; color: var(--ui-muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #d08a1e; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-badge.is-scheduled::before { background: #4a78c9; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-badge.is-done::before { background: var(--brand, #2f7a55); }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-body { display: grid; gap: 1px; margin-top: 3px; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-meta { color: var(--ui-muted); font-size: 12.5px; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-meta b { color: var(--ui-text); font-weight: 600; }
-:is(#installations-scheduled, #installations-repairs, #installations-completed) .install-row-when { color: var(--ui-text); font-weight: 600; }
+:is(#installations-scheduled, #installations-repairs) .install-row:last-child { border-bottom: 0; }
+:is(#installations-scheduled, #installations-repairs) .install-row::before { content: none; }
+:is(#installations-scheduled, #installations-repairs) .install-row:hover { background: var(--ui-hover); }
+:is(#installations-scheduled, #installations-repairs) .install-row.is-selected { background: var(--brand-soft, #e8f2ec); box-shadow: inset 3px 0 var(--brand, #2f7a55); }
+:is(#installations-scheduled, #installations-repairs) .install-row-head { display: flex; align-items: baseline; gap: 8px; }
+:is(#installations-scheduled, #installations-repairs) .install-row-head strong { color: var(--ui-text); font-size: 14px; font-weight: 650; }
+:is(#installations-scheduled, #installations-repairs) .install-row-num { color: var(--ui-faint); font-size: 12px; }
+:is(#installations-scheduled, #installations-repairs) .install-row-badge { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 0; border: 0; background: none; color: var(--ui-muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+:is(#installations-scheduled, #installations-repairs) .install-row-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #d08a1e; }
+:is(#installations-scheduled, #installations-repairs) .install-row-badge.is-scheduled::before { background: #4a78c9; }
+:is(#installations-scheduled, #installations-repairs) .install-row-badge.is-done::before { background: var(--brand, #2f7a55); }
+:is(#installations-scheduled, #installations-repairs) .install-row-body { display: grid; gap: 1px; margin-top: 3px; }
+:is(#installations-scheduled, #installations-repairs) .install-row-meta { color: var(--ui-muted); font-size: 12.5px; }
+:is(#installations-scheduled, #installations-repairs) .install-row-meta b { color: var(--ui-text); font-weight: 600; }
+:is(#installations-scheduled, #installations-repairs) .install-row-when { color: var(--ui-text); font-weight: 600; }
+:is(#installations-scheduled, #installations-repairs) .install-row-badge.is-progress::before { background: #0f7f86; }
+/* Elenco pose: ricerca + filtri, prossimo passo e sistemazioni aperte sulla riga */
+#installations-scheduled .install-list-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; }
+#installations-scheduled .install-list-search { flex: 1 1 260px; max-width: 420px; min-width: 0; }
+#installations-scheduled .install-list-filters { margin: 0; }
+#installations-scheduled .install-list-section { display: flex; align-items: baseline; gap: 8px; margin: 22px 0 4px; color: var(--ui-text); font-size: 15px; font-weight: 700; }
+#installations-scheduled .install-list-section:first-child { margin-top: 0; }
+#installations-scheduled .install-list-section span { color: var(--ui-faint); font-size: 13px; font-weight: 600; }
+#installations-scheduled .install-row-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 7px; }
+#installations-scheduled .install-row-extra .inst-next { margin-top: 0; }
+#installations-scheduled .install-row-repair { color: #8a5300; font-size: 12px; font-weight: 600; }
+#installations-scheduled .install-list-more { display: block; margin: 14px auto 0; }
+/* Sistemazioni: posa collegata cliccabile sulla card */
+#installations-repairs .repair-posa-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--brand, #2f7a55); font: 600 12.5px/1.3 inherit; font-family: inherit; text-align: left; cursor: pointer; box-shadow: none; transform: none; }
+#installations-repairs .repair-posa-link:hover { text-decoration: underline; }
+/* Scheda posa → Documenti: sistemazioni di questa posa */
+#installations .installation-repairs-list { display: grid; gap: 8px; }
+#installations #installation-repair-new { white-space: nowrap; }
+#installations .installation-repairs-list .ir-empty { margin: 0; color: var(--ui-muted); font-size: 13px; }
+#installations .installation-repairs-list .ir-item { display: grid; gap: 2px; width: 100%; padding: 10px 12px; border: 1px solid var(--ui-line); border-radius: 10px; background: #fff; color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; box-shadow: none; transform: none; }
+#installations .installation-repairs-list .ir-item:hover { border-color: #214d3d; }
+#installations .installation-repairs-list .ir-item.status-completed, #installations .installation-repairs-list .ir-item.status-cancelled { opacity: .7; }
+#installations .installation-repairs-list .ir-top { font-size: 13px; }
+#installations .installation-repairs-list .ir-top small { margin-left: 4px; color: var(--ui-faint); font-size: 11.5px; }
+#installations .installation-repairs-list .ir-desc { overflow: hidden; color: var(--ui-muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+#installations .installation-repairs-list .ir-when { color: var(--ui-muted); font-size: 12px; }
 
 /* ── Richieste (CRM) nello stile di Inbox Ordini (ottobre 2026) ───────────
    Elenco unico a righe, nomi in tondo (non più in maiuscolo), servizio come

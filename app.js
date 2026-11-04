@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-prossimo-passo-6";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261104-prossimo-passo-6";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-prossimo-passo-6";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-prossimo-passo-6";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-prossimo-passo-6";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-prossimo-passo-6";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-prossimo-passo-6';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-elenco-pose-3";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-elenco-pose-3";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-elenco-pose-3";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-elenco-pose-3";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-elenco-pose-3";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-elenco-pose-3";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-elenco-pose-3';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261104-prossimo-passo-6";
+} from "./lib/order-money.js?v=20261104-elenco-pose-3";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261104-prossimo-passo-6";
+import { regionForCity } from "./lib/geo.js?v=20261104-elenco-pose-3";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261104-prossimo-passo-6";
+} from "./lib/shipping-eligibility.js?v=20261104-elenco-pose-3";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261104-prossimo-passo-6";
+} from "./lib/profit-split.js?v=20261104-elenco-pose-3";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261104-prossimo-passo-6";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-prossimo-passo-6";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-prossimo-passo-6";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-prossimo-passo-6";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-prossimo-passo-6";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-prossimo-passo-6";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-prossimo-passo-6";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-prossimo-passo-6";
+} from "./lib/preventivo-pricing.js?v=20261104-elenco-pose-3";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-elenco-pose-3";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-elenco-pose-3";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-elenco-pose-3";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-elenco-pose-3";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-elenco-pose-3";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-elenco-pose-3";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-elenco-pose-3";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261104-prossimo-passo-6";
+} from "./lib/sales-assignment.js?v=20261104-elenco-pose-3";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261104-prossimo-passo-6";
+} from "./lib/surveys.js?v=20261104-elenco-pose-3";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261104-prossimo-passo-6";
+const APP_SHELL_VERSION = "20261104-elenco-pose-3";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -477,12 +477,12 @@ const TRAVEL_EXPENSE_TYPES = {
   other: { it: "Altro", en: "Other" },
 };
 const roleViews = {
-  office: ["dashboard", "orders", "warehouse", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "fleet", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
+  office: ["dashboard", "orders", "warehouse", "installations", "installations-scheduled", "installations-repairs", "fleet", "sopralluoghi", "communications", "sales-requests", "sales-generator", "sales-content", "accounting", "profit-split", "shipping", "ddt", "reseller-report", "supplier-prices", "analytics", "settings", "marketing", "garden-planner", "timesheet-office"],
   warehouse: ["dashboard", "warehouse", "shipping", "ddt", "communications", "timesheet-me"],
-  crew: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
+  crew: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "sopralluoghi", "sales-generator", "communications", "garden-planner"],
   // Il modulo ordini materiale rivenditore resta implementato ma in standby:
   // order-requests e reseller-orders non sono esposti nei rispettivi account.
-  rivenditore: ["dashboard", "installations", "installations-scheduled", "installations-repairs", "installations-completed", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
+  rivenditore: ["dashboard", "installations", "installations-scheduled", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "analytics", "fleet", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
 const SALES_REQUEST_STATUS_REFERENCE = [
@@ -530,7 +530,7 @@ const translations = {
     "garden-planner": "Garden Planner",
     "timesheet-me": "Le mie presenze",
     "timesheet-office": "Presenze",
-    "installations-scheduled": "Programmate",
+    "installations-scheduled": "Elenco",
     "installations-repairs": "Sistemazioni",
     "installations-completed": "Completati",
     fleet: "Furgoni e attrezzatura",
@@ -795,7 +795,7 @@ const translations = {
     "garden-planner": "Garden Planner",
     "timesheet-me": "My time",
     "timesheet-office": "Time tracking",
-    "installations-scheduled": "Scheduled",
+    "installations-scheduled": "List",
     "installations-repairs": "Repairs",
     "installations-completed": "Completed",
     fleet: "Vans & tools",
@@ -1257,8 +1257,14 @@ function readLaunchParams() {
   };
 }
 
-// Pagine tolte: un vecchio link porta dove sono finite.
-const RETIRED_VIEWS = { "installations-live": "installations" };
+// Pagine tolte: un vecchio link porta dove sono finite. "Completati" è il
+// filtro Completate dell'Elenco pose (vista installations-scheduled).
+const RETIRED_VIEWS = { "installations-live": "installations", "installations-completed": "installations-scheduled" };
+let retiredInstallListFilter = "";
+function resolveRetiredView(view) {
+  if (view === "installations-completed") retiredInstallListFilter = "done";
+  return RETIRED_VIEWS[view] || view;
+}
 
 function normalizeLaunchView(value = "") {
   let view;
@@ -1267,7 +1273,7 @@ function normalizeLaunchView(value = "") {
   } catch {
     view = String(value || "").replace(/^#/, "").trim();
   }
-  return RETIRED_VIEWS[view] || view;
+  return resolveRetiredView(view);
 }
 
 const launchParams = readLaunchParams();
@@ -9553,7 +9559,7 @@ function setInstallationPane(pane = "site") {
 // Numeretti sulle schede: allegati e verbali in Documenti, spese in Costi.
 function updateInstallationTabCounts(order) {
   const counts = {
-    docs: order ? mapAttachmentsForContext(order, "installation").length + (state.workReportsByOrder?.[order.id]?.reports?.length || 0) : 0,
+    docs: order ? mapAttachmentsForContext(order, "installation").length + (state.workReportsByOrder?.[order.id]?.reports?.length || 0) + repairsForOrder(order).filter(isRepairOpen).length : 0,
     costs: order ? getTravelExpensesForOrder(order).length : 0,
   };
   ui.installationMobileTabs.forEach((button) => {
@@ -12015,7 +12021,7 @@ function buildDashboardCommandModel() {
       metrics: [
         { label: state.lang === "it" ? "Azioni oggi" : "Actions today", value: String(allTasks.filter((task) => task.timeframe === "today" || task.severity === "high").length), note: state.lang === "it" ? "Vai alla coda di oggi" : "Open today's queue", tone: "sales", action: "set-dashboard-command-view", commandView: "dashboard", filter: "today" },
         { label: state.lang === "it" ? "Materiali a rischio" : "Material risks", value: String(materialTasks.filter((task) => task.severity !== "low").length), note: state.lang === "it" ? "Apri gli ordini a rischio" : "Open at-risk orders", tone: "materials", action: "set-dashboard-command-view", commandView: "materials", filter: "risk" },
-        { label: state.lang === "it" ? "Pose prossime" : "Upcoming installs", value: String(upcomingWeek.length), note: state.lang === "it" ? "Apri Programmate" : "Open scheduled installs", tone: "installations", action: "open-dashboard-view", view: "installations-scheduled" },
+        { label: state.lang === "it" ? "Pose prossime" : "Upcoming installs", value: String(upcomingWeek.length), note: state.lang === "it" ? "Apri l'elenco" : "Open the list", tone: "installations", action: "open-dashboard-view", view: "installations-scheduled" },
         { label: state.lang === "it" ? "Soldi da chiudere" : "Money to close", value: String(moneyTasks.length), note: formatCurrency(openBalanceTotal), tone: "money", action: "open-dashboard-view", view: "accounting", accountingFilter: "open" },
       ],
     },
@@ -12079,7 +12085,7 @@ function buildDashboardCommandModel() {
       metrics: [
         { label: state.lang === "it" ? "In coda" : "Queued", value: String(installationTasks.length), note: state.lang === "it" ? "Apri Pose" : "Open Installs", tone: "installations", action: "open-dashboard-view", view: "installations" },
         { label: state.lang === "it" ? "Critiche" : "Critical", value: String(installationTasks.filter((task) => task.severity === "high").length), note: state.lang === "it" ? "Mostra rischi posa" : "Show install risks", tone: "installations", action: "set-dashboard-command-view", commandView: "installations", filter: "risk" },
-        { label: state.lang === "it" ? "Settimana" : "Week", value: String(installationTasks.filter((task) => task.timeframe === "week").length), note: state.lang === "it" ? "Apri Programmate" : "Open Scheduled", tone: "installations", action: "open-dashboard-view", view: "installations-scheduled" },
+        { label: state.lang === "it" ? "Settimana" : "Week", value: String(installationTasks.filter((task) => task.timeframe === "week").length), note: state.lang === "it" ? "Apri l'elenco" : "Open the list", tone: "installations", action: "open-dashboard-view", view: "installations-scheduled" },
         { label: state.lang === "it" ? "Mq" : "Sqm", value: `${Math.round((state.orders || []).filter(orderNeedsInstallationAction).reduce((sum, order) => sum + getSafeOrderSqm(order), 0))} mq`, note: state.lang === "it" ? "Apri lavori posa" : "Open install jobs", tone: "installations", action: "open-dashboard-view", view: "installations" },
       ],
     },
@@ -12312,7 +12318,7 @@ function renderDashboardCommandModules(model) {
       ],
       actions: [
         makeDashboardCommandOpenViewAction("Pose", "Installs", "installations"),
-        makeDashboardCommandOpenViewAction("Programmate", "Scheduled", "installations-scheduled"),
+        makeDashboardCommandOpenViewAction("Elenco pose", "Installs list", "installations-scheduled"),
       ],
     },
     {
@@ -13827,6 +13833,12 @@ function openDashboardViewTarget(target) {
   const dataset = target?.dataset || {};
   const nextView = dataset.view || "orders";
   const targetId = dataset.id || dataset.orderId || "";
+  if (nextView === "installations-scheduled") {
+    const list = installListState();
+    list.filter = dataset.installListFilter || "scheduled";
+    list.search = "";
+    list.limit = INSTALL_LIST_PAGE;
+  }
   if (nextView === "orders") {
     state.filters.order = dataset.dashboardOrderFilter || dataset.orderFilter || "all";
     state.search.orders = "";
@@ -22148,6 +22160,7 @@ function renderInstallations() {
   ui.installationAttachments.innerHTML = renderAttachmentGrid(mapAttachmentsForContext(order, "installation"), order.id);
   renderInstallationExpenseSection(order);
   renderWorkReportsForOrder(order);
+  renderInstallationRepairsForOrder(order);
   renderJobEventsForOrder(order);
   renderClientTrackingSection(order);
   updateInstallationTabCounts(order);
@@ -22201,9 +22214,15 @@ function renderInstallationOrderRow(order) {
   const sqm = getSafeOrderSqm(order);
   const product = order?.operations?.product || "—";
   const orderNum = getOrderNumber(order);
-  const stageBadge = isInstallationCompleted(order) ? "Completata" : (installDate ? "Programmata" : "Da pianificare");
-  const stageClass = isInstallationCompleted(order) ? "is-done" : (installDate ? "is-scheduled" : "is-todo");
+  const lane = getInstallationLane(order);
+  const stageBadge = getInstallationLaneMeta(lane).title;
+  const stageClass = { done: "is-done", progress: "is-progress", scheduled: "is-scheduled" }[lane] || "is-todo";
   const selectedClass = order?.id && order.id === state.selectedOrderId ? "is-selected" : "";
+  const openRepairs = repairsForOrder(order).filter(isRepairOpen).length;
+  const repairTag = openRepairs
+    ? `<span class="install-row-repair">🔧 ${escapeHtml(jsL(openRepairs === 1 ? "1 sistemazione aperta" : `${openRepairs} sistemazioni aperte`, openRepairs === 1 ? "1 open repair" : `${openRepairs} open repairs`))}</span>`
+    : "";
+  const nextStep = installationNextStepHtml(order);
   return `
     <article class="install-row ${stageClass} ${selectedClass}" data-action="select-order-install" data-order-id="${escapeAttr(order.id)}">
       <header class="install-row-head">
@@ -22219,6 +22238,7 @@ function renderInstallationOrderRow(order) {
           · Squadra ${escapeHtml(crew)}
         </span>
       </div>
+      ${repairTag || nextStep ? `<div class="install-row-extra">${repairTag}${nextStep}</div>` : ""}
     </article>
   `;
 }
@@ -22256,66 +22276,204 @@ function renderInstallationsTodo() {
   scrollSelectedInstallationSubViewRow(root);
 }
 
+// ELENCO POSE (4 nov 2026): Programmate e Completati in una pagina sola, con
+// filtri (Da programmare / Programmate / Completate / Tutte) e ricerca. La
+// vista resta "installations-scheduled": i collegamenti della Dashboard e i
+// vecchi #installations-completed (→ filtro Completate) continuano a funzionare.
+const INSTALL_LIST_PAGE = 80;
+const INSTALL_LIST_FILTERS = [
+  { key: "todo", it: "Da programmare", en: "To schedule" },
+  { key: "scheduled", it: "Programmate", en: "Scheduled" },
+  { key: "done", it: "Completate", en: "Completed" },
+  { key: "all", it: "Tutte", en: "All" },
+];
+
+function installListState() {
+  if (!state.installList) state.installList = { filter: "scheduled", search: "", limit: INSTALL_LIST_PAGE };
+  if (retiredInstallListFilter) {
+    state.installList.filter = retiredInstallListFilter;
+    state.installList.limit = INSTALL_LIST_PAGE;
+    retiredInstallListFilter = "";
+  }
+  return state.installList;
+}
+
+function installListFold(value = "") {
+  return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+// Programmate comprende anche le pose in corso: hanno una data e sono ancora aperte.
+function installListBucket(order) {
+  const lane = getInstallationLane(order);
+  if (lane === "done") return "done";
+  return lane === "backlog" ? "todo" : "scheduled";
+}
+
+function installListMatches(order, words) {
+  if (!words.length) return true;
+  const install = order.operations?.installation || {};
+  const hay = installListFold([
+    composeClientName(order), getOrderNumber(order), order.city, composeAddress(order),
+    order.operations?.product, install.crew, order.phone,
+  ].join(" "));
+  return words.every((word) => hay.includes(word));
+}
+
+function installListWeekLabel(dateKey) {
+  const d = new Date(`${dateKey}T12:00:00`);
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const locale = state.lang === "it" ? "it-IT" : "en-GB";
+  return {
+    key: localDateKey(monday),
+    label: `${new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(monday)} – ${new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(sunday)}`,
+  };
+}
+
+function installListMonthLabel(dateKey) {
+  if (!dateKey) return { key: "none", label: jsL("Senza data", "No date") };
+  const d = new Date(`${dateKey.slice(0, 7)}-01T12:00:00`);
+  const label = new Intl.DateTimeFormat(state.lang === "it" ? "it-IT" : "en-GB", { month: "long", year: "numeric" }).format(d);
+  return { key: dateKey.slice(0, 7), label: label.charAt(0).toUpperCase() + label.slice(1) };
+}
+
+function installListSorted(bucket, orders) {
+  const list = orders.slice();
+  if (bucket === "scheduled") {
+    list.sort((a, b) => getInstallDate(a).localeCompare(getInstallDate(b)));
+  } else if (bucket === "done") {
+    list.sort((a, b) => {
+      const da = getInstallDate(a), db = getInstallDate(b);
+      if (da && db && da !== db) return db.localeCompare(da);
+      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+    });
+  } else {
+    list.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  }
+  return list;
+}
+
+// Righe raggruppate: Programmate per settimana, Completate per mese, Da
+// programmare in un gruppo solo. Con "Tutte" un blocco per stato.
+function installListGroupsHtml(bucket, orders, budget) {
+  let html = "";
+  let shown = 0;
+  let current = null;
+  let rows = [];
+  const flush = () => {
+    if (!rows.length) return;
+    html += `${current ? `<h3 class="install-week-head">${escapeHtml(current.label)} · ${current.count} ${current.count === 1 ? jsL("posa", "install") : jsL("pose", "installs")}</h3>` : ""}<div class="install-list">${rows.join("")}</div>`;
+    rows = [];
+  };
+  const counts = new Map();
+  const groupOf = (order) => {
+    if (bucket === "scheduled") return installListWeekLabel(getInstallDate(order));
+    if (bucket === "done") return installListMonthLabel(getInstallDate(order));
+    return null;
+  };
+  orders.forEach((order) => {
+    const g = groupOf(order);
+    if (g) counts.set(g.key, (counts.get(g.key) || 0) + 1);
+  });
+  for (const order of orders) {
+    if (shown >= budget) break;
+    const g = groupOf(order);
+    if (g && (!current || current.key !== g.key)) {
+      flush();
+      current = { ...g, count: counts.get(g.key) || 0 };
+    }
+    rows.push(renderInstallationOrderRow(order));
+    shown += 1;
+  }
+  flush();
+  return { html, shown };
+}
+
 function renderInstallationsScheduled() {
   const root = document.getElementById("installations-scheduled-content");
   if (!root) return;
-  const list = getInstallationsList().filter((o) => getInstallDate(o) && !isInstallationCompleted(o));
-  // Ordina cronologicamente: prima le più imminenti
-  list.sort((a, b) => String(getInstallDate(a)).localeCompare(String(getInstallDate(b))));
-  if (!list.length) {
-    root.innerHTML = `<div class="install-empty">
-      <h2>Nessuna installazione programmata</h2>
-      <p>Gli ordini con data confermata appariranno qui in ordine cronologico.</p>
-    </div>`;
+  const ls = installListState();
+  ensureRepairsLoaded();
+  // Barra fissa (ricerca + filtri) disegnata una volta sola: ridisegnarla a
+  // ogni tasto farebbe perdere il cursore nella casella di ricerca.
+  let bar = root.querySelector(".install-list-bar");
+  if (!bar || bar.dataset.lang !== state.lang) {
+    root.innerHTML = `
+      <div class="install-list-bar" data-lang="${escapeAttr(state.lang)}">
+        <input type="search" class="text-input install-list-search" data-install-list-search autocomplete="off"
+          placeholder="${escapeAttr(jsL("Cerca cliente, numero, città, squadra…", "Search customer, number, town, crew…"))}" />
+        <div class="filter-bar install-list-filters" role="tablist"></div>
+      </div>
+      <div class="install-list-results"></div>`;
+    bar = root.querySelector(".install-list-bar");
+  }
+  const search = bar.querySelector("[data-install-list-search]");
+  if (search && document.activeElement !== search && search.value !== ls.search) search.value = ls.search;
+  const words = installListFold(ls.search).split(/\s+/).filter(Boolean);
+  const buckets = { todo: [], scheduled: [], done: [] };
+  getInstallationsList().forEach((order) => {
+    if (installListMatches(order, words)) buckets[installListBucket(order)].push(order);
+  });
+  const counts = { ...Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, v.length])), all: buckets.todo.length + buckets.scheduled.length + buckets.done.length };
+  bar.querySelector(".install-list-filters").innerHTML = INSTALL_LIST_FILTERS.map((f) => `
+    <button type="button" class="filter-btn ${ls.filter === f.key ? "is-active" : ""}" role="tab" aria-selected="${ls.filter === f.key}" data-action="install-list-filter" data-filter="${f.key}">${escapeHtml(state.lang === "it" ? f.it : f.en)} <strong>${counts[f.key]}</strong></button>`).join("");
+
+  const results = root.querySelector(".install-list-results");
+  const order = ls.filter === "all" ? ["scheduled", "todo", "done"] : [ls.filter];
+  const total = order.reduce((n, b) => n + buckets[b].length, 0);
+  if (!total) {
+    const it = state.lang === "it";
+    const msg = words.length
+      ? (it ? `Nessuna posa trovata per «${ls.search.trim()}».` : `No installs found for “${ls.search.trim()}”.`)
+      : ({ todo: it ? "Nessuna posa da programmare." : "Nothing to schedule.", scheduled: it ? "Nessuna posa programmata." : "No scheduled installs.", done: it ? "Nessuna posa completata." : "No completed installs." }[ls.filter] || (it ? "Nessuna posa." : "No installs."));
+    results.innerHTML = `<div class="install-empty"><p>${escapeHtml(msg)}</p></div>`;
     return;
   }
-  // Raggruppa per settimana ISO
-  const groups = new Map();
-  for (const o of list) {
-    const d = new Date(getInstallDate(o));
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    const key = monday.toISOString().slice(0, 10);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(o);
+  let html = "";
+  let budget = ls.limit;
+  for (const bucket of order) {
+    if (!buckets[bucket].length || budget <= 0) continue;
+    if (ls.filter === "all") {
+      const f = INSTALL_LIST_FILTERS.find((x) => x.key === bucket);
+      html += `<h2 class="install-list-section">${escapeHtml(state.lang === "it" ? f.it : f.en)} <span>${buckets[bucket].length}</span></h2>`;
+    }
+    const part = installListGroupsHtml(bucket, installListSorted(bucket, buckets[bucket]), budget);
+    html += part.html;
+    budget -= part.shown;
   }
-  let html = `<div class="install-stats"><span class="install-stat"><strong>${list.length}</strong> programmate</span></div>`;
-  for (const [weekKey, items] of groups.entries()) {
-    const monday = new Date(weekKey);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const label = `${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short"}).format(monday)} – ${new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"short",year:"numeric"}).format(sunday)}`;
-    html += `<h3 class="install-week-head">${escapeHtml(label)} · ${items.length} ${items.length === 1 ? "posa" : "pose"}</h3>`;
-    html += `<div class="install-list">${items.map(renderInstallationOrderRow).join("")}</div>`;
+  const hidden = total - (ls.limit - budget);
+  if (hidden > 0) {
+    html += `<button type="button" class="ghost-button install-list-more" data-action="install-list-more">${escapeHtml(jsL(`Mostra altre (${hidden})`, `Show more (${hidden})`))}</button>`;
   }
-  root.innerHTML = html;
-  scrollSelectedInstallationSubViewRow(root);
+  results.innerHTML = html;
+  scrollSelectedInstallationSubViewRow(results);
 }
 
-// COMPLETATI — lavori con posa completata, SOLO quelli spuntati per posa
-// (getInstallationsList = filterOrdersForView("installations") già li filtra).
-function renderInstallationsCompleted() {
-  const root = document.getElementById("installations-completed-content");
-  if (!root) return;
-  const list = getInstallationsList().filter(isInstallationCompleted);
-  // Più recenti in alto (per data posa, fallback su aggiornamento).
-  list.sort((a, b) => {
-    const da = getInstallDate(a), db = getInstallDate(b);
-    if (da && db && da !== db) return db.localeCompare(da);
-    return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
-  });
-  if (!list.length) {
-    root.innerHTML = `<div class="install-empty">
-      <h2>${state.lang === "it" ? "Nessuna posa completata" : "No completed installs"}</h2>
-      <p>${state.lang === "it" ? "I lavori con posa completata appariranno qui." : "Jobs with a completed installation will show up here."}</p>
-    </div>`;
-    return;
+document.addEventListener("input", (ev) => {
+  const input = ev.target.closest?.("[data-install-list-search]");
+  if (!input) return;
+  const ls = installListState();
+  ls.search = input.value;
+  ls.limit = INSTALL_LIST_PAGE;
+  renderInstallationsScheduled();
+});
+
+document.addEventListener("click", (ev) => {
+  const button = ev.target.closest?.('[data-action="install-list-filter"], [data-action="install-list-more"]');
+  if (!button) return;
+  ev.preventDefault();
+  const ls = installListState();
+  if (button.dataset.action === "install-list-more") {
+    ls.limit += INSTALL_LIST_PAGE;
+  } else {
+    ls.filter = button.dataset.filter || "scheduled";
+    ls.limit = INSTALL_LIST_PAGE;
+    document.querySelector("#installations-scheduled .install-list-results")?.scrollIntoView?.({ block: "nearest" });
   }
-  let html = `<div class="install-stats"><span class="install-stat"><strong>${list.length}</strong> ${state.lang === "it" ? "completate" : "completed"}</span></div>`;
-  html += `<div class="install-list">${list.map(renderInstallationOrderRow).join("")}</div>`;
-  root.innerHTML = html;
-  scrollSelectedInstallationSubViewRow(root);
-}
+  renderInstallationsScheduled();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SISTEMAZIONI — feature full (#38-#42)
@@ -22356,6 +22514,122 @@ if (!state.repairs) {
     formError: "",
     filter: "all",
   };
+}
+
+// ── Sistemazioni ↔ posa ──────────────────────────────────────────────────────
+// Una sistemazione è legata all'ordine della posa (parentOrderId). Le più
+// vecchie possono avere il numero d'ordine scritto a mano ("2867") invece
+// dell'id: si riconoscono anche così.
+const REPAIRS_REFRESH_MS = 60000;
+
+function canSeeRepairs() {
+  return ["office", "crew"].includes(state.currentUser?.role);
+}
+
+function isRepairOpen(repair) {
+  return repair.status !== "completed" && repair.status !== "cancelled";
+}
+
+function repairOrderKey(value = "") {
+  return String(value || "").trim().replace(/^#/, "").toLowerCase();
+}
+
+function findRepairOrder(repair) {
+  const pid = String(repair?.parentOrderId || "").trim();
+  if (!pid) return null;
+  const orders = state.orders || [];
+  const byId = orders.find((o) => o.id === pid);
+  if (byId) return byId;
+  const key = repairOrderKey(pid);
+  return orders.find((o) => repairOrderKey(getOrderNumber(o)) === key) || null;
+}
+
+function repairsForOrder(order) {
+  if (!order || !canSeeRepairs()) return [];
+  const number = repairOrderKey(getOrderNumber(order));
+  return (state.repairs.list || []).filter((r) => {
+    const pid = String(r.parentOrderId || "").trim();
+    return pid === order.id || (number && repairOrderKey(pid) === number);
+  });
+}
+
+// Carica (o ricarica, se vecchia di un minuto) la lista per badge e scheda posa.
+function ensureRepairsLoaded({ force = false } = {}) {
+  if (!canSeeRepairs()) return;
+  // Già in corso: se serve un dato fresco (dopo un salvataggio) si ricarica subito dopo.
+  if (state.repairs.loading) {
+    if (force) state.repairs.reloadAfter = true;
+    return;
+  }
+  if (!force && state.repairs.loadedAt && Date.now() - state.repairs.loadedAt < REPAIRS_REFRESH_MS) return;
+  state.repairs.loading = true;
+  apiListRepairs()
+    .then((res) => {
+      state.repairs.list = res?.repairs || [];
+      state.repairs.loadedAt = Date.now();
+      refreshRepairViews();
+    })
+    .catch((err) => console.warn("[sistemazioni] lista non caricata:", err?.message || err))
+    .finally(() => {
+      state.repairs.loading = false;
+      if (state.repairs.reloadAfter) {
+        state.repairs.reloadAfter = false;
+        ensureRepairsLoaded({ force: true });
+      }
+    });
+}
+
+// Dopo un cambio: pagina Sistemazioni, Elenco pose e scheda posa aperta.
+function refreshRepairViews() {
+  const view = state.currentView;
+  if (view === "installations-repairs") {
+    const root = document.getElementById("installations-repairs-content");
+    if (root) _renderRepairsInner(root);
+  } else if (view === "installations-scheduled") {
+    renderInstallationsScheduled();
+  } else if (view === "installations") {
+    const order = getSelectedOrder();
+    if (order) {
+      renderInstallationRepairsForOrder(order);
+      updateInstallationTabCounts(order);
+    }
+  }
+}
+
+function renderInstallationRepairsForOrder(order) {
+  const section = document.getElementById("installation-repairs-section");
+  const list = document.getElementById("installation-repairs-list");
+  if (!section || !list) return;
+  if (!order || !canSeeRepairs()) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  const newBtn = document.getElementById("installation-repair-new");
+  if (newBtn) newBtn.dataset.orderId = order.id;
+  ensureRepairsLoaded();
+  const repairs = repairsForOrder(order).slice().sort((a, b) => String(b.reportedAt || b.createdAt || "").localeCompare(String(a.reportedAt || a.createdAt || "")));
+  if (!repairs.length) {
+    list.innerHTML = `<p class="ir-empty">${escapeHtml(state.repairs.loadedAt ? jsL("Nessuna sistemazione per questa posa.", "No repairs for this install.") : jsL("Caricamento…", "Loading…"))}</p>`;
+    return;
+  }
+  list.innerHTML = repairs.map((r) => {
+    const reason = REPAIR_REASON_CODES.find((x) => x.code === r.reasonCode);
+    const when = r.status === "completed" && r.completedAt
+      ? jsL(`chiusa il ${formatDate(r.completedAt.slice(0, 10))}`, `closed ${formatDate(r.completedAt.slice(0, 10))}`)
+      : r.scheduledDate ? formatDate(r.scheduledDate) : jsL("da programmare", "to schedule");
+    return `
+      <button type="button" class="ir-item status-${escapeAttr(r.status)}" data-action="repair-edit" data-repair-id="${escapeAttr(r.id)}">
+        <span class="ir-top"><strong>${escapeHtml(REPAIR_STATUS_LABELS[r.status] || r.status)}</strong> · ${escapeHtml(REPAIR_CATEGORY_LABELS[r.category] || r.category)} <small>${escapeHtml(r.id)}</small></span>
+        <span class="ir-desc">${escapeHtml(reason ? reason.label : "")}${reason && r.description ? " — " : ""}${escapeHtml(r.description || "")}</span>
+        <span class="ir-when">${escapeHtml(when)}${r.assignedCrew ? ` · ${escapeHtml(r.assignedCrew)}` : ""}</span>
+      </button>`;
+  }).join("");
+}
+
+function repairOrderOptionLabel(order) {
+  const city = String(order.city || "").trim();
+  return `${composeClientName(order) || "—"} · ${getOrderNumber(order)}${city ? ` · ${city}` : ""}`;
 }
 
 function apiListRepairs(params = {}) {
@@ -22467,6 +22741,11 @@ function renderRepairCard(r) {
   if (r.withinWarranty === true) warrantyTag = `<span class="repair-warranty ok">✓ in garanzia${r.warrantyDaysLeft != null ? ` (${r.warrantyDaysLeft}gg residui)` : ""}</span>`;
   else if (r.withinWarranty === false) warrantyTag = `<span class="repair-warranty out">fuori garanzia da ${Math.abs(r.warrantyDaysLeft || 0)}gg</span>`;
   const scheduled = r.scheduledDate ? formatDate(r.scheduledDate) : (r.status === "reported" ? "Da programmare" : "—");
+  const order = findRepairOrder(r);
+  const posaDate = order ? getInstallDate(order) : "";
+  const posaLink = order
+    ? `<button type="button" class="repair-posa-link" data-action="repair-open-posa" data-order-id="${escapeAttr(order.id)}">${escapeHtml(jsL("Posa", "Install"))}: ${escapeHtml(composeClientName(order) || "—")} · ${escapeHtml(getOrderNumber(order))}${posaDate ? ` · ${escapeHtml(formatDate(posaDate))}` : ""} <span aria-hidden="true">→</span></button>`
+    : (r.parentOrderId ? `<span class="repair-card-meta">${escapeHtml(jsL("Ordine", "Order"))} ${escapeHtml(r.parentOrderId)}</span>` : "");
   return `
     <article class="repair-card status-${r.status}">
       <header class="repair-card-head">
@@ -22477,6 +22756,7 @@ function renderRepairCard(r) {
       <div class="repair-card-customer">
         <strong>${escapeHtml(r.customerName || "—")}</strong>
         <span class="repair-card-meta">${escapeHtml(r.siteAddress || "")}</span>
+        ${posaLink}
       </div>
       <div class="repair-card-body">
         <p class="repair-desc"><b>${escapeHtml(reasonLabel)}</b> · ${escapeHtml(r.description || "")}</p>
@@ -22513,7 +22793,8 @@ async function openRepairForm({ orderId = "", repairId = "" } = {}) {
   state.repairs.formOpen = true;
   state.repairs.formError = "";
   state.repairs.formDraft = existing ? { ...existing } : {
-    parentOrderId: orderId || "",
+    _fixedOrder: Boolean(orderId),
+    parentOrderId: order ? order.id : (orderId || ""),
     customerName: composeClientName(order || {}) || "",
     customerEmail: order?.email || "",
     customerPhone: order?.phone || "",
@@ -22585,9 +22866,7 @@ function renderRepairFormModal() {
         ${err}
         ${warrantyBanner}
         <div class="wizard-grid">
-          <label class="field span-2"><span>Ordine collegato *</span>
-            <input class="text-input" type="text" data-bind-repair="parentOrderId" value="${escapeAttr(d.parentOrderId || "")}" placeholder="ID ordine (es. 2867)" ${isEdit ? "readonly" : ""} />
-          </label>
+          ${renderRepairOrderField(d, isEdit)}
           <label class="field"><span>Cliente *</span>
             <input class="text-input" type="text" data-bind-repair="customerName" value="${escapeAttr(d.customerName || "")}" required />
           </label>
@@ -22637,9 +22916,58 @@ function renderRepairFormModal() {
   `;
 }
 
+// Posa collegata: dalla scheda posa (o in modifica) è fissa; da «+ Nuova
+// sistemazione» si cerca per cliente o numero tra le pose (prima era un id da
+// scrivere a mano, e un numero sbagliato non agganciava né garanzia né posa).
+function renderRepairOrderField(d, isEdit) {
+  const linked = findRepairOrder(d);
+  if (isEdit || d._fixedOrder) {
+    const text = linked ? repairOrderOptionLabel(linked) : (d.parentOrderId || "—");
+    return `<label class="field span-2"><span>${escapeHtml(jsL("Posa collegata", "Linked install"))}</span>
+      <input class="text-input" type="text" value="${escapeAttr(text)}" readonly /></label>`;
+  }
+  const orders = getInstallationsList().slice().sort((a, b) => getInstallDate(b).localeCompare(getInstallDate(a)));
+  return `<label class="field span-2"><span>${escapeHtml(jsL("Posa collegata *", "Linked install *"))}</span>
+      <input class="text-input" type="text" list="repair-order-options" data-repair-order-pick autocomplete="off"
+        value="${escapeAttr(linked ? repairOrderOptionLabel(linked) : "")}" placeholder="${escapeAttr(jsL("Cerca cliente o numero ordine…", "Search customer or order number…"))}" />
+      <datalist id="repair-order-options">${orders.map((o) => `<option value="${escapeAttr(repairOrderOptionLabel(o))}"></option>`).join("")}</datalist>
+    </label>`;
+}
+
+async function applyRepairOrderPick(order) {
+  const d = state.repairs.formDraft;
+  if (!d || !order) return;
+  d.parentOrderId = order.id;
+  d.customerName = composeClientName(order) || d.customerName || "";
+  d.customerEmail = order.email || d.customerEmail || "";
+  d.customerPhone = order.phone || d.customerPhone || "";
+  d.siteAddress = composeAddress(order) || d.siteAddress || "";
+  if (!d.assignedCrew) d.assignedCrew = order.operations?.installation?.crew || "";
+  state.repairs.formError = "";
+  try {
+    const w = await apiWarrantyCheck(order.id);
+    if (state.repairs.formDraft !== d) return;
+    d._warranty = w;
+    if (w.suggestedCategory) d.category = w.suggestedCategory;
+  } catch {}
+  renderRepairFormModal();
+}
+
+document.addEventListener("input", (ev) => {
+  const input = ev.target.closest?.("[data-repair-order-pick]");
+  if (!input || !state.repairs.formDraft) return;
+  const value = input.value.trim();
+  const order = getInstallationsList().find((o) => repairOrderOptionLabel(o) === value);
+  if (order) {
+    void applyRepairOrderPick(order);
+  } else {
+    state.repairs.formDraft.parentOrderId = "";
+  }
+});
+
 async function submitRepairForm() {
   const d = state.repairs.formDraft || {};
-  if (!d.parentOrderId) { state.repairs.formError = "ID ordine obbligatorio"; renderRepairFormModal(); return; }
+  if (!d.parentOrderId) { state.repairs.formError = jsL("Scegli la posa dall'elenco", "Pick the install from the list"); renderRepairFormModal(); return; }
   if (!d.customerName) { state.repairs.formError = "Nome cliente obbligatorio"; renderRepairFormModal(); return; }
   if (!d.description) { state.repairs.formError = "Descrizione obbligatoria"; renderRepairFormModal(); return; }
   state.repairs.formBusy = true;
@@ -22654,7 +22982,7 @@ async function submitRepairForm() {
       showToast("Sistemazione creata", "success");
     }
     closeRepairForm();
-    if (state.currentView === "installations-repairs") _renderInstallationsRepairsFull();
+    ensureRepairsLoaded({ force: true });
   } catch (err) {
     state.repairs.formError = `Errore: ${err?.message || err}`;
     renderRepairFormModal();
@@ -22691,6 +23019,10 @@ document.addEventListener("click", (ev) => {
       ev.preventDefault();
       openRepairForm({ repairId: target.dataset.repairId });
       break;
+    case "repair-open-posa":
+      ev.preventDefault();
+      openInstallationOrderFromSubView(target.dataset.orderId || "", "docs");
+      break;
     case "repair-schedule":
     case "repair-start":
     case "repair-complete": {
@@ -22699,7 +23031,7 @@ document.addEventListener("click", (ev) => {
       const patch = { status: newStatus };
       if (newStatus === "completed") patch.completedAt = new Date().toISOString();
       apiUpdateRepair(target.dataset.repairId, patch)
-        .then(() => { showToast("Aggiornato", "success"); _renderInstallationsRepairsFull(); })
+        .then(() => { showToast("Aggiornato", "success"); state.repairs.loadedAt = 0; _renderInstallationsRepairsFull(); })
         .catch((err) => showToast(`Errore: ${err?.message || err}`, "error"));
       break;
     }
@@ -24375,7 +24707,7 @@ const NAV_SECTIONS = [
     { view: "shipping" },
     // Pose: una sola voce nel menu; le sottopagine sono schede in cima alla
     // pagina (renderNavTabs), non più sottovoci della sidebar.
-    { view: "installations", tabs: ["installations-scheduled", "installations-repairs", "installations-completed", "fleet"] },
+    { view: "installations", tabs: ["installations-scheduled", "installations-repairs", "fleet"] },
     { view: "sopralluoghi" },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
@@ -24737,7 +25069,7 @@ document.addEventListener("click", (ev) => {
   }));
 });
 
-function openInstallationOrderFromSubView(orderId = "") {
+function openInstallationOrderFromSubView(orderId = "", pane = "summary") {
   if (!orderId) return;
   const order = state.orders.find((item) => item.id === orderId);
   if (!order) return;
@@ -24745,9 +25077,13 @@ function openInstallationOrderFromSubView(orderId = "") {
   state.filters.installation = "all";
   state.selectedInstallationCrew = "";
   state.installMobileLane = getInstallationLane(order);
-  state.installationMobilePane = "summary";
+  state.installationMobilePane = pane;
   if (window.innerWidth > MOBILE_DRILL_BREAKPOINT) state.installDrawerOpen = true;
   if (typeof setView === "function") setView("installations");
+  if (pane !== "summary") {
+    state.installationMobilePane = normalizeInstallationPane(pane);
+    updateInstallationPaneVisibility();
+  }
   if (window.innerWidth <= MOBILE_DRILL_BREAKPOINT) {
     requestAnimationFrame(() => openMobileDrillDetail("installations", orderId));
   } else {
@@ -24759,7 +25095,8 @@ function openInstallationOrderFromSubView(orderId = "") {
 // seleziona l'ordine + naviga alla bacheca Pose aprendo il dettaglio.
 document.addEventListener("click", (ev) => {
   const row = ev.target.closest?.('[data-action="select-order-install"]');
-  if (row) {
+  // Il pulsante del prossimo passo dentro la riga fa la sua azione.
+  if (row && !ev.target.closest(".inst-next")) {
     ev.preventDefault();
     const orderId = row.dataset.orderId;
     openInstallationOrderFromSubView(orderId);
@@ -24852,19 +25189,6 @@ function renderWorkReportsForOrder(order) {
     const role = state.currentUser?.role || "";
     newBtn.hidden = !(role === "crew" || role === "office");
     newBtn.dataset.orderId = order.id;
-    // Inserisce/aggiorna il bottone "+ Apri sistemazione" accanto a "Termina lavoro"
-    let repairBtn = document.getElementById("open-repair-btn");
-    if (!repairBtn) {
-      repairBtn = document.createElement("button");
-      repairBtn.id = "open-repair-btn";
-      repairBtn.type = "button";
-      repairBtn.className = "ghost-button small";
-      repairBtn.dataset.action = "open-repair-form";
-      repairBtn.textContent = "🔧 Apri sistemazione";
-      newBtn.parentElement?.insertBefore(repairBtn, newBtn);
-    }
-    repairBtn.dataset.orderId = order.id;
-    repairBtn.hidden = !(role === "crew" || role === "office");
   }
   // Carica i verbali per quest'ordine (async, render skeleton intanto)
   const cached = state.workReportsByOrder[order.id];
@@ -30285,6 +30609,8 @@ function applySessionPayload(session = {}) {
     state.fleet = { data: null, loading: false, loadedAt: 0, error: "", tab: "vans", editVan: "", editTools: false, month: "", busy: false };
     state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {}, edit: null };
     if (state.jobEvents) { state.jobEvents.byOrder = {}; state.jobEvents.loadedAt = {}; state.jobEvents.live = { groups: [], loadedAt: 0, loading: false, baseOrders: [] }; }
+    if (state.repairs) { state.repairs.list = []; state.repairs.loadedAt = 0; state.repairs.loading = false; }
+    state.installList = null;
     // I viaggi del furgone servono al conto posa: l'ufficio li carica subito.
     if (nextUser?.role === "office") window.setTimeout(() => loadFleet(), 1500);
     state.inventoryValueReportedOn = "";
@@ -32348,7 +32674,6 @@ function renderCurrentViewOnly(view = state.currentView) {
       case "installations-todo": renderInstallationsTodo(); break;
       case "installations-scheduled": renderInstallationsScheduled(); break;
       case "installations-repairs": _renderInstallationsRepairsFull(); break;
-      case "installations-completed": renderInstallationsCompleted(); break;
       case "fleet": renderFleet(); break;
       case "sopralluoghi": renderSopralluoghi(); break;
       default: renderDashboard(); break;
@@ -33661,7 +33986,7 @@ function clearAllSearchRenderTimers() {
 }
 
 function setView(view, { pushHistory = true } = {}) {
-  view = RETIRED_VIEWS[view] || view;
+  view = resolveRetiredView(view);
   const allowed = getAllowedViewsForRole();
   const nextView = allowed.includes(view) ? view : (allowed[0] || "dashboard");
   const previousView = state.currentView;
@@ -36933,7 +37258,8 @@ function handleGlobalClick(event) {
     return;
   }
   if (action === "install-show-completed") {
-    setView("installations-completed");
+    installListState().filter = "done";
+    setView("installations-scheduled");
     return;
   }
   if (action === "crm-assign-pick") {
@@ -38043,6 +38369,12 @@ function handleGlobalClick(event) {
     }
     if (button.dataset.view) {
       setView(button.dataset.view);
+      // Arrivando da un'altra pagina setView rimette la scheda posa su
+      // Cantiere: la scheda chiesta dal pulsante (es. Documenti) va dopo.
+      if (nextView === "installations" && button.dataset.pane) {
+        state.installationMobilePane = normalizeInstallationPane(button.dataset.pane);
+        updateInstallationPaneVisibility();
+      }
     } else {
       renderCurrentViewOnly(state.currentView);
       focusViewTarget(state.currentView);
