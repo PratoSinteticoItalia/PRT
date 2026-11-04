@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261104-prossimo-passo-6" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261104-prossimo-passo-6" />
+    <link rel="preload" href="./styles.css?v=20261104-elenco-pose-3" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261104-elenco-pose-3" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -1575,6 +1575,20 @@
                 <div id="work-reports-list" class="work-reports-list" aria-live="polite"></div>
               </section>
 
+              <!-- Sistemazioni di questa posa (service_repairs legate all'ordine) -->
+              <section id="installation-repairs-section" class="panel-subsection ip-section" hidden>
+                <div class="subsection-head">
+                  <div>
+                    <h4>Sistemazioni</h4>
+                    <p class="section-copy">Interventi dopo la posa: garanzia, ritocchi, danni.</p>
+                  </div>
+                  <div class="subsection-actions">
+                    <button type="button" id="installation-repair-new" class="ghost-button small" data-action="open-repair-form">Apri sistemazione</button>
+                  </div>
+                </div>
+                <div id="installation-repairs-list" class="installation-repairs-list"></div>
+              </section>
+
               <div class="ip-actions">
                 <button type="button" id="installation-export-button" class="ghost-button small">Esporta scheda</button>
               </div>
@@ -2527,13 +2541,13 @@
         </section>
 
         <!-- Le mie presenze (warehouse) -->
-        <!-- Pose: Programmate (future con installDate valorizzato) -->
+        <!-- Pose: Elenco (da programmare, programmate, completate) con filtri e ricerca -->
         <section class="view" id="installations-scheduled">
           <nav class="view-tabs" data-nav-tabs role="tablist" hidden></nav>
           <div class="page-header">
             <div>
-              <h1>Programmate</h1>
-              <div class="page-header-sub">Installazioni con data confermata, ordinate cronologicamente.</div>
+              <h1>Elenco pose</h1>
+              <div class="page-header-sub">Tutte le pose: da programmare, programmate e completate. Clic su una riga per aprire la scheda.</div>
             </div>
           </div>
           <div id="installations-scheduled-content"></div>
@@ -2550,17 +2564,6 @@
             <button type="button" class="primary-button" data-action="open-repair-form">+ Nuova sistemazione</button>
           </div>
           <div id="installations-repairs-content"></div>
-        </section>
-
-        <section class="view" id="installations-completed">
-          <nav class="view-tabs" data-nav-tabs role="tablist" hidden></nav>
-          <div class="page-header">
-            <div>
-              <h1>Pose completate</h1>
-              <div class="page-header-sub">Lavori con posa completata (solo quelli instradati in posa).</div>
-            </div>
-          </div>
-          <div id="installations-completed-content"></div>
         </section>
 
         <section class="view" id="timesheet-me">
@@ -2813,7 +2816,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261104-prossimo-passo-6" defer></script>
-    <script src="./app.js?v=20261104-prossimo-passo-6" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261104-elenco-pose-3" defer></script>
+    <script src="./app.js?v=20261104-elenco-pose-3" type="module"></script>
   </body>
 </html>
