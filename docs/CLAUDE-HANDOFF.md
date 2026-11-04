@@ -568,3 +568,11 @@ L'utente (screenshot della scheda): "un elenco lunghissimo, i bottoni sono tanti
 - Dati del lavoro: `renderInstallationInfoHtml` (sostituisce le card con `wideLabels`). Telefono non più ripetuto (sta nel pulsante Chiama).
 - "Cantiere di oggi" fuori dai giorni previsti dice "posa prevista 8 apr" (prima "giorno in più rispetto al previsto" anche per pose di mesi prima).
 - Stili tutti sotto `#installations .install-detail-panel .ip-*` per non farsi battere dalle vecchie regole. Su telefono le schede prendono la larghezza del testo ("Programma" veniva tagliato di 2 px).
+
+## Pose: sottopagine come schede in alto — 4 novembre
+
+Proposta dell'utente: "rendere la pagina posa un'unica pagina e le sottopagine navigabili da una barra in alto e non dalla sidebar".
+- In `NAV_SECTIONS` la voce Pose ora ha `tabs` (Cantieri Live, Programmate, Sistemazioni, Completati, Furgoni e attrezzatura) al posto di `group`: nel menu c'è solo "Pose". Tolti `navGroupHtml`, `applyNavGroupState`, il clic sulla freccina e gli stili `.nav-group`/`.nav-subgroup`/`.nav-sub` (nessun altro gruppo li usava).
+- Le viste restano separate (stessi id, `#installations-scheduled` ecc. e i collegamenti della Dashboard funzionano): `renderNavTabs()` (chiamata da `updateShell`) riempie la `<nav class="view-tabs" data-nav-tabs>` in cima alla vista attiva con le schede permesse al ruolo (squadre senza Furgoni, rivenditori senza Cantieri Live); la prima si chiama "Bacheca" (`NAV_TAB_FIRST_LABEL`). Clic su `[data-nav-tab]` → `setView`.
+- `navParentView(view)` tiene accesa "Pose" nel menu e nella barra in basso del telefono; le sottopagine non stanno più in "Altro" e non accendono "Altro".
+- Stile `.view-tabs` = schede di Contabilità (`.acw-tabs`); sotto 980 px scorrono di lato e la scheda aperta viene portata in vista.

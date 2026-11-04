@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-scheda-posa-schede-2";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261104-scheda-posa-schede-2";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-scheda-posa-schede-2";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-scheda-posa-schede-2";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-scheda-posa-schede-2";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-scheda-posa-schede-2";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-scheda-posa-schede-2';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-pose-schede-in-alto";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-pose-schede-in-alto";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-pose-schede-in-alto";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-pose-schede-in-alto";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-pose-schede-in-alto";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-pose-schede-in-alto";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-pose-schede-in-alto';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261104-scheda-posa-schede-2";
+} from "./lib/order-money.js?v=20261104-pose-schede-in-alto";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261104-scheda-posa-schede-2";
+import { regionForCity } from "./lib/geo.js?v=20261104-pose-schede-in-alto";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261104-scheda-posa-schede-2";
+} from "./lib/shipping-eligibility.js?v=20261104-pose-schede-in-alto";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261104-scheda-posa-schede-2";
+} from "./lib/profit-split.js?v=20261104-pose-schede-in-alto";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261104-scheda-posa-schede-2";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-scheda-posa-schede-2";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-scheda-posa-schede-2";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-scheda-posa-schede-2";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-scheda-posa-schede-2";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-scheda-posa-schede-2";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-scheda-posa-schede-2";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-scheda-posa-schede-2";
+} from "./lib/preventivo-pricing.js?v=20261104-pose-schede-in-alto";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-pose-schede-in-alto";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-pose-schede-in-alto";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-pose-schede-in-alto";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-pose-schede-in-alto";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-pose-schede-in-alto";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-pose-schede-in-alto";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-pose-schede-in-alto";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261104-scheda-posa-schede-2";
+} from "./lib/sales-assignment.js?v=20261104-pose-schede-in-alto";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261104-scheda-posa-schede-2";
+} from "./lib/surveys.js?v=20261104-pose-schede-in-alto";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261104-scheda-posa-schede-2";
+const APP_SHELL_VERSION = "20261104-pose-schede-in-alto";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -11022,7 +11022,7 @@ function updateShell() {
     const visible = allowed.includes(button.dataset.view);
     button.hidden = !visible;
     button.classList.toggle("hidden", !visible);
-    button.classList.toggle("is-active", state.currentView === button.dataset.view);
+    button.classList.toggle("is-active", navParentView(state.currentView) === button.dataset.view);
     button.setAttribute("aria-hidden", visible ? "false" : "true");
     forceMobileVisibility(button, visible, "grid");
   });
@@ -11035,6 +11035,7 @@ function updateShell() {
     forceMobileVisibility(sectionEl, anyVisible, "block");
   });
   ui.views.forEach((view) => view.classList.toggle("is-active", view.id === state.currentView));
+  renderNavTabs();
   // Pilot visivo: la cornice chiara segue solo Inventario e Inbox Ordini.
   document.body.classList.toggle("ops-light-view", ["warehouse", "orders"].includes(state.currentView));
   ui.viewTitle.textContent = t(state.currentView);
@@ -24142,7 +24143,9 @@ const NAV_SECTIONS = [
     { view: "orders" },
     { view: "warehouse" },
     { view: "shipping" },
-    { view: "installations", group: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "fleet"] },
+    // Pose: una sola voce nel menu; le sottopagine sono schede in cima alla
+    // pagina (renderNavTabs), non più sottovoci della sidebar.
+    { view: "installations", tabs: ["installations-live", "installations-scheduled", "installations-repairs", "installations-completed", "fleet"] },
     { view: "sopralluoghi" },
   ] },
   { id: "sales", labelKey: "salesSection", defaultOpen: true, items: [
@@ -24181,22 +24184,47 @@ function navLinkHtml(view, extraClass = "") {
     + navIconHtml(view)
     + `<span class="nav-label">${escapeHtml(t(view))}</span></button>`;
 }
-function navGroupHtml(item) {
-  const subs = item.group.map((sv) =>
-    `<button class="nav-link nav-sub" data-view="${sv}"><span class="nav-sub-dot">·</span><span class="nav-label">${escapeHtml(t(sv))}</span></button>`
-  ).join("");
-  return `<div class="nav-group" data-nav-group="${item.view}">`
-    + `<button class="nav-link nav-group-toggle" data-view="${item.view}" aria-expanded="true">`
-    + navIconHtml(item.view)
-    + `<span class="nav-label">${escapeHtml(t(item.view))}</span>`
-    + `<span class="nav-chevron" aria-hidden="true">▾</span></button>`
-    + `<div class="nav-subgroup" data-nav-subgroup="${item.view}">${subs}</div>`
-    + `</div>`;
+// Voce del menu che resta accesa per una vista aperta da una scheda
+// (es. Programmate → Pose).
+function navParentView(view = "") {
+  const item = NAV_SECTIONS.flatMap((sec) => sec.items).find((it) => it.tabs?.includes(view));
+  return item ? item.view : view;
 }
+// Schede in cima alle pagine con sottopagine: la prima è la pagina madre,
+// che nel menu ha il nome della sezione («Pose») e qui dice cosa contiene.
+const NAV_TAB_FIRST_LABEL = { installations: ["Bacheca", "Board"] };
+function renderNavTabs() {
+  const parent = navParentView(state.currentView);
+  const item = NAV_SECTIONS.flatMap((sec) => sec.items).find((it) => it.view === parent && it.tabs);
+  const allowed = getAllowedViewsForRole();
+  const views = item ? [item.view, ...item.tabs].filter((view) => allowed.includes(view)) : [];
+  document.querySelectorAll("[data-nav-tabs]").forEach((bar) => {
+    const show = views.length > 1 && bar.closest(".view")?.id === state.currentView;
+    bar.hidden = !show;
+    if (!show) return;
+    const key = `${state.currentView}|${views.join(",")}|${state.lang}`;
+    if (bar.dataset.key === key) return;
+    bar.dataset.key = key;
+    bar.innerHTML = views.map((view) => {
+      const active = view === state.currentView;
+      const first = NAV_TAB_FIRST_LABEL[view];
+      const label = first ? (state.lang === "it" ? first[0] : first[1]) : t(view);
+      return `<button type="button" role="tab" aria-selected="${active}" class="view-tab${active ? " is-active" : ""}" data-nav-tab="${escapeAttr(view)}">${escapeHtml(label)}</button>`;
+    }).join("");
+    const activeTab = bar.querySelector(".is-active");
+    if (activeTab && bar.scrollWidth > bar.clientWidth) bar.scrollLeft = Math.max(0, activeTab.offsetLeft - 16);
+  });
+}
+document.addEventListener("click", (ev) => {
+  const tab = ev.target.closest?.("[data-nav-tab]");
+  if (!tab) return;
+  ev.preventDefault();
+  setView(tab.dataset.navTab);
+});
 function renderSidebarSections() {
   if (!ui.sidebarSections) return;
   ui.sidebarSections.innerHTML = NAV_SECTIONS.map((sec) => {
-    const items = sec.items.map((it) => (it.group ? navGroupHtml(it) : navLinkHtml(it.view))).join("");
+    const items = sec.items.map((it) => navLinkHtml(it.view)).join("");
     return `<section class="sidebar-section" data-section="${sec.id}">`
       + `<button class="sidebar-section-head" type="button" data-section-toggle="${sec.id}" aria-expanded="true">`
       + `<span id="sidebar-${sec.id}-label" class="sidebar-section-label">${escapeHtml(t(sec.labelKey))}</span>`
@@ -24297,7 +24325,7 @@ function renderMobileBottomNav() {
   const tabs = getMobilePrimaryViews(role);
   const primary = tabs;
   let html = tabs.map((view) => {
-    const active = currentView === view || currentView.startsWith(view + "-");
+    const active = currentView === view || currentView.startsWith(view + "-") || navParentView(currentView) === view;
     const label = t(view) || view;
     const icon = VIEW_ICONS[view] || VIEW_ICONS.more;
     return `<button type="button" class="mbn-tab ${active ? "is-active" : ""}" data-view="${escapeAttr(view)}">
@@ -24306,7 +24334,7 @@ function renderMobileBottomNav() {
     </button>`;
   }).join("");
   // Bottone "Altro" se ci sono voci secondarie
-  const secondary = allAllowed.filter((v) => !primary.includes(v));
+  const secondary = allAllowed.filter((v) => !primary.includes(navParentView(v)));
   if (secondary.length > 0) {
     const moreActive = secondary.includes(currentView);
     html += `<button type="button" class="mbn-tab mbn-more ${moreActive ? "is-active" : ""}" data-action="open-more-sheet">
@@ -24379,7 +24407,7 @@ const MORE_SHEET_SECTIONS = NAV_SECTIONS.map((sec) => ({
   id: sec.id,
   labelKey: sec.labelKey,
   views: sec.items
-    .flatMap((it) => (it.group ? [it.view, ...it.group] : [it.view]))
+    .map((it) => it.view)
     .concat(sec.id === "admin" ? NAV_PINNED : []),
 }));
 
@@ -24479,30 +24507,6 @@ document.addEventListener("click", (ev) => {
   }));
 });
 
-// Gestione sottomenu sidebar Pose: espansione/collasso + auto-expand quando
-// una sotto-view è attiva. Stato persistito in localStorage.
-const NAV_GROUP_LS_KEY = "psi-nav-group-state";
-function getNavGroupState() {
-  try { return JSON.parse(window.localStorage.getItem(NAV_GROUP_LS_KEY) || "{}"); } catch { return {}; }
-}
-function setNavGroupState(state) {
-  try { window.localStorage.setItem(NAV_GROUP_LS_KEY, JSON.stringify(state || {})); } catch {}
-}
-function applyNavGroupState() {
-  const groups = document.querySelectorAll(".nav-group[data-nav-group]");
-  const stateMap = getNavGroupState();
-  const currentView = window?.state?.currentView || "";
-  groups.forEach((g) => {
-    const key = g.dataset.navGroup;
-    let expanded = stateMap[key];
-    // Auto-expand se la view corrente è figlia del gruppo
-    if (key === "installations" && (isInstallationViewId(currentView) || currentView === "fleet")) expanded = true;
-    if (expanded === undefined) expanded = true; // default expanded
-    g.classList.toggle("is-collapsed", !expanded);
-    const toggle = g.querySelector(".nav-group-toggle");
-    if (toggle) toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-  });
-}
 function openInstallationOrderFromSubView(orderId = "") {
   if (!orderId) return;
   const order = state.orders.find((item) => item.id === orderId);
@@ -24531,32 +24535,6 @@ document.addEventListener("click", (ev) => {
     openInstallationOrderFromSubView(orderId);
   }
 });
-
-document.addEventListener("click", (ev) => {
-  const chevronOrLabel = ev.target.closest?.(".nav-group .nav-chevron, .nav-group-toggle .nav-chevron");
-  if (chevronOrLabel) {
-    const group = chevronOrLabel.closest(".nav-group");
-    if (group) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const key = group.dataset.navGroup;
-      const stateMap = getNavGroupState();
-      const isCollapsed = group.classList.toggle("is-collapsed");
-      stateMap[key] = !isCollapsed;
-      setNavGroupState(stateMap);
-      const toggle = group.querySelector(".nav-group-toggle");
-      if (toggle) toggle.setAttribute("aria-expanded", !isCollapsed ? "true" : "false");
-    }
-  }
-});
-// Re-apply al cambio view
-const _originalSetView = typeof setView === "function" ? setView : null;
-// (l'auto-expand viene gestito al render: chiamiamo applyNavGroupState in initApp/DOMContentLoaded)
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", applyNavGroupState);
-} else {
-  setTimeout(applyNavGroupState, 0);
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VERBALI FINE CANTIERE (work_completion_reports) — UI client
