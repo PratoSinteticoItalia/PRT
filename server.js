@@ -1669,6 +1669,9 @@ async function ensureRelationalSchema() {
       ALTER TABLE job_events ADD COLUMN IF NOT EXISTS meta JSONB NOT NULL DEFAULT '{}';
       ALTER TABLE job_events ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
       ALTER TABLE job_events ADD COLUMN IF NOT EXISTS voided_by TEXT;
+      -- «Correggi» un passaggio: ora e km si possono sistemare dopo.
+      ALTER TABLE job_events ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+      ALTER TABLE job_events ADD COLUMN IF NOT EXISTS edited_by TEXT;
     `);
     // Ricerca contatti su pezzi di parola: indice a trigrammi. Facoltativo:
     // senza pg_trgm la ricerca funziona lo stesso, solo senza indice.
@@ -4469,6 +4472,8 @@ function dbRowToJobEvent(row) {
     deviceId: row.device_id || "",
     meta: row.meta && typeof row.meta === "object" ? row.meta : {},
     voidedAt: row.voided_at ? new Date(row.voided_at).toISOString() : null,
+    editedAt: row.edited_at ? new Date(row.edited_at).toISOString() : null,
+    editedBy: row.edited_by || "",
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
   };
 }
@@ -4517,6 +4522,27 @@ async function voidJobEvent(orderId, eventId, voidedBy) {
     [String(eventId), String(orderId), String(voidedBy || "") || null],
   );
   return dbRowToJobEvent(rows[0]);
+}
+
+async function updateJobEvent(orderId, eventId, { occurredAt, meta }, editedBy) {
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query(
+    `UPDATE job_events SET occurred_at = $3, meta = $4::jsonb, edited_at = NOW(), edited_by = $5
+      WHERE id = $1 AND order_id = $2 AND voided_at IS NULL RETURNING *`,
+    [String(eventId), String(orderId), new Date(occurredAt).toISOString(), JSON.stringify(meta || {}), String(editedBy || "") || null],
+  );
+  return dbRowToJobEvent(rows[0]);
+}
+
+// Chi può annullare o correggere un passaggio: l'ufficio qualsiasi, la
+// squadra solo i propri delle ultime 12 ore.
+function canChangeJobEvent(user, event) {
+  if (user.role === "office") return true;
+  if (user.role !== "crew") return false;
+  const mine = event.userId === user.id || (user.crewName && event.crewName === user.crewName);
+  const recent = Date.now() - new Date(event.createdAt || event.occurredAt).getTime() < 12 * 3600 * 1000;
+  return Boolean(mine && recent);
 }
 
 async function getJobEvent(orderId, eventId) {
@@ -15332,10 +15358,8 @@ async function handleApi(req, res, url) {
     try {
       const existing = await getJobEvent(orderId, eventId);
       if (!existing || existing.voidedAt) return sendJson(res, 404, { error: "event_not_found" });
-      if (currentUser.role === "crew") {
-        const mine = existing.userId === currentUser.id || (currentUser.crewName && existing.crewName === currentUser.crewName);
-        const recent = Date.now() - new Date(existing.createdAt || existing.occurredAt).getTime() < 12 * 3600 * 1000;
-        if (!mine || !recent) return sendJson(res, 403, { error: "void_not_allowed", message: "Puoi annullare solo i tuoi passaggi delle ultime 12 ore. Per gli altri chiedi all'ufficio." });
+      if (!canChangeJobEvent(currentUser, existing)) {
+        return sendJson(res, 403, { error: "void_not_allowed", message: "Puoi annullare solo i tuoi passaggi delle ultime 12 ore. Per gli altri chiedi all'ufficio." });
       }
       const event = await voidJobEvent(orderId, eventId, currentUser.name || currentUser.email || "");
       if (!event) return sendJson(res, 404, { error: "event_not_found" });
@@ -15344,6 +15368,48 @@ async function handleApi(req, res, url) {
     } catch (err) {
       console.error("[job-events] void failed:", err?.message || err);
       return sendJson(res, 500, { error: String(err?.message || "void_failed") });
+    }
+  }
+
+  // PATCH /api/jobs/:orderId/events/:eventId → «Correggi» ora e km di un
+  // passaggio segnato male. Stessi permessi dell'Annulla; il registro
+  // modifiche tiene il prima e il dopo.
+  if (url.pathname.match(/^\/api\/jobs\/[^/]+\/events\/[^/]+$/) && req.method === "PATCH") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!["office", "crew"].includes(currentUser.role)) return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "db_unavailable" });
+    const parts = url.pathname.split("/");
+    const orderId = decodeURIComponent(parts[3]);
+    const eventId = decodeURIComponent(parts[5]);
+    try {
+      const body = await readBody(req);
+      const existing = await getJobEvent(orderId, eventId);
+      if (!existing || existing.voidedAt) return sendJson(res, 404, { error: "event_not_found" });
+      if (!canChangeJobEvent(currentUser, existing)) {
+        return sendJson(res, 403, { error: "edit_not_allowed", message: "Puoi correggere solo i tuoi passaggi delle ultime 12 ore. Per gli altri chiedi all'ufficio." });
+      }
+      const occurredAt = body.occurredAt ? new Date(body.occurredAt) : new Date(existing.occurredAt);
+      if (Number.isNaN(occurredAt.getTime()) || occurredAt.getTime() > Date.now() + 10 * 60000 || occurredAt.getFullYear() < 2020) {
+        return sendJson(res, 400, { error: "invalid_time", message: "Data e ora non valide (non si può segnare nel futuro)." });
+      }
+      // Si correggono solo i km: furgone e attrezzatura restano quelli segnati.
+      const meta = { ...(existing.meta || {}) };
+      if (body.km !== undefined && existing.meta?.vanId) {
+        const fixed = normalizeJobEventMeta(existing.eventType, { ...meta, km: body.km });
+        if (!fixed.km) return sendJson(res, 400, { error: "invalid_km", message: "Km non validi." });
+        meta.km = fixed.km;
+      }
+      const event = await updateJobEvent(orderId, eventId, { occurredAt, meta }, currentUser.name || currentUser.email || "");
+      if (!event) return sendJson(res, 404, { error: "event_not_found" });
+      writeAuditLog("job_event", String(event.id), "edit", {
+        orderId, eventType: event.eventType,
+        before: { occurredAt: existing.occurredAt, km: existing.meta?.km ?? null },
+        after: { occurredAt: event.occurredAt, km: event.meta?.km ?? null },
+      }, currentUser.email || null).catch(() => {});
+      return sendJson(res, 200, event);
+    } catch (err) {
+      console.error("[job-events] edit failed:", err?.message || err);
+      return sendJson(res, 500, { error: String(err?.message || "edit_failed") });
     }
   }
 

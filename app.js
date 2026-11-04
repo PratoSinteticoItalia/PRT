@@ -1,10 +1,10 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-pose-schede-in-alto";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261104-pose-schede-in-alto";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-pose-schede-in-alto";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-pose-schede-in-alto";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-pose-schede-in-alto";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-pose-schede-in-alto";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-pose-schede-in-alto';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261104-passaggi-correggibili";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261104-passaggi-correggibili";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261104-passaggi-correggibili";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261104-passaggi-correggibili";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261104-passaggi-correggibili";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261104-passaggi-correggibili";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261104-passaggi-correggibili';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +19,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261104-pose-schede-in-alto";
+} from "./lib/order-money.js?v=20261104-passaggi-correggibili";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261104-pose-schede-in-alto";
+import { regionForCity } from "./lib/geo.js?v=20261104-passaggi-correggibili";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +40,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261104-pose-schede-in-alto";
+} from "./lib/shipping-eligibility.js?v=20261104-passaggi-correggibili";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +51,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261104-pose-schede-in-alto";
+} from "./lib/profit-split.js?v=20261104-passaggi-correggibili";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +66,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261104-pose-schede-in-alto";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-pose-schede-in-alto";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-pose-schede-in-alto";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-pose-schede-in-alto";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-pose-schede-in-alto";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-pose-schede-in-alto";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-pose-schede-in-alto";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-pose-schede-in-alto";
+} from "./lib/preventivo-pricing.js?v=20261104-passaggi-correggibili";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261104-passaggi-correggibili";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261104-passaggi-correggibili";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261104-passaggi-correggibili";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261104-passaggi-correggibili";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261104-passaggi-correggibili";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261104-passaggi-correggibili";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261104-passaggi-correggibili";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +81,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261104-pose-schede-in-alto";
+} from "./lib/sales-assignment.js?v=20261104-passaggi-correggibili";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261104-pose-schede-in-alto";
+} from "./lib/surveys.js?v=20261104-passaggi-correggibili";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +101,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261104-pose-schede-in-alto";
+const APP_SHELL_VERSION = "20261104-passaggi-correggibili";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -22726,7 +22726,7 @@ const JOB_SITE_BUTTONS = {
   return: ["Rientro", "Back at base"],
 };
 
-if (!state.jobSite) state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {} };
+if (!state.jobSite) state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {}, edit: null };
 if (!state.fleet) state.fleet = { data: null, loading: false, loadedAt: 0, error: "", tab: "vans", editVan: "", editTools: false, month: "", busy: false };
 
 function isGeoAnswered() {
@@ -22818,6 +22818,7 @@ function renderJobEventsForOrder(order) {
   section.hidden = false;
   timeline.hidden = false;
   if (state.jobSite.sheet && state.jobSite.sheet.orderId !== order.id) state.jobSite.sheet = null;
+  if (state.jobSite.edit && state.jobSite.edit.orderId !== order.id) state.jobSite.edit = null;
   const cached = state.jobEvents.byOrder[order.id];
   const stale = Date.now() - (state.jobEvents.loadedAt?.[order.id] || 0) > 60000;
   if (cached) renderJobEventsInner(order, quickbar, timeline);
@@ -23140,7 +23141,7 @@ function renderJobSiteDiary(order, events) {
         s.km != null ? `${jobSiteKm(s.km)} km` : "",
       ].filter(Boolean);
       return `
-        <details class="js-diary-day" ${index === 0 ? "open" : ""}>
+        <details class="js-diary-day" ${index === 0 || group.events.some((ev) => ev.id === state.jobSite.edit?.eventId) ? "open" : ""}>
           <summary><strong>${escapeHtml(label)}</strong>${chips.length ? `<span>${escapeHtml(chips.join(" · "))}</span>` : ""}</summary>
           ${group.events.map((ev, i) => renderJobEventCard(ev, group.events[i - 1])).join("")}
         </details>`;
@@ -23161,8 +23162,12 @@ function renderJobEventCard(ev, previous = null) {
   const photos = Array.isArray(ev.photos) && ev.photos.length
     ? `<div class="job-event-photos">${ev.photos.map((p) => p?.dataUrl ? `<a href="${escapeAttr(p.dataUrl)}" target="_blank" rel="noopener"><img src="${escapeAttr(p.dataUrl)}" alt="" /></a>` : `<span class="job-event-photo-chip">📷</span>`).join("")}</div>`
     : "";
+  const edit = state.jobSite.edit?.eventId === ev.id ? state.jobSite.edit : null;
+  const fix = canVoidJobEvent(ev) && !edit
+    ? `<button type="button" class="job-event-fix" data-action="job-site-edit" data-order-id="${escapeAttr(ev.orderId)}" data-event-id="${escapeAttr(ev.id)}">${jsL("Correggi", "Fix")}</button>`
+    : "";
   return `
-    <article class="job-event-row">
+    <article class="job-event-row${edit ? " is-editing" : ""}">
       <div class="job-event-time">${escapeHtml(jobSiteTime(ev.occurredAt))}</div>
       <div class="job-event-marker">${def?.icon || "•"}</div>
       <div class="job-event-body">
@@ -23172,8 +23177,69 @@ function renderJobEventCard(ev, previous = null) {
         ${geo}
         ${ev.notes ? `<p class="job-event-notes">${escapeHtml(ev.notes)}</p>` : ""}
         ${photos}
+        ${ev.editedAt ? `<span class="job-event-edited">${escapeHtml(jsL(`corretto da ${ev.editedBy || "ufficio"}`, `corrected by ${ev.editedBy || "office"}`))}</span>` : ""}
+        ${edit ? renderJobEventEditor(ev, edit) : ""}
       </div>
+      ${fix}
     </article>`;
+}
+
+// «Correggi» un passaggio del diario: giorno e ora, km se c'è il furgone,
+// oppure eliminarlo (doppio tocco, come l'Annulla).
+function jobSiteInputValue(value) {
+  const d = new Date(value);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderJobEventEditor(ev, edit) {
+  const ids = `data-order-id="${escapeAttr(ev.orderId)}" data-event-id="${escapeAttr(ev.id)}"`;
+  return `
+    <div class="job-event-editor">
+      <label class="js-field"><span>${jsL("Giorno e ora", "Date and time")}</span>
+        <input type="datetime-local" value="${escapeAttr(edit.when)}" max="${escapeAttr(jobSiteInputValue(new Date()))}" data-job-edit-input="when" />
+      </label>
+      ${edit.hasKm ? `<label class="js-field"><span>${jsL("Km sul cruscotto", "Odometer (km)")}</span>
+        <input type="text" inputmode="numeric" autocomplete="off" value="${escapeAttr(edit.km ? jobSiteKm(edit.km) : "")}" data-job-edit-input="km" />
+      </label>` : ""}
+      ${edit.error ? `<div class="js-error">${escapeHtml(edit.error)}</div>` : ""}
+      <div class="job-event-editor-actions">
+        <button type="button" class="primary-button small" data-action="job-site-edit-save" ${ids} ${edit.busy ? "disabled" : ""}>${jsL("Salva", "Save")}</button>
+        <button type="button" class="ghost-button small" data-action="job-site-edit-close" ${ids}>${jsL("Chiudi", "Close")}</button>
+        <button type="button" class="ghost-button small job-event-delete${edit.deleteArmed ? " is-armed" : ""}" data-action="job-site-edit-delete" ${ids}>${edit.deleteArmed
+          ? jsL("Tocca di nuovo per eliminare", "Tap again to delete")
+          : jsL("Elimina passaggio", "Delete step")}</button>
+      </div>
+    </div>`;
+}
+
+async function saveJobEventEdit(orderId) {
+  const edit = state.jobSite.edit;
+  if (!edit || edit.busy) return;
+  edit.error = "";
+  const when = new Date(edit.when);
+  const body = { occurredAt: Number.isNaN(when.getTime()) ? "" : when.toISOString() };
+  if (!body.occurredAt) edit.error = jsL("Scrivi giorno e ora.", "Enter date and time.");
+  if (edit.hasKm) {
+    body.km = parseJobSiteKm(edit.km);
+    if (!body.km) edit.error = jsL("Scrivi i km sul cruscotto.", "Enter the odometer reading.");
+  }
+  if (edit.error) { rerenderJobSiteFor(orderId); return; }
+  edit.busy = true;
+  rerenderJobSiteFor(orderId);
+  try {
+    const updated = await apiFetch(`/api/jobs/${encodeURIComponent(orderId)}/events/${encodeURIComponent(edit.eventId)}`, { method: "PATCH", body: JSON.stringify(body) });
+    state.jobEvents.byOrder[orderId] = (state.jobEvents.byOrder[orderId] || [])
+      .map((ev) => (ev.id === updated.id ? { ...ev, ...updated } : ev))
+      .sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt));
+    state.jobSite.edit = null;
+    showToast(jsL(`Corretto: ${jobEventLabel(updated.eventType)}`, `Corrected: ${jobEventLabel(updated.eventType)}`), "success");
+    if (updated.meta?.vanId) loadFleet({ force: true });
+  } catch (err) {
+    edit.busy = false;
+    edit.error = err?.message || String(err);
+  }
+  rerenderJobSiteFor(orderId);
 }
 
 async function registerJobEvent(orderId, eventType, opts = {}) {
@@ -23255,6 +23321,25 @@ document.addEventListener("click", (ev) => {
   } else if (action === "job-site-reopen") {
     state.jobSite.reopen[orderId] = true;
     rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-edit") {
+    const ev = (state.jobEvents.byOrder[orderId] || []).find((item) => item.id === target.dataset.eventId);
+    if (!ev) return;
+    state.jobSite.edit = { orderId, eventId: ev.id, when: jobSiteInputValue(ev.occurredAt), hasKm: Boolean(ev.meta?.vanId), km: ev.meta?.km ? String(ev.meta.km) : "", error: "", busy: false, deleteArmed: false };
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-edit-close") {
+    state.jobSite.edit = null;
+    rerenderJobSiteFor(orderId);
+  } else if (action === "job-site-edit-save") {
+    saveJobEventEdit(orderId);
+  } else if (action === "job-site-edit-delete" && state.jobSite.edit) {
+    const edit = state.jobSite.edit;
+    if (edit.deleteArmed) {
+      state.jobSite.edit = null;
+      voidJobSiteEvent(orderId, edit.eventId);
+      return;
+    }
+    edit.deleteArmed = true;
+    rerenderJobSiteFor(orderId);
   } else if (action === "job-site-undo") {
     const eventId = target.dataset.eventId;
     if (state.jobSite.undoArmed === eventId) {
@@ -23273,6 +23358,11 @@ document.addEventListener("click", (ev) => {
 });
 
 document.addEventListener("input", (ev) => {
+  const field = ev.target?.dataset?.jobEditInput;
+  if (field && state.jobSite.edit) {
+    state.jobSite.edit[field] = field === "km" ? String(parseJobSiteKm(ev.target.value) || "") : ev.target.value;
+    return;
+  }
   const sheet = state.jobSite.sheet;
   if (!sheet || ev.target?.dataset?.jobSiteInput !== "km") return;
   sheet.km = String(parseJobSiteKm(ev.target.value) || "");
@@ -30053,7 +30143,7 @@ function applySessionPayload(session = {}) {
     state.analytics = { period: "12m", data: null, loading: false, error: "", key: "", loadedAt: 0 };
     // Furgoni (costi e viaggi solo ufficio) e diario cantiere: per chi è collegato.
     state.fleet = { data: null, loading: false, loadedAt: 0, error: "", tab: "vans", editVan: "", editTools: false, month: "", busy: false };
-    state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {} };
+    state.jobSite = { sheet: null, undoArmed: "", undoTimer: 0, reopen: {}, edit: null };
     if (state.jobEvents) { state.jobEvents.byOrder = {}; state.jobEvents.loadedAt = {}; }
     // I viaggi del furgone servono al conto posa: l'ufficio li carica subito.
     if (nextUser?.role === "office") window.setTimeout(() => loadFleet(), 1500);
