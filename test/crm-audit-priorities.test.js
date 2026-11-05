@@ -64,7 +64,11 @@ test('commercial labels preserve unknown historical statuses',()=>{
 });
 test('API rejects malformed successful responses instead of reporting a saved empty object',async()=>{
  const fetchApi=(response)=>fn('apiFetch','isTransientApiError',{
- fetch:async()=>response,window:{setTimeout,clearTimeout},AbortController
+ fetch:async()=>response,window:{setTimeout,clearTimeout},AbortController,
+ // Offline (nov 2026): apiFetch copia le letture e usa la copia senza rete.
+ state:{currentUser:null,lang:'it'},navigator:{onLine:true},
+ isOfflineCacheablePath:()=>false,offlineCacheKey:()=>'',kvGet:async()=>undefined,
+ markOnlineConfirmed(){},markOfflineSuspected(){},rememberOfflineRead(){},noteOfflineCopyUsed(){}
  });
  await assert.rejects(fetchApi({ok:true,status:200,json:async()=>{throw new Error('html');}})('/test'), /invalid_server_response/);
  const empty=await fetchApi({ok:true,status:204})('/test');

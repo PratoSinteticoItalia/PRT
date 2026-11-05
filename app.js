@@ -1,10 +1,14 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261105-inbox-menu-fix";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261105-inbox-menu-fix";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261105-inbox-menu-fix";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261105-inbox-menu-fix";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261105-inbox-menu-fix";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261105-inbox-menu-fix";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261105-inbox-menu-fix';
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261105-presenze-offline-5";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261105-presenze-offline-5";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261105-presenze-offline-5";
+import {
+  isOfflineCacheablePath, offlineCacheKey, newClientRef, outboxBackoffMs, classifyReplayError,
+  outboxReadyItems, outboxSummary, kvGet, kvSet, kvClear, outboxAdd, outboxAll, outboxPut, outboxDelete,
+} from "./lib/offline-store.js?v=20261105-presenze-offline-5";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261105-presenze-offline-5";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261105-presenze-offline-5";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261105-presenze-offline-5";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261105-presenze-offline-5';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -19,9 +23,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261105-inbox-menu-fix";
+} from "./lib/order-money.js?v=20261105-presenze-offline-5";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261105-inbox-menu-fix";
+import { regionForCity } from "./lib/geo.js?v=20261105-presenze-offline-5";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -40,7 +44,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261105-inbox-menu-fix";
+} from "./lib/shipping-eligibility.js?v=20261105-presenze-offline-5";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -51,7 +55,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261105-inbox-menu-fix";
+} from "./lib/profit-split.js?v=20261105-presenze-offline-5";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -66,14 +70,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261105-inbox-menu-fix";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261105-inbox-menu-fix";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261105-inbox-menu-fix";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261105-inbox-menu-fix";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261105-inbox-menu-fix";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261105-inbox-menu-fix";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261105-inbox-menu-fix";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261105-inbox-menu-fix";
+} from "./lib/preventivo-pricing.js?v=20261105-presenze-offline-5";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261105-presenze-offline-5";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261105-presenze-offline-5";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261105-presenze-offline-5";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261105-presenze-offline-5";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261105-presenze-offline-5";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261105-presenze-offline-5";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261105-presenze-offline-5";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -81,13 +85,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261105-inbox-menu-fix";
+} from "./lib/sales-assignment.js?v=20261105-presenze-offline-5";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261105-inbox-menu-fix";
+} from "./lib/surveys.js?v=20261105-presenze-offline-5";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -101,7 +105,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261105-inbox-menu-fix";
+const APP_SHELL_VERSION = "20261105-presenze-offline-5";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -2204,7 +2208,42 @@ function describeApiSaveError(error) {
   return String(error?.message || "").trim();
 }
 
+// Tutte le chiamate al server passano da qui. Offline (nov 2026): le letture
+// utili (lib/offline-store.js) vengono copiate sul dispositivo; senza rete si
+// risponde con l'ultima copia. Le scritture senza rete falliscono con un
+// messaggio chiaro: solo le azioni di cantiere hanno una coda (offlineQueue*).
 function apiFetch(path, options = {}) {
+  const method = String(options?.method || "GET").toUpperCase();
+  const userId = String(state.currentUser?.id || "");
+  const cacheable = method === "GET" && Boolean(userId) && isOfflineCacheablePath(path);
+  if (method !== "GET" && navigator.onLine === false) {
+    markOfflineSuspected();
+    const error = new Error(state.lang === "it"
+      ? "Sei offline: la modifica non è stata salvata. Riprova quando torna la rete."
+      : "You are offline: the change was not saved. Try again when you are back online.");
+    error.status = 0;
+    error.offline = true;
+    return Promise.reject(error);
+  }
+  return apiFetchNetwork(path, options).then((data) => {
+    markOnlineConfirmed();
+    if (cacheable) rememberOfflineRead(userId, path, data);
+    return data;
+  }).catch(async (error) => {
+    const isNetwork = Number(error?.status) === 0 && error?.cause?.name !== "AbortError";
+    if (isNetwork) markOfflineSuspected();
+    if (isNetwork && cacheable) {
+      const copy = await kvGet(offlineCacheKey(userId, path));
+      if (copy && copy.data !== undefined) {
+        noteOfflineCopyUsed(copy.savedAt);
+        return copy.data;
+      }
+    }
+    throw error;
+  });
+}
+
+function apiFetchNetwork(path, options = {}) {
   const { timeoutMs = 0, ...fetchOptions } = options || {};
   const controller = timeoutMs > 0 && !fetchOptions.signal ? new AbortController() : null;
   const timeoutId = controller
@@ -2269,6 +2308,222 @@ async function apiFetchWithRetry(path, options = {}, {
     }
   }
   throw lastError || new Error("request_failed");
+}
+
+// ── Offline: stato, banner, coda delle azioni ───────────────────────────────
+function offlineState() {
+  if (!state.offline) {
+    state.offline = { active: false, copyAt: 0, pending: 0, failed: 0, items: [], flushing: false, listOpen: false };
+  }
+  return state.offline;
+}
+
+const offlineReadSavedAt = new Map();
+function rememberOfflineRead(userId, path, data) {
+  // Offline i dati arrivano proprio dalla copia: non si risalva (l'ora della
+  // copia deve restare quella vera dell'ultimo aggiornamento).
+  if (state.offline?.active) return;
+  // La sessione intera dell'ufficio è grande: al massimo una copia al minuto.
+  const key = offlineCacheKey(userId, path);
+  const last = offlineReadSavedAt.get(key) || 0;
+  if (path === "/api/session" && Date.now() - last < 60_000) return;
+  offlineReadSavedAt.set(key, Date.now());
+  void kvSet(key, { data, savedAt: Date.now() });
+}
+
+function noteOfflineCopyUsed(savedAt) {
+  const off = offlineState();
+  off.copyAt = Math.max(Number(off.copyAt) || 0, Number(savedAt) || 0) || off.copyAt;
+  renderOfflineBanner();
+}
+
+function isOfflineNow() {
+  return navigator.onLine === false || Boolean(state.offline?.active);
+}
+
+function markOfflineSuspected() {
+  const off = offlineState();
+  if (off.active) return;
+  off.active = true;
+  renderOfflineBanner();
+}
+
+function markOnlineConfirmed() {
+  const off = state.offline;
+  if (!off?.active) return;
+  off.active = false;
+  off.copyAt = 0;
+  renderOfflineBanner();
+  scheduleOfflineFlush(500, { force: true });
+}
+
+const offL = (it, en) => (state.lang === "en" ? en : it);
+
+function offlineTimeLabel(ms) {
+  if (!ms) return "";
+  const date = new Date(ms);
+  const sameDay = localDateKey(date) === localDateKey(new Date());
+  const time = date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  return sameDay ? time : `${formatDate(date.toISOString())} ${time}`;
+}
+
+const OFFLINE_ACTION_LABELS = {
+  "job-event": ["Passaggio di cantiere", "Site step"],
+  "expense-add": ["Spesa trasferta", "Travel expense"],
+  clock: ["Timbratura", "Clock entry"],
+  "work-report": ["Verbale di fine lavori", "Completion report"],
+};
+
+function renderOfflineBanner() {
+  const banner = document.getElementById("offline-banner");
+  if (!banner) return;
+  const off = offlineState();
+  const show = Boolean(state.currentUser) && (off.active || off.pending > 0 || off.failed > 0);
+  banner.hidden = !show;
+  banner.classList.toggle("is-offline", Boolean(off.active));
+  banner.classList.toggle("has-failed", off.failed > 0);
+  if (!show) { banner.innerHTML = ""; return; }
+  const parts = [];
+  if (off.active) {
+    parts.push(off.copyAt
+      ? offL(`Sei offline · dati aggiornati alle ${offlineTimeLabel(off.copyAt)}`, `You are offline · data as of ${offlineTimeLabel(off.copyAt)}`)
+      : offL("Sei offline", "You are offline"));
+    if (state.currentUser?.role === "office" || state.currentUser?.role === "rivenditore") parts.push(offL("solo consultazione", "read only"));
+  } else if (off.pending > 0) {
+    parts.push(off.flushing ? offL("Invio delle azioni fatte senza rete…", "Sending actions made offline…") : offL("Rete tornata", "Back online"));
+  }
+  if (off.pending > 0) parts.push(off.pending === 1 ? offL("1 azione da inviare", "1 action to send") : offL(`${off.pending} azioni da inviare`, `${off.pending} actions to send`));
+  if (off.failed > 0) parts.push(off.failed === 1 ? offL("1 non inviata", "1 not sent") : offL(`${off.failed} non inviate`, `${off.failed} not sent`));
+  const label = (type) => { const pair = OFFLINE_ACTION_LABELS[type]; return pair ? offL(pair[0], pair[1]) : offL("Azione", "Action"); };
+  const list = off.listOpen ? `<ul class="offline-banner-list" data-no-i18n>${off.items.map((item) => `
+      <li>
+        <span>${escapeHtml(label(item.type))}${item.label ? ` · ${escapeHtml(item.label)}` : ""} · ${escapeHtml(offlineTimeLabel(item.createdAt))}</span>
+        ${item.failed
+          ? `<em>${escapeHtml(item.error || offL("rifiutata dal server", "rejected by the server"))}</em><button type="button" class="ghost-button small-button" data-action="offline-drop-item" data-item-id="${escapeAttr(String(item.id))}">${offL("Togli", "Remove")}</button>`
+          : `<em>${offL("in attesa", "waiting")}</em>`}
+      </li>`).join("")}</ul>` : "";
+  banner.innerHTML = `
+    <div class="offline-banner-row" data-no-i18n>
+      <span class="offline-banner-dot" aria-hidden="true"></span>
+      <span class="offline-banner-text">${escapeHtml(parts.join(" · "))}</span>
+      ${off.items.length ? `<button type="button" class="offline-banner-toggle" data-action="offline-toggle-list" aria-expanded="${off.listOpen ? "true" : "false"}">${off.listOpen ? offL("Chiudi", "Close") : offL("Vedi", "Show")}</button>` : ""}
+      ${!off.active && off.pending > 0 && !off.flushing ? `<button type="button" class="offline-banner-toggle" data-action="offline-retry">${offL("Invia ora", "Send now")}</button>` : ""}
+    </div>
+    ${list}`;
+}
+
+async function refreshOfflineOutboxSummary() {
+  const off = offlineState();
+  const userId = String(state.currentUser?.id || "");
+  const summary = userId ? outboxSummary(await outboxAll(), userId) : { pending: 0, failed: 0, items: [] };
+  off.pending = summary.pending;
+  off.failed = summary.failed;
+  off.items = summary.items.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  renderOfflineBanner();
+  return summary;
+}
+
+// Mette in coda un'azione fatta senza rete. Torna l'elemento salvato.
+async function offlineQueueAction(type, payload, label = "") {
+  const userId = String(state.currentUser?.id || "");
+  if (!userId) throw new Error("not_logged_in");
+  const item = await outboxAdd({ userId, type, payload, label: String(label || "").slice(0, 80) });
+  await refreshOfflineOutboxSummary();
+  scheduleOfflineFlush(4000);
+  return item;
+}
+
+function offlinePendingItems(type, predicate = () => true) {
+  return (state.offline?.items || []).filter((item) => item.type === type && !item.failed && predicate(item));
+}
+
+let offlineFlushTimer = 0;
+function scheduleOfflineFlush(delayMs = 3000, { force = false } = {}) {
+  if (offlineFlushTimer) window.clearTimeout(offlineFlushTimer);
+  offlineFlushTimer = window.setTimeout(() => {
+    offlineFlushTimer = 0;
+    void flushOfflineOutbox({ force });
+  }, Math.max(0, delayMs));
+}
+
+// force: la rete è appena tornata o è stato premuto «Invia ora» → si prova
+// subito anche quello che stava aspettando il prossimo tentativo.
+async function flushOfflineOutbox({ force = false } = {}) {
+  const off = offlineState();
+  const userId = String(state.currentUser?.id || "");
+  if (off.flushing || !userId || navigator.onLine === false) return;
+  const ready = outboxReadyItems(await outboxAll(), userId, force ? Number.POSITIVE_INFINITY : Date.now());
+  if (!ready.length) {
+    await refreshOfflineOutboxSummary();
+    const next = (off.items || []).filter((item) => !item.failed && item.nextAttemptAt).map((item) => item.nextAttemptAt);
+    if (next.length) scheduleOfflineFlush(Math.max(1000, Math.min(...next) - Date.now()));
+    return;
+  }
+  off.flushing = true;
+  renderOfflineBanner();
+  let sent = 0;
+  const touchedOrders = new Set();
+  try {
+    // Le spese si aggiungono alla lista vera del server: prima si rilegge.
+    if (ready.some((item) => item.type === "expense-add")) {
+      await keepSessionAlive({ silent: true, force: true }).catch(() => false);
+    }
+    for (const item of ready) {
+      const handler = OFFLINE_REPLAY_HANDLERS[item.type];
+      if (!handler) { await outboxDelete(item.id); continue; }
+      try {
+        await handler(item);
+        await outboxDelete(item.id);
+        sent += 1;
+        if (item.payload?.orderId) touchedOrders.add(item.payload.orderId);
+      } catch (error) {
+        const kind = classifyReplayError(error);
+        if (kind === "retry") {
+          item.attempts = (Number(item.attempts) || 0) + 1;
+          item.nextAttemptAt = Date.now() + outboxBackoffMs(item.attempts - 1);
+          await outboxPut(item);
+          break; // l'ordine conta (partenza prima di arrivo): si riparte da qui
+        }
+        if (kind === "auth") break; // sessione scaduta: si riprova dopo il nuovo accesso
+        item.failed = true;
+        item.error = describeApiSaveError(error) || "rifiutata dal server";
+        await outboxPut(item);
+        reportError(`offline-replay:${item.type}`, error);
+      }
+    }
+  } finally {
+    off.flushing = false;
+    const summary = await refreshOfflineOutboxSummary();
+    if (sent) {
+      showToast(sent === 1 ? offL("Inviata 1 azione fatta senza rete.", "1 action made offline was sent.") : offL(`Inviate ${sent} azioni fatte senza rete.`, `${sent} actions made offline were sent.`), "success", 5000);
+      touchedOrders.forEach((orderId) => { if (state.jobEvents?.loadedAt) state.jobEvents.loadedAt[orderId] = 0; });
+      refreshCurrentView({ allowDefer: true });
+    }
+    if (summary.failed && sent) showToast(offL("Un'azione fatta senza rete è stata rifiutata: apri «Vedi» in alto.", "An action made offline was rejected: open «Show» at the top."), "warning", 7000);
+    const next = (off.items || []).filter((item) => !item.failed && item.nextAttemptAt).map((item) => item.nextAttemptAt);
+    if (next.length) scheduleOfflineFlush(Math.max(1000, Math.min(...next) - Date.now()));
+  }
+}
+
+function initOfflineSupport() {
+  if (initOfflineSupport.done) return;
+  initOfflineSupport.done = true;
+  window.addEventListener("offline", () => markOfflineSuspected());
+  window.addEventListener("online", () => {
+    // Il segnale del browser non basta: si conferma con una chiamata vera.
+    void apiFetchNetwork(SESSION_REVISION_ENDPOINT).then(() => markOnlineConfirmed()).catch(() => {});
+    scheduleOfflineFlush(1500, { force: true });
+  });
+  if (navigator.onLine === false) markOfflineSuspected();
+  // Mentre si è offline si prova ogni 30 secondi se il server risponde.
+  window.setInterval(() => {
+    if (!state.currentUser) return;
+    if (state.offline?.active && navigator.onLine !== false) {
+      void apiFetchNetwork(SESSION_REVISION_ENDPOINT).then(() => markOnlineConfirmed()).catch(() => {});
+    } else if ((state.offline?.pending || 0) > 0 && !state.offline?.active) {
+      void flushOfflineOutbox();
+    }
+  }, 30_000);
 }
 
 function buildVersionedUrl(pathname = window.location.pathname, version = APP_SHELL_VERSION) {
@@ -7546,6 +7801,16 @@ function getTravelExpensesForOrder(order) {
   return Array.isArray(order?.operations?.installation?.travelExpenses)
     ? order.operations.installation.travelExpenses
     : [];
+}
+
+// Spese da mostrare: quelle salvate più quelle fatte senza rete ancora in coda.
+function getTravelExpensesWithPending(order) {
+  const saved = getTravelExpensesForOrder(order);
+  const ids = new Set(saved.map((expense) => expense.id));
+  const pending = offlinePendingItems("expense-add", (item) => item.payload?.orderId === order?.id)
+    .map((item) => ({ ...item.payload.expense, pendingOffline: true }))
+    .filter((expense) => !ids.has(expense.id));
+  return pending.length ? [...saved, ...pending] : saved;
 }
 
 // Spese della posa per il conto posa: quelle della squadra più il furgone
@@ -20800,7 +21065,7 @@ function getInstallationExpensesForMonth(monthKey = new Date().toISOString().sli
 }
 
 function renderInstallationExpenseSection(order) {
-  const expenses = getTravelExpensesForOrder(order).slice().sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+  const expenses = getTravelExpensesWithPending(order).slice().sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
   const total = expenses.reduce((sum, item) => sum + toNumber(item.amount || 0), 0);
   const monthKey = new Date().toISOString().slice(0, 7);
   const monthTotal = expenses
@@ -20847,10 +21112,11 @@ function renderInstallationExpenseSection(order) {
             <span>${escapeHtml(expense.crew || order.operations?.installation?.crew || (state.lang === "it" ? "Squadra non assegnata" : "Crew not assigned"))}</span>
             <span>${escapeHtml(formatDate(expense.date))}</span>
             ${expense.createdBy ? `<span>${escapeHtml(expense.createdBy)}</span>` : ""}
+            ${expense.pendingOffline ? `<span class="job-event-pending">${state.lang === "it" ? "sul telefono · da inviare" : "on the phone · to send"}</span>` : ""}
           </div>
-          <button class="ghost-button small-button" type="button" data-action="remove-installation-expense" data-id="${escapeHtml(order.id)}" data-expense-id="${escapeHtml(expense.id)}">
+          ${expense.pendingOffline ? "" : `<button class="ghost-button small-button" type="button" data-action="remove-installation-expense" data-id="${escapeHtml(order.id)}" data-expense-id="${escapeHtml(expense.id)}">
             ${state.lang === "it" ? "Rimuovi spesa" : "Remove expense"}
-          </button>
+          </button>`}
         </article>
       `).join("")
       : `<div class="info-card">${state.lang === "it" ? "Nessuna spesa registrata su questo ordine." : "No crew expenses registered for this order."}</div>`;
@@ -23527,7 +23793,7 @@ function renderJobEventsForOrder(order) {
 }
 
 function renderJobEventsInner(order, quickbar, timeline) {
-  const events = state.jobEvents.byOrder[order.id] || [];
+  const events = jobEventsWithPending(order.id, state.jobEvents.byOrder[order.id] || []);
   const role = state.currentUser?.role || "";
   quickbar.innerHTML = role === "crew" || role === "office" ? renderJobSiteToday(order, events) : "";
   timeline.innerHTML = renderJobSiteDiary(order, events);
@@ -23572,6 +23838,7 @@ function jobSiteCoolingDown() {
 }
 
 function canVoidJobEvent(ev) {
+  if (ev?.pendingOffline) return false; // ancora sul telefono: non c'è niente da annullare sul server
   const user = state.currentUser || {};
   if (user.role === "office") return true;
   if (user.role !== "crew") return false;
@@ -23857,6 +24124,7 @@ function renderJobEventCard(ev, previous = null) {
       <div class="job-event-marker">${def?.icon || "•"}</div>
       <div class="job-event-body">
         <strong>${escapeHtml(jobEventLabel(ev.eventType))}</strong>
+        ${ev.pendingOffline ? `<span class="job-event-pending">${escapeHtml(jsL("sul telefono · da inviare", "on the phone · to send"))}</span>` : ""}
         <span class="job-event-meta">${escapeHtml([ev.userName, ev.crewName].filter(Boolean).join(" · "))}</span>
         ${details.filter(Boolean).map((text) => `<span class="job-event-detail">${escapeHtml(text)}</span>`).join("")}
         ${geo}
@@ -23927,12 +24195,49 @@ async function saveJobEventEdit(orderId) {
   rerenderJobSiteFor(orderId);
 }
 
+// Passaggio fatto senza rete: resta sul telefono e parte da solo appena c'è
+// campo, con l'ora in cui è stato premuto (il server la accetta fino a 7 giorni).
+async function queueJobEventOffline(orderId, payload) {
+  const order = (state.orders || []).find((item) => item.id === orderId);
+  await offlineQueueAction("job-event", { orderId, ...payload }, order ? composeClientName(order) : "");
+  state.jobEvents.undoArmed = "";
+  state.jobSite.cooldownUntil = Date.now() + JOB_SITE_COOLDOWN_MS;
+  window.setTimeout(() => rerenderJobSiteFor(orderId), JOB_SITE_COOLDOWN_MS + 50);
+  showToast(jsL(`✓ ${jobEventLabel(payload.eventType)} · salvato sul telefono, parte appena c'è rete`, `✓ ${jobEventLabel(payload.eventType)} · saved on the phone, sent when online`), "success", 5000);
+  rerenderJobSiteFor(orderId);
+  return true;
+}
+
+// Passaggi ancora in coda per quell'ordine, da mostrare nel diario insieme a
+// quelli del server (con la scritta «da inviare», senza Correggi/Annulla).
+function jobEventsWithPending(orderId, events = []) {
+  const pending = offlinePendingItems("job-event", (item) => item.payload?.orderId === orderId).map((item) => ({
+    id: `pending-${item.payload.clientRef}`,
+    orderId,
+    eventType: item.payload.eventType,
+    occurredAt: item.payload.occurredAt,
+    userId: state.currentUser?.id || "",
+    userName: state.currentUser?.name || "",
+    crewName: state.currentUser?.crewName || "",
+    lat: item.payload.lat ?? null,
+    lng: item.payload.lng ?? null,
+    gpsAccuracyM: item.payload.gpsAccuracyM ?? null,
+    photos: item.payload.photos || [],
+    notes: item.payload.notes || "",
+    meta: item.payload.meta || {},
+    pendingOffline: true,
+  }));
+  if (!pending.length) return events;
+  return [...events, ...pending].sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt));
+}
+
 async function registerJobEvent(orderId, eventType, opts = {}) {
   if (state.jobEvents.busy) return false;
   state.jobEvents.busy = true;
+  let payload = null;
   try {
     const pos = await getCurrentPosition();
-    const event = await apiCreateJobEvent(orderId, {
+    payload = {
       eventType,
       lat: pos?.lat,
       lng: pos?.lng,
@@ -23941,7 +24246,11 @@ async function registerJobEvent(orderId, eventType, opts = {}) {
       photos: opts.photos || [],
       notes: opts.notes || "",
       meta: opts.meta,
-    });
+      occurredAt: new Date().toISOString(),
+      clientRef: newClientRef(),
+    };
+    if (isOfflineNow()) return await queueJobEventOffline(orderId, payload);
+    const event = await apiCreateJobEvent(orderId, payload);
     if (!state.jobEvents.byOrder[orderId]) state.jobEvents.byOrder[orderId] = [];
     state.jobEvents.byOrder[orderId].push(event);
     state.jobSite.undoArmed = "";
@@ -23952,6 +24261,10 @@ async function registerJobEvent(orderId, eventType, opts = {}) {
     rerenderJobSiteFor(orderId);
     return true;
   } catch (err) {
+    // Rete caduta proprio adesso: il passaggio non si perde, va in coda.
+    if (payload && Number(err?.status) === 0) {
+      try { return await queueJobEventOffline(orderId, payload); } catch {}
+    }
     showToast(`${jsL("Errore", "Error")}: ${err?.message || err}`, "error");
     return false;
   } finally {
@@ -25512,6 +25825,7 @@ async function openWorkReportWizard({ orderId, reportId = "" }) {
   state.workReportWizard.busy = false;
   state.workReportWizard.error = "";
   state.workReportWizard.step = 1;
+  state.workReportWizard.offline = false;
 
   // Restore da localStorage se c'è una bozza non submitted per quest'ordine
   const lsDraft = loadWizardLocalDraft(orderId);
@@ -25949,6 +26263,14 @@ async function wizardGoNext() {
       return;
     }
   }
+  // Senza rete si va avanti lo stesso: il verbale resta sul telefono (foto
+  // comprese) e alla firma va in coda, parte appena c'è campo.
+  if (isOfflineNow()) {
+    state.workReportWizard.offline = true;
+    saveWizardLocalDraft();
+    goToWizardStep(step + 1);
+    return;
+  }
   // Autosave server al passaggio di step (best-effort, draft locale resta come fallback)
   try {
     state.workReportWizard.busy = true;
@@ -25967,6 +26289,14 @@ async function wizardGoNext() {
       }
     }
   } catch (err) {
+    if (Number(err?.status) === 0) {
+      // Rete caduta adesso: si prosegue offline invece di bloccare la squadra.
+      state.workReportWizard.busy = false;
+      state.workReportWizard.offline = true;
+      saveWizardLocalDraft();
+      goToWizardStep(step + 1);
+      return;
+    }
     state.workReportWizard.error = `Salvataggio fallito: ${err?.message || err}. Bozza salvata localmente, riprova.`;
     renderWizardStep();
     return;
@@ -25974,6 +26304,126 @@ async function wizardGoNext() {
     state.workReportWizard.busy = false;
   }
   goToWizardStep(step + 1);
+}
+
+// Campi del verbale da mandare al server (creazione o aggiornamento).
+function workReportFieldsFromDraft(d = {}) {
+  return {
+    customerName: d.customerName,
+    customerEmail: d.customerEmail,
+    siteAddress: d.siteAddress,
+    operators: d.operators,
+    executedSqm: d.executedSqm,
+    productModel: d.productModel,
+    workHoursStart: d.workHoursStart,
+    workHoursEnd: d.workHoursEnd,
+    notes: d.notes,
+    extras: d.extras,
+    liabilityText: d.liabilityText,
+  };
+}
+
+// ── Invio delle azioni fatte senza rete (flushOfflineOutbox) ────────────────
+// Ogni funzione manda un'azione; se fallisce lancia l'errore e la coda decide
+// (riprova più tardi, oppure «non inviata»). I verbali hanno più passaggi:
+// l'avanzamento si salva nella coda, così un invio interrotto riprende da lì.
+const OFFLINE_REPLAY_HANDLERS = {
+  async "job-event"(item) {
+    const { orderId, ...payload } = item.payload || {};
+    const event = await apiCreateJobEvent(orderId, payload);
+    const list = (state.jobEvents.byOrder[orderId] || []).filter((ev) => ev.id !== event.id);
+    state.jobEvents.byOrder[orderId] = [...list, event].sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt));
+    if (event.meta?.vanId) loadFleet({ force: true });
+  },
+  async "expense-add"(item) {
+    const { orderId, expense } = item.payload || {};
+    const order = (state.orders || []).find((entry) => entry.id === orderId);
+    if (!order) {
+      const error = new Error("Ordine non più disponibile per questo account");
+      error.status = 404;
+      throw error;
+    }
+    const current = getTravelExpensesForOrder(order);
+    if (current.some((entry) => entry.id === expense.id)) return; // già arrivata
+    const saved = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({ installation: { travelExpenses: [...current, expense] } }),
+    });
+    state.orders = state.orders.map((entry) => (entry.id === saved.id ? saved : entry));
+  },
+  async clock(item) {
+    const { entryType, ...payload } = item.payload || {};
+    const path = entryType === "clock_out" ? "/api/timesheet/clock-out" : "/api/timesheet/clock-in";
+    await apiFetch(path, { method: "POST", body: JSON.stringify(payload) });
+    window.setTimeout(() => { void refreshTimesheetState(); }, 300);
+  },
+  async "work-report"(item) {
+    const payload = item.payload || {};
+    // 1) Il verbale sul server: si aggiorna quello già creato o se ne crea uno.
+    if (!payload.reportId && Number(item.attempts) > 0) {
+      // Un tentativo precedente potrebbe averlo creato senza ricevere risposta.
+      const existing = await apiListWorkReports({ orderId: payload.orderId }).catch(() => null);
+      const queuedAt = new Date(payload.queuedAt || 0).getTime() - 60_000;
+      const match = (existing?.reports || []).find((report) => report.status === "draft"
+        && report.crewUserId === state.currentUser?.id
+        && new Date(report.createdAt || 0).getTime() >= queuedAt);
+      if (match) payload.reportId = match.id;
+    }
+    if (payload.reportId) {
+      try {
+        await apiUpdateWorkReport(payload.reportId, payload.fields || {});
+      } catch (error) {
+        if (error?.payload?.error === "not_draft") return; // già firmato: niente da fare
+        throw error;
+      }
+    } else {
+      const created = await apiCreateWorkReport({
+        orderId: payload.orderId,
+        installationId: payload.installationId,
+        crewName: payload.crewName,
+        ...(payload.fields || {}),
+      });
+      payload.reportId = created.id;
+      item.payload = payload;
+      await outboxPut(item);
+    }
+    // 2) Le foto rimaste sul telefono.
+    if (Array.isArray(payload.photos) && payload.photos.length) {
+      await apiUploadWorkReportPhotos(payload.reportId, payload.photos);
+      payload.photos = [];
+      item.payload = payload;
+      await outboxPut(item);
+    }
+    // 3) Le firme: da qui parte il PDF per il cliente.
+    try {
+      await apiSignWorkReport(payload.reportId, payload.signatures || {});
+    } catch (error) {
+      if (error?.payload?.error === "not_draft") return; // firmato da un invio precedente
+      throw error;
+    }
+    invalidateWorkReportsCache(payload.orderId);
+  },
+};
+
+// Verbale firmato senza rete: tutto (dati, foto, firme) va in coda insieme.
+async function queueWorkReportOffline(customerSig, crewSig) {
+  const wiz = state.workReportWizard;
+  const d = wiz.draft || {};
+  await offlineQueueAction("work-report", {
+    orderId: d.orderId || wiz.orderId,
+    installationId: d.installationId,
+    crewName: d.crewName,
+    reportId: wiz.reportId || "",
+    fields: workReportFieldsFromDraft(d),
+    photos: (d.photos || []).filter((p) => !p.uploaded && p.dataUrl)
+      .map((p) => ({ id: p.id, name: p.name, type: p.type, dataUrl: p.dataUrl, takenAt: p.takenAt })),
+    signatures: { customerSignatureDataUrl: customerSig, crewSignatureDataUrl: crewSig },
+    queuedAt: new Date().toISOString(),
+  }, d.customerName || "");
+  clearWizardLocalDraft(wiz.orderId);
+  closeWorkReportWizard({ confirm: false });
+  showToast("Verbale firmato e salvato sul telefono: parte appena c'è rete, poi arriva il PDF.", "success", 7000);
+  if (typeof renderInstallations === "function") renderInstallations();
 }
 function wizardGoPrev() {
   goToWizardStep((state.workReportWizard.step || 1) - 1);
@@ -25993,6 +26443,11 @@ async function wizardSubmit() {
     showToast("Firma posatore mancante", "error");
     return;
   }
+  if (isOfflineNow() || (state.workReportWizard.offline && !state.workReportWizard.reportId)) {
+    try { await queueWorkReportOffline(customerSig, crewSig); }
+    catch (err) { showToast(`Verbale non salvato sul telefono: ${err?.message || err}`, "error"); }
+    return;
+  }
   if (!state.workReportWizard.reportId) {
     showToast("Bozza non ancora salvata. Torna indietro e riprova.", "error");
     return;
@@ -26001,6 +26456,16 @@ async function wizardSubmit() {
   state.workReportWizard.error = "";
   renderWizardStep();
   try {
+    // Passi fatti offline: prima si salvano dati e foto rimasti sul telefono.
+    if (state.workReportWizard.offline) {
+      await persistWizardDraftToServer({ silent: true });
+      const pending = (state.workReportWizard.draft?.photos || []).filter((p) => !p.uploaded && p.dataUrl);
+      if (pending.length) {
+        await apiUploadWorkReportPhotos(state.workReportWizard.reportId, pending.map((p) => ({
+          id: p.id, name: p.name, type: p.type, dataUrl: p.dataUrl, takenAt: p.takenAt,
+        })));
+      }
+    }
     await apiSignWorkReport(state.workReportWizard.reportId, {
       customerSignatureDataUrl: customerSig,
       crewSignatureDataUrl: crewSig,
@@ -26012,6 +26477,10 @@ async function wizardSubmit() {
     // Refresh sezione installations per mostrare il nuovo verbale
     if (typeof renderInstallations === "function") renderInstallations();
   } catch (err) {
+    if (Number(err?.status) === 0) {
+      state.workReportWizard.busy = false;
+      try { await queueWorkReportOffline(customerSig, crewSig); return; } catch {}
+    }
     state.workReportWizard.error = `Firma fallita: ${err?.message || err}`;
     renderWizardStep();
   } finally {
@@ -26136,6 +26605,49 @@ function isTimesheetEmployee() {
   return TIMESHEET_EMPLOYEE_ROLES.has(state.currentUser?.role || "");
 }
 
+// Timbrature fatte senza rete ancora in coda: il banner le mostra subito
+// sopra l'ultimo turno noto (la copia salvata non le contiene).
+function applyPendingClocks(shift) {
+  const pending = offlinePendingItems("clock").sort((a, b) => String(a.payload.occurredAt).localeCompare(String(b.payload.occurredAt)));
+  if (!pending.length) return shift;
+  let next = shift ? { ...shift } : null;
+  for (const item of pending) {
+    const at = item.payload.occurredAt;
+    if (item.payload.entryType === "clock_in") {
+      if (!next || !next.clockInAt || (next.shiftDate && next.shiftDate !== localDateKey(new Date(at)))) {
+        next = { clockInAt: at, clockOutAt: null, breakMinutes: 0, anomalyFlags: [], shiftDate: localDateKey(new Date(at)) };
+      } else if (next.clockOutAt) {
+        const gap = Math.max(0, Math.round((new Date(at) - new Date(next.clockOutAt)) / 60000));
+        next = { ...next, clockOutAt: null, breakMinutes: (Number(next.breakMinutes) || 0) + gap };
+      }
+    } else if (next?.clockInAt && !next.clockOutAt) {
+      const worked = Math.round((new Date(at) - new Date(next.clockInAt)) / 60000) - (Number(next.breakMinutes) || 0);
+      next = { ...next, clockOutAt: at, workedMinutes: Math.max(0, worked) };
+    }
+  }
+  return next ? { ...next, pendingOffline: true } : next;
+}
+
+async function queueClockOffline(entryType, pos) {
+  await offlineQueueAction("clock", {
+    entryType,
+    occurredAt: new Date().toISOString(),
+    clientRef: newClientRef(),
+    deviceId: getTimesheetDeviceId(),
+    lat: pos?.lat,
+    lng: pos?.lng,
+    gpsAccuracyM: pos?.accuracy,
+  }, entryType === "clock_in" ? "entrata" : "uscita");
+  const base = state.timesheet.serverShift !== undefined
+    ? state.timesheet.serverShift
+    : (state.timesheet.currentShift?.pendingOffline ? null : state.timesheet.currentShift);
+  state.timesheet.currentShift = applyPendingClocks(base);
+  renderTimesheetBanner();
+  showToast(entryType === "clock_in"
+    ? "Entrata salvata sul telefono: parte appena c'è rete, con l'ora di adesso."
+    : "Uscita salvata sul telefono: parte appena c'è rete, con l'ora di adesso.", "success", 6000);
+}
+
 /** Carica lo shift di oggi e aggiorna stato + banner. */
 async function refreshTimesheetState() {
   if (!isTimesheetEmployee()) return;
@@ -26145,8 +26657,10 @@ async function refreshTimesheetState() {
   renderTimesheetBanner();
   try {
     const data = await apiFetch("/api/timesheet/current");
-    state.timesheet.currentShift = data?.shift || null;
+    state.timesheet.serverShift = data?.shift || null;
+    state.timesheet.currentShift = applyPendingClocks(state.timesheet.serverShift);
     state.timesheet.networkConfigured = Boolean(data?.networkConfigured);
+    state.timesheet.autoPresence = Boolean(data?.autoPresence);
     renderTimesheetBanner();
   } catch (err) {
     console.warn("[timesheet] refresh failed:", err?.message || err);
@@ -26179,7 +26693,12 @@ function renderTimesheetBanner() {
     else if (flags.includes("geo_verified_in")) netSuffix = " ✓ in sede";
     else if (flags.includes("off_network_in")) netSuffix = " ⚠️ off-network";
     else if (flags.includes("in_office_in")) netSuffix = " ✓ in sede";
-    if (text) text.textContent = `In turno · entrata ${inHM}${netSuffix}`;
+    // Presenza automatica dalla rete del capannone: niente da premere.
+    const autoLabel = flags.includes("auto_in") ? " automatica" : "";
+    const breakMinutes = Math.max(0, Number(shift.breakMinutes) || 0);
+    const breakSuffix = breakMinutes > 0 ? ` · pausa ${formatTimesheetDuration(breakMinutes * 60)}` : "";
+    const pendingSuffix = shift.pendingOffline ? " · sul telefono, da inviare" : "";
+    if (text) text.textContent = `In turno · entrata${autoLabel} ${inHM}${autoLabel ? "" : netSuffix}${breakSuffix}${pendingSuffix}`;
     if (cta) {
       cta.textContent = "Termina turno";
       cta.classList.add("is-danger");
@@ -26187,19 +26706,20 @@ function renderTimesheetBanner() {
     }
     banner.classList.add("in-shift");
     banner.classList.remove("off-shift");
-    startTimesheetTicker(inAt);
+    startTimesheetTicker(inAt, breakMinutes);
   } else if (shift?.clockOutAt) {
     if (icon) icon.textContent = "✅";
     const inAt = new Date(shift.clockInAt);
     const outAt = new Date(shift.clockOutAt);
     const secondsBetween = Math.max(0, Math.round((outAt - inAt) / 1000));
+    const outAuto = (shift.anomalyFlags || []).includes("auto_out");
     // Fix orari ravvicinati: se < 60s tra in e out, mostro un solo timestamp
     // (HH:MM arrotonderebbe a un solo minuto, dando l'impressione di out < in)
     if (text) {
       if (secondsBetween < 60) {
         text.textContent = `Turno chiuso alle ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}`;
       } else {
-        text.textContent = `Turno chiuso · ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}–${outAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}`;
+        text.textContent = `Turno chiuso · ${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}–${outAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}${outAuto ? " (uscita automatica)" : ""}`;
       }
     }
     // Counter: ore precise per turni > 1min, altrimenti secondi (0s comprende)
@@ -26207,7 +26727,9 @@ function renderTimesheetBanner() {
       ? formatTimesheetDuration(shift.workedMinutes * 60)
       : `${secondsBetween}s`;
     if (cta) {
-      cta.textContent = "Inizia nuovo turno";
+      // Lo stesso giorno il turno si riprende (un turno al giorno): l'entrata
+      // resta quella del mattino, il tempo fuori va in pausa.
+      cta.textContent = "Riprendi turno";
       cta.classList.remove("is-danger");
       cta.classList.add("is-primary");
     }
@@ -26216,7 +26738,9 @@ function renderTimesheetBanner() {
     stopTimesheetTicker();
   } else {
     if (icon) icon.textContent = "⚪";
-    if (text) text.textContent = "Fuori turno";
+    if (text) text.textContent = state.timesheet.autoPresence
+      ? "Fuori turno · si timbra da solo in capannone"
+      : "Fuori turno";
     if (counter) counter.textContent = "";
     if (cta) {
       cta.textContent = "Inizia turno";
@@ -26239,12 +26763,12 @@ function formatTimesheetDuration(totalSeconds) {
   return `${s}s`;
 }
 
-function startTimesheetTicker(clockInAt) {
+function startTimesheetTicker(clockInAt, breakMinutes = 0) {
   stopTimesheetTicker();
   const counter = document.getElementById("ts-banner-counter");
   if (!counter) return;
   const tick = () => {
-    const elapsed = (Date.now() - clockInAt.getTime()) / 1000;
+    const elapsed = (Date.now() - clockInAt.getTime()) / 1000 - Math.max(0, Number(breakMinutes) || 0) * 60;
     counter.textContent = formatTimesheetDuration(elapsed);
   };
   tick();
@@ -26267,7 +26791,9 @@ async function timesheetClockIn() {
       setGeoOptIn(wantsGeo);
     }
     const pos = await getCurrentPosition();
-    await apiFetch("/api/timesheet/clock-in", {
+    const reopening = Boolean(state.timesheet.currentShift?.clockOutAt);
+    if (isOfflineNow()) { await queueClockOffline("clock_in", pos); return; }
+    const data = await apiFetch("/api/timesheet/clock-in", {
       method: "POST",
       body: JSON.stringify({
         deviceId: getTimesheetDeviceId(),
@@ -26276,9 +26802,18 @@ async function timesheetClockIn() {
         gpsAccuracyM: pos?.accuracy,
       }),
     });
-    showToast("Buon lavoro! Turno iniziato.", "success");
+    if (data?.skipped === "shift_locked") {
+      showToast("Il turno di oggi è già stato approvato dall'ufficio: per cambiarlo chiedi a loro.", "warning", 6000);
+    } else if (data?.skipped === "already_open") {
+      showToast("Sei già in turno.", "info");
+    } else {
+      showToast(reopening ? "Bentornato! Turno ripreso, il tempo fuori conta come pausa." : "Buon lavoro! Turno iniziato.", "success");
+    }
     await refreshTimesheetState();
   } catch (err) {
+    if (Number(err?.status) === 0) {
+      try { await queueClockOffline("clock_in", null); return; } catch {}
+    }
     showToast(`Inizio turno fallito: ${err?.message || err}`, "error");
   } finally {
     state.timesheet.busy = false;
@@ -26291,6 +26826,7 @@ async function timesheetClockOut() {
   state.timesheet.busy = true;
   try {
     const pos = await getCurrentPosition();
+    if (isOfflineNow()) { await queueClockOffline("clock_out", pos); return; }
     const data = await apiFetch("/api/timesheet/clock-out", {
       method: "POST",
       body: JSON.stringify({
@@ -26303,7 +26839,8 @@ async function timesheetClockOut() {
     const worked = data?.shift?.workedMinutes || 0;
     const hh = Math.floor(worked / 60);
     const mm = worked % 60;
-    showToast(`🎉 Buon riposo! Oggi ${hh}h ${String(mm).padStart(2,"0")}min`, "success", 6000);
+    if (data?.skipped === "not_in_shift") showToast("Il turno era già chiuso.", "info");
+    else showToast(`🎉 Buon riposo! Oggi ${hh}h ${String(mm).padStart(2,"0")}min`, "success", 6000);
     await refreshTimesheetState();
     // Auto-refresh delle view timesheet aperte se siamo lì
     if (state.currentView === "timesheet-office" && typeof renderTimesheetOffice === "function") {
@@ -26312,6 +26849,9 @@ async function timesheetClockOut() {
       try { renderTimesheetMe(); } catch {}
     }
   } catch (err) {
+    if (Number(err?.status) === 0) {
+      try { await queueClockOffline("clock_out", null); return; } catch {}
+    }
     showToast(`Termine turno fallito: ${err?.message || err}`, "error");
   } finally {
     state.timesheet.busy = false;
@@ -26341,8 +26881,13 @@ function openTimesheetModal() {
         <div class="ts-modal-row">
           <span class="ts-modal-label">Entrata</span>
           <strong>${inAt.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</strong>
-          ${networkBadge}
+          ${sFlags.includes("auto_in") ? '<span class="ts-badge ok">automatica</span>' : networkBadge}
         </div>
+        ${Number(shift.breakMinutes) > 0 ? `
+        <div class="ts-modal-row">
+          <span class="ts-modal-label">Pausa</span>
+          <strong>${Math.floor(shift.breakMinutes / 60)}h ${String(shift.breakMinutes % 60).padStart(2,"0")}min</strong>
+        </div>` : ""}
         ${outAt ? `
         <div class="ts-modal-row">
           <span class="ts-modal-label">Uscita</span>
@@ -26456,10 +27001,70 @@ document.addEventListener("click", (ev) => {
   }
 });
 
+// ── Presenze automatiche dalla rete del capannone ──────────────────────────
+// Il portale aperto manda un battito ogni minuto; "activity" quando lo si usa
+// davvero (apertura, si torna sulla scheda, clic/tasti). Il server decide:
+// entrata al primo uso dalla connessione del capannone, uscita quando il
+// portale da lì resta chiuso oltre la tolleranza. Chi non è abilitato riceve
+// enabled:false e il battito si ferma per 10 minuti.
+const PRESENCE_PING_MS = 60_000;
+const presenceHeartbeat = { timer: 0, activityPending: true, lastActivitySentAt: 0, disabledUntil: 0, inFlight: false };
+
+function resetPresenceHeartbeat() {
+  presenceHeartbeat.activityPending = true;
+  presenceHeartbeat.lastActivitySentAt = 0;
+  presenceHeartbeat.disabledUntil = 0;
+}
+
+async function sendPresencePing() {
+  if (!isTimesheetEmployee() || presenceHeartbeat.inFlight) return;
+  if (navigator.onLine === false || Date.now() < presenceHeartbeat.disabledUntil) return;
+  const activity = presenceHeartbeat.activityPending;
+  presenceHeartbeat.activityPending = false;
+  presenceHeartbeat.inFlight = true;
+  try {
+    const data = await apiFetch("/api/presence/ping", { method: "POST", body: JSON.stringify({ activity }) });
+    if (!data?.enabled) {
+      presenceHeartbeat.disabledUntil = Date.now() + 10 * 60_000;
+      return;
+    }
+    if (activity) presenceHeartbeat.lastActivitySentAt = Date.now();
+    if (data.changed) await refreshTimesheetState();
+  } catch {
+    if (activity) presenceHeartbeat.activityPending = true;
+  } finally {
+    presenceHeartbeat.inFlight = false;
+  }
+}
+
+function notePresenceActivity() {
+  presenceHeartbeat.activityPending = true;
+  // Prima interazione dopo una pausa: si manda subito, così l'entrata o il
+  // rientro hanno l'ora giusta senza aspettare il battito del minuto.
+  if (Date.now() - presenceHeartbeat.lastActivitySentAt > 5 * 60_000) void sendPresencePing();
+}
+
+function startPresenceHeartbeat() {
+  if (presenceHeartbeat.timer) {
+    notePresenceActivity();
+    return;
+  }
+  presenceHeartbeat.timer = window.setInterval(() => { void sendPresencePing(); }, PRESENCE_PING_MS);
+  ["pointerdown", "keydown"].forEach((type) => {
+    document.addEventListener(type, notePresenceActivity, { capture: true, passive: true });
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") notePresenceActivity();
+  });
+  window.addEventListener("online", () => notePresenceActivity());
+  void sendPresencePing();
+}
+
 // Inizializzazione: dopo login, popola banner e refresh ogni 5 min
 function initTimesheet() {
   if (!isTimesheetEmployee()) return;
   refreshTimesheetState();
+  try { startPresenceHeartbeat(); } catch (err) { console.warn("[presence] start failed:", err); }
   // Poll meno frequente del ticker UI (ticker live, poll per sync state remoto)
   window.setInterval(() => {
     if (document.visibilityState === "visible") refreshTimesheetState();
@@ -26669,7 +27274,8 @@ function renderTimesheetDayDetail({
       <div><span>Ingresso</span><strong>${escapeHtml(formatTimesheetClock(shift?.clockInAt || shift?.clockIn))}</strong></div>
       <div><span>Uscita</span><strong>${escapeHtml(formatTimesheetClock(shift?.clockOutAt || shift?.clockOut))}</strong></div>
       <div><span>Ore lavorate</span><strong>${shift?.workedMinutes ? escapeHtml(formatMinutesToHM(shift.workedMinutes)) : "0h 00min"}</strong></div>
-      <div><span>Verifica sede</span><strong>${anomaly.offSite ? "Fuori sede" : anomaly.verified ? "GPS verificato" : "Non disponibile"}</strong></div>
+      ${Number(shift?.breakMinutes) > 0 ? `<div><span>Pausa</span><strong>${escapeHtml(formatMinutesToHM(shift.breakMinutes))}</strong></div>` : ""}
+      <div><span>Verifica sede</span><strong>${(shift?.anomalyFlags || shift?.anomalies || []).includes("auto_in") ? "Automatica dal capannone" : anomaly.offSite ? "Fuori sede" : anomaly.verified ? "GPS verificato" : "Non disponibile"}</strong></div>
     </div>
     ${absence?.note ? `<p class="ts-detail-note"><strong>Nota:</strong> ${escapeHtml(absence.note)}</p>` : ""}
     ${!absence && request ? `<p class="ts-detail-note"><strong>Richiesta ${escapeHtml((TIMESHEET_ABSENCE_LABELS[request.type] || "").toLowerCase())}${request.startTime && request.endTime ? ` (${escapeHtml(request.startTime)}–${escapeHtml(request.endTime)})` : ""}:</strong> ${request.note ? escapeHtml(request.note) : "nessuna nota"}</p>` : ""}
@@ -30055,9 +30661,154 @@ async function toggleSuspendedView(view) {
   }
 }
 
+// ── Presenze automatiche (Impostazioni → Utenti e squadre) ──────────────────
+// Reti del capannone, tolleranza e chi è abilitato: /api/presence/config.
+function presenceAutoState() {
+  if (!state.presenceAuto) state.presenceAuto = { data: null, loading: false, loadedAt: 0, error: "", busy: false };
+  return state.presenceAuto;
+}
+
+async function loadPresenceAutoConfig({ force = false } = {}) {
+  const pa = presenceAutoState();
+  if (state.currentUser?.role !== "office" || pa.loading) return;
+  if (!force && pa.data && Date.now() - pa.loadedAt < 30_000) return;
+  pa.loading = true;
+  try {
+    pa.data = await apiFetch("/api/presence/config");
+    pa.loadedAt = Date.now();
+    pa.error = "";
+  } catch (error) {
+    pa.error = error?.message === "postgres_required"
+      ? "Le presenze automatiche funzionano solo col database del portale online."
+      : `Impostazioni presenze non caricate: ${error?.message || error}`;
+  } finally {
+    pa.loading = false;
+    renderPresenceAutoEditor();
+  }
+}
+
+async function savePresenceAutoConfig(patch = {}, successText = "") {
+  const pa = presenceAutoState();
+  if (pa.busy || !pa.data) return;
+  pa.busy = true;
+  renderPresenceAutoEditor();
+  try {
+    pa.data = await apiFetch("/api/presence/config", { method: "POST", body: JSON.stringify(patch) });
+    pa.loadedAt = Date.now();
+    if (successText) showToast(successText, "success");
+  } catch (error) {
+    showToast(`Salvataggio non riuscito: ${error?.message || error}`, "error");
+  } finally {
+    pa.busy = false;
+    renderPresenceAutoEditor();
+  }
+}
+
+function renderPresenceAutoEditor() {
+  const box = document.getElementById("presence-auto-editor");
+  if (!box) return;
+  const panel = document.getElementById("presence-auto-panel");
+  const isOffice = state.currentUser?.role === "office";
+  if (panel) panel.hidden = !isOffice;
+  if (!isOffice) { box.innerHTML = ""; return; }
+  const pa = presenceAutoState();
+  if (!pa.data) {
+    box.innerHTML = `<p class="panel-note">${escapeHtml(pa.error || "Caricamento…")}</p>`;
+    if (!pa.loading && !pa.error) void loadPresenceAutoConfig();
+    return;
+  }
+  const { settings = {}, currentIp = "", currentInSede = false, employees = [] } = pa.data;
+  const networks = Array.isArray(settings.networks) ? settings.networks : [];
+  const disabled = pa.busy ? " disabled" : "";
+  const roleLabel = (role) => (role === "warehouse" ? "Magazzino" : "Ufficio");
+  const seenLabel = (employee) => {
+    if (employee.inSede) return "In capannone ora";
+    if (!employee.lastSeenAt) return "Mai visto dal capannone";
+    const at = new Date(employee.lastSeenAt);
+    return `Ultimo segnale dal capannone: ${formatDate(employee.lastSeenAt)} ${at.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`;
+  };
+  const toleranceOptions = [5, 10, 15, 20, 30, 45, 60];
+  const tolerance = Number(settings.toleranceMin) || 10;
+  box.innerHTML = `
+    <div class="presence-auto-block">
+      <strong class="presence-auto-title">Connessione del capannone</strong>
+      ${networks.length
+        ? `<div class="presence-auto-networks">${networks.map((network) => `
+            <span class="presence-auto-chip">${escapeHtml(network)}
+              <button type="button" class="presence-auto-chip-remove" data-action="presence-remove-network" data-network="${escapeAttr(network)}" aria-label="Togli ${escapeAttr(network)}"${disabled}>×</button>
+            </span>`).join("")}</div>`
+        : `<p class="panel-note presence-auto-warn">Nessuna connessione impostata: le presenze automatiche sono spente. Apri questa pagina da un computer del capannone e premi il pulsante qui sotto.</p>`}
+      <p class="panel-note">Questo dispositivo esce su internet come <strong>${escapeHtml(currentIp || "sconosciuto")}</strong>${currentInSede ? " · è la connessione del capannone ✓" : ""}.</p>
+      <div class="presence-auto-actions">
+        ${currentInSede || !currentIp ? "" : `<button type="button" class="ghost-button small-button" data-action="presence-add-current-network" data-network="${escapeAttr(currentIp)}"${disabled}>Usa la connessione a cui sono collegato ora</button>`}
+        <input class="text-input presence-auto-input" id="presence-auto-network-input" placeholder="Indirizzo o rete (es. 93.41.2.10)" inputmode="decimal" autocomplete="off" />
+        <button type="button" class="ghost-button small-button" data-action="presence-add-network"${disabled}>+ Aggiungi</button>
+      </div>
+    </div>
+    <div class="presence-auto-block">
+      <label class="presence-auto-title" for="presence-auto-tolerance">Uscita dopo</label>
+      <div class="presence-auto-actions">
+        <select class="text-input presence-auto-select" id="presence-auto-tolerance"${disabled}>
+          ${toleranceOptions.map((value) => `<option value="${value}"${value === tolerance ? " selected" : ""}>${value} minuti senza portale aperto dal capannone</option>`).join("")}
+        </select>
+      </div>
+      <p class="panel-note">L'ora d'uscita è quella in cui il portale si è chiuso, non quella del controllo. Un telefono bloccato in tasca conta come portale chiuso: per il magazzino va meglio un PC o tablet fisso con il portale aperto.</p>
+    </div>
+    <div class="presence-auto-block">
+      <strong class="presence-auto-title">Chi timbra in automatico</strong>
+      ${employees.length ? employees.map((employee) => `
+        <div class="suspended-view-row">
+          <div><strong>${escapeHtml(employee.name)}</strong><small>${escapeHtml(roleLabel(employee.role))} · ${escapeHtml(seenLabel(employee))}</small></div>
+          <button type="button" class="native-product-toggle ${employee.enabled ? "is-on" : "is-off"}" data-action="presence-toggle-user" data-user-id="${escapeAttr(employee.id)}" aria-pressed="${employee.enabled ? "true" : "false"}"${disabled}>${employee.enabled ? "Automatica" : "A mano"}</button>
+        </div>`).join("") : `<p class="panel-note">Nessun account di ufficio o magazzino attivo.</p>`}
+    </div>`;
+}
+
+function presenceAutoAddNetwork(value = "") {
+  const pa = presenceAutoState();
+  const network = String(value || "").trim();
+  if (!network || !pa.data) return;
+  const networks = Array.isArray(pa.data.settings?.networks) ? pa.data.settings.networks : [];
+  void savePresenceAutoConfig({ networks: [...networks, network] }, "Connessione del capannone salvata.");
+}
+
+function handlePresenceAutoAction(action, button) {
+  const pa = presenceAutoState();
+  if (!pa.data) return false;
+  const settings = pa.data.settings || {};
+  if (action === "presence-add-current-network") {
+    presenceAutoAddNetwork(button.dataset.network || "");
+    return true;
+  }
+  if (action === "presence-add-network") {
+    const input = document.getElementById("presence-auto-network-input");
+    const value = String(input?.value || "").trim();
+    if (!value) { input?.focus(); return true; }
+    presenceAutoAddNetwork(value);
+    return true;
+  }
+  if (action === "presence-remove-network") {
+    const network = button.dataset.network || "";
+    if (!window.confirm(`Togliere ${network}? Da quella connessione nessuno timbrerà più in automatico.`)) return true;
+    void savePresenceAutoConfig({ networks: (settings.networks || []).filter((item) => item !== network) }, "Connessione tolta.");
+    return true;
+  }
+  if (action === "presence-toggle-user") {
+    const userId = button.dataset.userId || "";
+    const current = Array.isArray(settings.userIds) ? settings.userIds : [];
+    const enabled = current.includes(userId);
+    const next = enabled ? current.filter((id) => id !== userId) : [...current, userId];
+    void savePresenceAutoConfig({ userIds: next }, enabled ? "Timbratura a mano." : "Timbratura automatica attiva.");
+    return true;
+  }
+  return false;
+}
+
 function renderSettings() {
   applySettingsSection();
   renderSuspendedViewsEditor();
+  renderPresenceAutoEditor();
+  if (state.currentUser?.role === "office") void loadPresenceAutoConfig();
   renderQuoteCostsEditor();
   ui.settingsForm.storeDomain.value = state.settings.storeDomain || "";
   ui.settingsForm.clientId.value = state.settings.clientId || "";
@@ -30706,6 +31457,17 @@ function applySessionPayload(session = {}) {
     : "all";
   if (userChanged) {
     resetInboxFlowSaveQueue();
+    // Presenze: banner, battito e impostazioni (solo ufficio) ripartono puliti.
+    state.presenceAuto = null;
+    if (state.timesheet) {
+      state.timesheet.currentShift = null;
+      state.timesheet.serverShift = undefined;
+      state.timesheet.autoPresence = false;
+    }
+    // Offline: banner e coda ripartono per il nuovo account (la coda resta
+    // sul dispositivo, legata a chi l'ha creata).
+    state.offline = null;
+    try { resetPresenceHeartbeat(); } catch {}
     state.leadIntakeStatus = null;
     leadIntakeStatusFetchedAt = 0;
     state.lastSalesGeneratorSignature = "";
@@ -30916,6 +31678,12 @@ function startSessionEvents() {
     handleRealtimeSessionRevision(payload?.revision);
   });
 
+  // Presenza automatica: il server ha timbrato entrata/uscita per me.
+  source.addEventListener("timesheet-changed", () => {
+    if (sessionEventsSource !== source) return;
+    void refreshTimesheetState();
+  });
+
   source.addEventListener("store-revision", (event) => {
     if (sessionEventsSource !== source) return;
     const payload = parseSessionEventPayload(event);
@@ -31020,6 +31788,10 @@ function applyFetchedSessionSnapshot(session, { renderMode = "current", enforceP
     return false;
   }
   applySessionPayload(session);
+  // Copia offline della sessione (al massimo una al minuto, vedi
+  // rememberOfflineRead). Solo una sessione completa: all'avvio qui passa
+  // anche quella in memoria col solo utente, che non deve sostituire i dati.
+  if (session?.user?.id && Array.isArray(session.orders)) rememberOfflineRead(String(session.user.id), "/api/session", session);
   if (enforcePasswordResetView && state.currentUser?.mustChangePassword) {
     state.currentView = "settings";
   }
@@ -31154,6 +31926,11 @@ function loadCachedSession() {
 }
 function clearSessionCache() {
   try { localStorage.removeItem(PSI_SESSION_CACHE_KEY); } catch {}
+  // Le copie offline dei dati dell'account escono con lui. La coda delle
+  // azioni non inviate invece resta (legata all'account) e riparte al
+  // prossimo accesso con lo stesso utente.
+  const userId = String(state.currentUser?.id || "");
+  if (userId) void kvClear(userId);
 }
 
 async function loadSession() {
@@ -31292,6 +32069,11 @@ function showApp() {
   // Sistema Presenze: inizializza banner + counter live per dipendenti
   // (warehouse, office). Crew esclusi (subappaltatori).
   try { initTimesheet(); } catch (err) { console.warn("[timesheet] init failed:", err); }
+  // Offline: banner, coda delle azioni fatte senza rete e invio automatico.
+  try {
+    initOfflineSupport();
+    void refreshOfflineOutboxSummary().then((summary) => { if (summary.pending) scheduleOfflineFlush(2000); });
+  } catch (err) { console.warn("[offline] init failed:", err); }
   // Mostra onboarding PWA al primo login crew/warehouse
   try { maybeShowOnboardingAfterLogin(); } catch {}
 }
@@ -36302,27 +37084,50 @@ async function saveInstallationExpense(event) {
     );
     return;
   }
-  const nextExpenses = [
-    ...getTravelExpensesForOrder(order),
-    {
-      id: `exp-${Date.now()}`,
-      category: String(form.get("category") || "other"),
-      amount,
-      date,
-      note: String(form.get("note") || "").trim(),
-      crew: getCrewForCurrentUser() || order.operations?.installation?.crew || activeCrewLabelFromFilter(),
-      createdAt: new Date().toISOString(),
-      createdBy: state.currentUser?.name || state.currentUser?.email || "",
-    },
-  ];
-  const saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
-    method: "POST",
-    body: JSON.stringify({
-      installation: {
-        travelExpenses: nextExpenses,
-      },
-    }),
-  });
+  const expense = {
+    id: `exp-${Date.now()}`,
+    category: String(form.get("category") || "other"),
+    amount,
+    date,
+    note: String(form.get("note") || "").trim(),
+    crew: getCrewForCurrentUser() || order.operations?.installation?.crew || activeCrewLabelFromFilter(),
+    createdAt: new Date().toISOString(),
+    createdBy: state.currentUser?.name || state.currentUser?.email || "",
+  };
+  // Senza rete: la spesa resta sul telefono e si aggiunge appena c'è campo.
+  // (Il server, al reinvio, la aggiunge una volta sola grazie all'id.)
+  const queueExpense = async () => {
+    await offlineQueueAction("expense-add", { orderId: order.id, expense }, composeClientName(order));
+    ui.installationExpenseForm.reset();
+    if (ui.installationExpenseForm.date) ui.installationExpenseForm.date.value = localDateKey();
+    renderCurrentViewOnly(state.currentView);
+    setStatus(ui.installationExpenseStatus, "success", state.lang === "it"
+      ? "Spesa salvata sul telefono: parte appena c'è rete."
+      : "Expense saved on the phone: it is sent when online.");
+  };
+  if (isOfflineNow()) {
+    await queueExpense();
+    return;
+  }
+  const nextExpenses = [...getTravelExpensesForOrder(order), expense];
+  let saved;
+  try {
+    saved = await apiFetch(`/api/orders/${encodeURIComponent(order.id)}/operations`, {
+      method: "POST",
+      body: JSON.stringify({
+        installation: {
+          travelExpenses: nextExpenses,
+        },
+      }),
+    });
+  } catch (error) {
+    // Rete caduta proprio adesso: la spesa non si perde, va in coda.
+    if (Number(error?.status) === 0 && error?.cause?.name !== "AbortError") {
+      await queueExpense();
+      return;
+    }
+    throw error;
+  }
   state.orders = state.orders.map((item) => (item.id === saved.id ? saved : item));
   if (ui.installationExpenseForm) {
     ui.installationExpenseForm.reset();
@@ -37391,6 +38196,24 @@ function handleGlobalClick(event) {
   }
   if (action === "settings-section") {
     setSettingsSection(button.dataset.section || "");
+    return;
+  }
+  if (action === "offline-toggle-list") {
+    offlineState().listOpen = !offlineState().listOpen;
+    renderOfflineBanner();
+    return;
+  }
+  if (action === "offline-retry") {
+    void flushOfflineOutbox({ force: true });
+    return;
+  }
+  if (action === "offline-drop-item") {
+    const itemId = Number(button.dataset.itemId);
+    if (!window.confirm("Togliere questa azione? Non verrà più inviata e andrà rifatta a mano.")) return;
+    void outboxDelete(itemId).then(() => refreshOfflineOutboxSummary()).then(() => refreshCurrentView({ allowDefer: true }));
+    return;
+  }
+  if (action.startsWith("presence-") && handlePresenceAutoAction(action, button)) {
     return;
   }
   if (action === "reload-dashboard-sales") {
@@ -39309,6 +40132,10 @@ ui.authForm.addEventListener("submit", async (event) => {
       }),
     });
     applySessionPayload(session);
+    // Offline: chi entra deve poter riaprire il portale anche senza rete
+    // (utente in memoria + copia dei dati), non solo dopo un ricaricamento.
+    saveSessionCache(session);
+    if (session?.user?.id && Array.isArray(session.orders)) rememberOfflineRead(String(session.user.id), "/api/session", session);
     if (state.currentUser?.mustChangePassword) state.currentView = "settings";
     ensureSelectedOrder();
     ui.authError.classList.add("hidden");
@@ -39355,6 +40182,12 @@ function performOptimisticLogout({ closeMobileMenu = false } = {}) {
   // Optimistic: tear down the UI immediately, send the API call in the
   // background. The cookie is HttpOnly so the server still owns the source
   // of truth — even if the request lags, the next reload will redirect.
+  const pendingOffline = Number(state.offline?.pending || 0);
+  if (pendingOffline > 0 && !window.confirm(pendingOffline === 1
+    ? "C'è 1 azione fatta senza rete non ancora inviata. Resta su questo dispositivo e parte al prossimo accesso con questo account. Uscire lo stesso?"
+    : `Ci sono ${pendingOffline} azioni fatte senza rete non ancora inviate. Restano su questo dispositivo e partono al prossimo accesso con questo account. Uscire lo stesso?`)) {
+    return;
+  }
   clearSessionCache();
   if (closeMobileMenu) state.mobileMenuOpen = false;
   applySessionPayload({});
@@ -42226,6 +43059,17 @@ document.addEventListener("click", (e) => {
     // ruoli scaricano direttamente come prima.
     void openQuoteSaveDialog();
   }
+});
+// Presenze automatiche: tolleranza d'uscita e "Invio" sull'indirizzo.
+document.addEventListener("change", (e) => {
+  if (e.target?.id !== "presence-auto-tolerance") return;
+  const minutes = Number(e.target.value) || 10;
+  void savePresenceAutoConfig({ toleranceMin: minutes }, `Uscita dopo ${minutes} minuti.`);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.target?.id !== "presence-auto-network-input") return;
+  e.preventDefault();
+  presenceAutoAddNetwork(e.target.value);
 });
 // Cambio del prodotto "Consigliato": rigenera l'anteprima evidenziando la card scelta
 document.addEventListener("change", (e) => {
