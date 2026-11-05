@@ -33,6 +33,25 @@ function extractFunction(source, name) {
   return "";
 }
 
+// Come extractFunction, ma salta i parametri con valori predefiniti
+// ("ctx = {}"): il corpo parte dalla graffa dopo la parentesi di chiusura.
+function extractFunctionBody(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) return "";
+  const bodyStart = source.indexOf(") {", start);
+  if (bodyStart < 0) return "";
+  let depth = 0;
+  for (let index = bodyStart + 2; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return "";
+}
+
 function escapeRegExp(value = "") {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -228,10 +247,11 @@ function auditNavigationTargets(appJs, indexHtml, failures) {
 }
 
 async function main() {
-  const [appJs, indexHtml, stylesCss] = await Promise.all([
+  const [appJs, indexHtml, stylesCss, serverJs] = await Promise.all([
     readText("app.js"),
     readText("index.html"),
     readText("styles.css"),
+    readText("server.js"),
   ]);
   const failures = [];
 
@@ -297,6 +317,57 @@ async function main() {
   assertIncludes(subViewFunction, 'setView("installations")', "Pose subview open does not navigate to the main Pose board", failures);
   assertIncludes(subViewFunction, 'openMobileDrillDetail("installations", orderId)', "Pose subview open does not open mobile drill detail", failures);
   assertIncludes(appJs, "openInstallationOrderFromSubView(orderId)", "select-order-install listener does not call openInstallationOrderFromSubView()", failures);
+
+  // Inbox Ordini (5 nov 2026): la testata "Materiali" del pannello laterale non
+  // deve tornare sticky: trasparente, scorrendo finiva sopra il nome cliente.
+  const prepHeadRules = stylesCss.match(/#orders \.panel-subsection-prep \.subsection-head\s*{[^}]*}/g) || [];
+  if (!prepHeadRules.length) failures.push("Inbox Ordini: regola .panel-subsection-prep .subsection-head mancante");
+  if (prepHeadRules.some((rule) => /position:\s*sticky/i.test(rule))) {
+    failures.push("Inbox Ordini: la testata Materiali è tornata sticky (si sovrappone al nome scorrendo)");
+  }
+  // Menu ⋯ (Richieste, mobile): all'apertura va riallineato dentro lo schermo.
+  assertIncludes(appJs, 'details.classList.contains("action-overflow")', "Menu ⋯: manca il riallineamento dentro lo schermo all'apertura", failures);
+
+  // Pose: griglia squadre (ufficio) al posto della striscia dei 7 giorni.
+  assertIncludes(indexHtml, 'id="installation-crew-grid"', "Pose: manca la griglia squadre #installation-crew-grid", failures);
+  assertIncludes(appJs, "function buildInstallationCrewGrid", "Pose: manca buildInstallationCrewGrid()", failures);
+
+  // Presenze automatiche dalla rete del capannone (nov 2026).
+  assertIncludes(indexHtml, 'id="presence-auto-editor"', "Presenze automatiche: manca la scheda in Impostazioni", failures);
+  assertIncludes(extractFunction(appJs, "initTimesheet"), "startPresenceHeartbeat()", "Presenze automatiche: il battito del portale non parte con il banner presenze", failures);
+  assertIncludes(appJs, 'source.addEventListener("timesheet-changed"', "Presenze automatiche: il banner non si aggiorna quando il server timbra", failures);
+  const sessionApply = extractFunctionBody(appJs, "applySessionPayload");
+  assertIncludes(sessionApply, "state.presenceAuto = null", "Cambio account: le impostazioni presenze dell'ufficio restano in memoria", failures);
+  assertIncludes(sessionApply, "resetPresenceHeartbeat()", "Cambio account: il battito presenze non riparte pulito", failures);
+  // Turni: un turno al giorno. Il rientro riapre senza toccare l'entrata e
+  // l'uscita non si registra due volte (prima: entrata sovrascritta, seconda
+  // uscita impossibile).
+  const insertTimeEntry = extractFunctionBody(serverJs, "insertTimeEntry");
+  assertIncludes(insertTimeEntry, "WHERE id = $3 AND clock_out_at IS NOT NULL", "Turni: la riapertura del turno nello stesso giorno non è più protetta", failures);
+  assertIncludes(insertTimeEntry, "entry_type = 'clock_out_void'", "Turni: la vecchia uscita non viene annullata alla riapertura", failures);
+  assertIncludes(insertTimeEntry, "AND clock_out_at IS NULL`", "Turni: l'uscita può essere registrata due volte", failures);
+  assertIncludes(insertTimeEntry, "workedMinutesWithBreaks(", "Turni: le ore lavorate non tolgono più la pausa", failures);
+  assertIncludes(serverJs, "- COALESCE(break_minutes, 0))", "Turni: la rettifica dell'ufficio non toglie più la pausa", failures);
+
+  // Offline (nov 2026): copie dei dati, coda delle azioni, invio al ritorno.
+  assertIncludes(indexHtml, 'id="offline-banner"', "Offline: manca la striscia #offline-banner", failures);
+  const apiFetchBody = extractFunctionBody(appJs, "apiFetch");
+  assertIncludes(apiFetchBody, "isOfflineCacheablePath(path)", "Offline: le letture non vengono più copiate sul dispositivo", failures);
+  assertIncludes(apiFetchBody, "kvGet(offlineCacheKey(userId, path))", "Offline: senza rete non si usa più l'ultima copia", failures);
+  ["job-event", "expense-add", "clock", "work-report"].forEach((type) => {
+    assertMatches(appJs, new RegExp(`async "?${type.replace("-", "\\-")}"?\\(item\\)`), `Offline: manca l'invio differito per ${type}`, failures);
+  });
+  assertIncludes(extractFunctionBody(appJs, "registerJobEvent"), "queueJobEventOffline(orderId, payload)", "Offline: i passaggi di cantiere senza rete non vanno più in coda", failures);
+  {
+    const expenseBody = extractFunctionBody(appJs, "saveInstallationExpense");
+    assertIncludes(expenseBody, "isOfflineNow()", "Offline: la spesa senza rete non va più in coda", failures);
+    assertIncludes(expenseBody, "Number(error?.status) === 0", "Offline: la spesa salvata mentre cade la rete dà errore invece di andare in coda", failures);
+  }
+  assertIncludes(extractFunctionBody(appJs, "markOnlineConfirmed"), "force: true", "Offline: al ritorno della rete la coda aspetta il prossimo tentativo invece di partire subito", failures);
+  assertIncludes(extractFunctionBody(appJs, "clearSessionCache"), "kvClear(userId)", "Offline: all'uscita le copie dei dati dell'account restano sul dispositivo", failures);
+  assertIncludes(extractFunctionBody(appJs, "applySessionPayload"), "state.offline = null", "Cambio account: lo stato offline del precedente resta in memoria", failures);
+  assertIncludes(serverJs, "findJobEventByClientRef(currentUser.id, clientRef)", "Offline: un passaggio inviato due volte verrebbe registrato due volte", failures);
+  assertIncludes(extractFunctionBody(serverJs, "insertTimeEntry"), "client_ref = $2", "Offline: una timbratura inviata due volte verrebbe registrata due volte", failures);
 
   if (failures.length) {
     console.error("UI contract audit failed:");

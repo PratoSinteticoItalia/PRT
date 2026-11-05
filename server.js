@@ -44,6 +44,10 @@ import {
 import { buildSnapshot, snapshotFileName } from "./lib/backup.js";
 import { resolveMarketingAssetInputs } from "./lib/marketing-assets.js";
 import {
+  normalizePresenceSettings, normalizeIp, isCompanyNetwork, decidePresenceAction,
+  reopenBreakMinutes, workedMinutesWithBreaks, PRESENCE_AUTO_SOURCE,
+} from "./lib/office-presence.js";
+import {
   buildInstagramSingleImageParams,
   isMarketingStoryFormat,
   validateMarketingStoryPublish,
@@ -1568,6 +1572,23 @@ async function ensureRelationalSchema() {
       CREATE INDEX IF NOT EXISTS time_shifts_user_idx ON time_shifts (user_id, shift_date DESC);
       CREATE INDEX IF NOT EXISTS time_shifts_date_idx ON time_shifts (shift_date DESC);
       CREATE INDEX IF NOT EXISTS time_shifts_status_idx ON time_shifts (status);
+      -- Pausa in minuti: quando un turno chiuso si riapre nello stesso giorno
+      -- (rientro), l'entrata resta quella del mattino e il tempo fuori finisce
+      -- qui. Ore lavorate = uscita - entrata - pausa.
+      ALTER TABLE time_shifts ADD COLUMN IF NOT EXISTS break_minutes INTEGER NOT NULL DEFAULT 0;
+
+      -- Presenze automatiche dalla rete del capannone (lib/office-presence.js).
+      -- Una riga per dipendente: ultimo segnale dal portale aperto su quella
+      -- rete (last_seen_at, ogni minuto) e uso vero e proprio (activity).
+      CREATE TABLE IF NOT EXISTS presence_state (
+        user_id TEXT PRIMARY KEY,
+        day DATE,
+        first_activity_at TIMESTAMPTZ,
+        last_activity_at TIMESTAMPTZ,
+        last_seen_at TIMESTAMPTZ,
+        last_ip TEXT,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
 
       -- Richieste di rettifica timbratura: dipendente segnala anomalia, office approva
       CREATE TABLE IF NOT EXISTS time_rectification_requests (
@@ -1672,6 +1693,13 @@ async function ensureRelationalSchema() {
       -- «Correggi» un passaggio: ora e km si possono sistemare dopo.
       ALTER TABLE job_events ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
       ALTER TABLE job_events ADD COLUMN IF NOT EXISTS edited_by TEXT;
+      -- Offline (nov 2026): passaggi e timbrature fatti senza rete arrivano
+      -- dopo, con la loro ora vera. client_ref = codice scelto dal telefono:
+      -- se l'invio si ripete (risposta persa) non si registra due volte.
+      ALTER TABLE job_events ADD COLUMN IF NOT EXISTS client_ref TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS job_events_client_ref_idx ON job_events (user_id, client_ref) WHERE client_ref IS NOT NULL;
+      ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS client_ref TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS time_entries_client_ref_idx ON time_entries (user_id, client_ref) WHERE client_ref IS NOT NULL;
     `);
     // Ricerca contatti su pezzi di parola: indice a trigrammi. Facoltativo:
     // senza pg_trgm la ricerca funziona lo stesso, solo senza indice.
@@ -3889,6 +3917,7 @@ function dbRowToTimeShift(row) {
     clockInAt: row.clock_in_at ? new Date(row.clock_in_at).toISOString() : null,
     clockOutAt: row.clock_out_at ? new Date(row.clock_out_at).toISOString() : null,
     workedMinutes: row.worked_minutes != null ? Number(row.worked_minutes) : null,
+    breakMinutes: Number(row.break_minutes) || 0,
     status: row.status || "open",
     anomalyFlags: Array.isArray(row.anomaly_flags) ? row.anomaly_flags : [],
     notes: row.notes || "",
@@ -3908,6 +3937,23 @@ function shiftDateForTimestamp(ts = new Date()) {
   }).format(date);
 }
 
+// Ora di un'azione fatta offline e inviata dopo: valida solo se non è nel
+// futuro (5 minuti di margine sull'orologio del telefono) e non più vecchia di
+// 7 giorni. Fuori da qui → null (chi chiama risponde con un errore chiaro).
+const OFFLINE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+function parseOfflineOccurredAt(value, now = Date.now()) {
+  if (!value) return null;
+  const date = new Date(value);
+  const ms = date.getTime();
+  if (!Number.isFinite(ms) || ms > now + 5 * 60_000 || ms < now - OFFLINE_MAX_AGE_MS) return null;
+  return date;
+}
+
+function normalizeClientRef(value) {
+  const ref = String(value || "").trim();
+  return /^[A-Za-z0-9_-]{8,80}$/.test(ref) ? ref : "";
+}
+
 /**
  * Inserisce una time_entry e aggiorna/crea il time_shifts della giornata.
  * Idempotente: se l'utente è già in turno e tenta clock_in, ritorna lo shift esistente.
@@ -3921,6 +3967,18 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
   const pool = await getPgPool();
   const occurredAt = ctx.occurredAt ? new Date(ctx.occurredAt) : new Date();
   let shiftDate = shiftDateForTimestamp(occurredAt);
+  const clientRef = normalizeClientRef(ctx.clientRef);
+  if (clientRef) {
+    // Timbratura offline già arrivata (l'invio si è ripetuto): niente doppioni.
+    const dup = await pool.query(
+      `SELECT id FROM time_entries WHERE user_id = $1 AND client_ref = $2 LIMIT 1`,
+      [String(userId), clientRef],
+    );
+    if (dup.rowCount) {
+      const current = await pool.query(`SELECT * FROM time_shifts WHERE user_id = $1 AND shift_date = $2 LIMIT 1`, [String(userId), shiftDate]);
+      return { skipped: "duplicate", shift: dbRowToTimeShift(current.rows[0] || null) };
+    }
+  }
   const networkTag = classifyNetwork(ctx.ipAddress);
   const lat = ctx.lat != null ? Number(ctx.lat) : null;
   const lng = ctx.lng != null ? Number(ctx.lng) : null;
@@ -3966,14 +4024,56 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
   if (entryType === "clock_out" && (!shift || !shift.clock_in_at || shift.clock_out_at)) {
     return { skipped: "not_in_shift", shift: shift ? dbRowToTimeShift(shift) : null };
   }
+  // Rientro nello stesso giorno su un turno già chiuso ("Inizia nuovo turno"
+  // o presenza automatica): il turno si RIAPRE. Un turno al giorno per
+  // persona (UNIQUE user_id, shift_date): prima l'entrata veniva sovrascritta
+  // e restava la vecchia uscita, e la seconda uscita falliva (not_in_shift).
+  // Ora l'entrata resta quella del mattino e il tempo fuori va in pausa.
+  const reopening = entryType === "clock_in" && shift && shift.clock_in_at && shift.clock_out_at;
+  if (reopening && !["open", "closed"].includes(String(shift.status || "closed"))) {
+    return { skipped: "shift_locked", shift: dbRowToTimeShift(shift) };
+  }
+  if (reopening && occurredAt.getTime() <= new Date(shift.clock_out_at).getTime()) {
+    return { skipped: "before_clock_out", shift: dbRowToTimeShift(shift) };
+  }
+  const isAuto = String(ctx.source || "") === PRESENCE_AUTO_SOURCE;
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    if (reopening) {
+      const breakAdd = reopenBreakMinutes(new Date(shift.clock_out_at).getTime(), occurredAt.getTime());
+      // Via i segni dell'uscita annullata; "auto_in" resta solo se riapre la
+      // presenza automatica (riaperto a mano = turno a mano, non si tocca più).
+      const keptFlags = (Array.isArray(shift.anomaly_flags) ? shift.anomaly_flags : [])
+        .filter((flag) => !String(flag).endsWith("_out") && (isAuto || flag !== "auto_in"));
+      const reopened = await client.query(
+        `UPDATE time_shifts
+            SET clock_out_at = NULL,
+                clock_out_entry_id = NULL,
+                worked_minutes = NULL,
+                status = 'open',
+                break_minutes = COALESCE(break_minutes, 0) + $1,
+                anomaly_flags = $2::jsonb,
+                updated_at = NOW()
+          WHERE id = $3 AND clock_out_at IS NOT NULL`,
+        [breakAdd, JSON.stringify(keptFlags), shift.id],
+      );
+      if (!reopened.rowCount) {
+        await client.query("ROLLBACK");
+        return { skipped: "already_open", shift: dbRowToTimeShift(shift) };
+      }
+      if (shift.clock_out_entry_id) {
+        await client.query(
+          `UPDATE time_entries SET entry_type = 'clock_out_void' WHERE id = $1 AND entry_type = 'clock_out'`,
+          [shift.clock_out_entry_id],
+        );
+      }
+    }
     const entryRes = await client.query(
       `INSERT INTO time_entries
-        (user_id, entry_type, source, occurred_at, notes, ip_address, user_agent, device_id, network_tag, lat, lng, gps_accuracy_m, geo_tag)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        (user_id, entry_type, source, occurred_at, notes, ip_address, user_agent, device_id, network_tag, lat, lng, gps_accuracy_m, geo_tag, client_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         String(userId),
@@ -3989,18 +4089,20 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
         lng,
         gpsAccuracyM,
         geoTag,
+        clientRef || null,
       ],
     );
     const newEntry = entryRes.rows[0];
 
     // Aggiorna/crea time_shifts
     // Flags geo (preferito) + network (legacy): consente fallback graduale
-    if (entryType === "clock_in") {
+    if (entryType === "clock_in" && !reopening) {
       const flags = [];
       if (geoTag === "off_site") flags.push("geo_off_site_in");
       else if (geoTag === "verified") flags.push("geo_verified_in");
       if (networkTag === "off_network") flags.push("off_network_in");
       else if (networkTag === "in_office") flags.push("in_office_in");
+      if (isAuto) flags.push("auto_in");
       await client.query(
         `INSERT INTO time_shifts (user_id, shift_date, clock_in_at, clock_in_entry_id, status, anomaly_flags, updated_at)
          VALUES ($1, $2, $3, $4, 'open', $5::jsonb, NOW())
@@ -4009,18 +4111,20 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
            clock_in_entry_id = EXCLUDED.clock_in_entry_id,
            status = 'open',
            anomaly_flags = (time_shifts.anomaly_flags || EXCLUDED.anomaly_flags),
-           updated_at = NOW()`,
+           updated_at = NOW()
+         WHERE time_shifts.clock_in_at IS NULL`,
         [String(userId), shiftDate, occurredAt.toISOString(), newEntry.id, JSON.stringify(flags)],
       );
-    } else { // clock_out
+    } else if (entryType === "clock_out") {
       const inTime = shift?.clock_in_at ? new Date(shift.clock_in_at) : null;
-      const worked = inTime ? Math.max(0, Math.round((occurredAt - inTime) / 60000)) : null;
+      const worked = inTime ? workedMinutesWithBreaks(inTime.getTime(), occurredAt.getTime(), shift.break_minutes) : null;
       const flags = Array.isArray(shift.anomaly_flags) ? [...shift.anomaly_flags] : [];
       if (geoTag === "off_site") flags.push("geo_off_site_out");
       else if (geoTag === "verified") flags.push("geo_verified_out");
       if (networkTag === "off_network") flags.push("off_network_out");
       else if (networkTag === "in_office") flags.push("in_office_out");
-      await client.query(
+      if (isAuto) flags.push("auto_out");
+      const closed = await client.query(
         `UPDATE time_shifts
             SET clock_out_at = $1,
                 clock_out_entry_id = $2,
@@ -4028,9 +4132,15 @@ async function insertTimeEntry(userId, entryType, ctx = {}) {
                 status = 'closed',
                 anomaly_flags = $4::jsonb,
                 updated_at = NOW()
-          WHERE user_id = $5 AND shift_date = $6`,
+          WHERE user_id = $5 AND shift_date = $6 AND clock_out_at IS NULL`,
         [occurredAt.toISOString(), newEntry.id, worked, JSON.stringify(flags), String(userId), shiftDate],
       );
+      // Chiuso nel frattempo da un'altra richiesta (es. presenza automatica e
+      // pulsante nello stesso istante): niente uscita doppia.
+      if (!closed.rowCount) {
+        await client.query("ROLLBACK");
+        return { skipped: "not_in_shift", shift: dbRowToTimeShift(shift) };
+      }
     }
     await client.query("COMMIT");
     const refreshedShift = await pool.query(
@@ -4060,6 +4170,212 @@ async function getCurrentShiftForUser(userId) {
     [String(userId), today],
   );
   return dbRowToTimeShift(rows[0] || null);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Presenze automatiche dalla rete del capannone (regole in lib/office-presence.js)
+//
+// Il portale aperto manda un battito ogni minuto (/api/presence/ping), con
+// "activity" quando la persona lo sta usando (apertura, torna sulla scheda,
+// clic/tasti). Solo i battiti che arrivano dalla connessione del capannone
+// contano. Tutto sta in Postgres (presence_state), così funziona anche con
+// più istanze del server e dopo un riavvio; il giro ogni minuto prende un
+// lock condiviso per non timbrare due volte.
+// ─────────────────────────────────────────────────────────────────────────────
+const PRESENCE_SETTINGS_KEY = "presence_auto";
+const PRESENCE_LOCK_KEY = 41051733;
+const PRESENCE_TICK_MS = 60_000;
+// Battito ogni minuto; i browser rallentano le schede in secondo piano fino a
+// circa un battito al minuto, quindi "collegato" = battito negli ultimi 3 min.
+const PRESENCE_CONNECTED_WINDOW_MS = 3 * 60_000;
+// Dopo un riavvio i portali aperti si ricollegano: per 3 minuti non si chiude.
+const PRESENCE_WARMUP_MS = 3 * 60_000;
+const presenceProcessStartedAt = Date.now();
+let presenceSettingsCache = { value: null, at: 0 };
+let presenceJobRunning = false;
+
+// Indirizzo da cui arriva il browser. Dietro Cloudflare quello vero è
+// CF-Connecting-IP (lo scrive Cloudflare, il browser non può inventarlo);
+// X-Forwarded-For si può falsificare dal browser, resta solo come ripiego
+// quando Cloudflare non c'è (in locale).
+function presenceClientIp(req) {
+  const cf = String(req.headers["cf-connecting-ip"] || "").trim();
+  return normalizeIp(cf || extractClientIp(req));
+}
+
+function romeHourOf(ms) {
+  return Number(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Rome", hour: "2-digit", hour12: false,
+  }).format(new Date(ms))) % 24;
+}
+
+async function getPresenceSettings({ fresh = false } = {}) {
+  if (!USE_POSTGRES) return normalizePresenceSettings({});
+  if (!fresh && presenceSettingsCache.value && Date.now() - presenceSettingsCache.at < 30_000) {
+    return presenceSettingsCache.value;
+  }
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query("SELECT value FROM settings WHERE key = $1", [PRESENCE_SETTINGS_KEY]);
+  const value = normalizePresenceSettings(rows[0]?.value || {});
+  presenceSettingsCache = { value, at: Date.now() };
+  return value;
+}
+
+async function savePresenceSettings(next) {
+  const value = normalizePresenceSettings(next);
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  await pool.query(
+    `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = $2::jsonb, updated_at = NOW()`,
+    [PRESENCE_SETTINGS_KEY, JSON.stringify(value)],
+  );
+  presenceSettingsCache = { value, at: Date.now() };
+  return value;
+}
+
+function presenceEnabledFor(settings, userId) {
+  return Boolean(settings.networks.length && settings.userIds.includes(String(userId || "")));
+}
+
+async function recordPresencePing(userId, ip, { activity = false } = {}) {
+  const pool = await getPgPool();
+  const today = shiftDateForTimestamp(new Date());
+  await pool.query(
+    `INSERT INTO presence_state (user_id, day, first_activity_at, last_activity_at, last_seen_at, last_ip, updated_at)
+     VALUES ($1, $2::date, CASE WHEN $3::boolean THEN NOW() END, CASE WHEN $3::boolean THEN NOW() END, NOW(), $4, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       first_activity_at = CASE
+         WHEN presence_state.day IS DISTINCT FROM $2::date THEN (CASE WHEN $3::boolean THEN NOW() END)
+         WHEN $3::boolean AND presence_state.first_activity_at IS NULL THEN NOW()
+         ELSE presence_state.first_activity_at END,
+       day = $2::date,
+       last_activity_at = CASE WHEN $3::boolean THEN NOW() ELSE presence_state.last_activity_at END,
+       last_seen_at = NOW(),
+       last_ip = $4,
+       updated_at = NOW()`,
+    [String(userId), today, Boolean(activity), String(ip || "") || null],
+  );
+}
+
+function presenceShiftFromRow(row) {
+  if (!row) return null;
+  const flags = Array.isArray(row.anomaly_flags) ? row.anomaly_flags : [];
+  return {
+    date: String(row.shift_date || ""),
+    clockInAt: row.clock_in_at ? new Date(row.clock_in_at).getTime() : null,
+    clockOutAt: row.clock_out_at ? new Date(row.clock_out_at).getTime() : null,
+    status: String(row.status || "open"),
+    inAuto: flags.includes("auto_in"),
+    outAuto: flags.includes("auto_out"),
+  };
+}
+
+const PRESENCE_ENTRY_NOTES = {
+  clock_in: "Entrata automatica (rete del capannone)",
+  reopen: "Rientro automatico (rete del capannone)",
+  clock_out: "Uscita automatica (rete del capannone)",
+};
+
+async function applyPresenceAction(userId, action, state) {
+  const entryType = action.type === "clock_out" ? "clock_out" : "clock_in";
+  const result = await insertTimeEntry(userId, entryType, {
+    source: PRESENCE_AUTO_SOURCE,
+    occurredAt: new Date(action.at),
+    ipAddress: state?.last_ip || "",
+    userAgent: "presenza automatica",
+    notes: PRESENCE_ENTRY_NOTES[action.type] || "",
+  });
+  if (!result || result.skipped) return false;
+  writeAuditLog("timesheet", String(userId), `auto_${action.type}`, {
+    at: new Date(action.at).toISOString(),
+    source: PRESENCE_AUTO_SOURCE,
+  }, "presenza-automatica").catch(() => {});
+  return true;
+}
+
+async function processPresenceForUser(userId, settings, now = Date.now()) {
+  const pool = await getPgPool();
+  const todayKey = shiftDateForTimestamp(new Date(now));
+  const { rows: stateRows } = await pool.query(`SELECT * FROM presence_state WHERE user_id = $1`, [String(userId)]);
+  const state = stateRows[0] || null;
+  const ms = (value) => (value ? new Date(value).getTime() : null);
+  const lastSeen = ms(state?.last_seen_at);
+  const connected = lastSeen != null && now - lastSeen <= PRESENCE_CONNECTED_WINDOW_MS;
+  const common = {
+    now,
+    todayKey,
+    dayKeyOf: (value) => shiftDateForTimestamp(new Date(value)),
+    hourOf: romeHourOf,
+    connected,
+    firstActivityAt: state && String(state.day || "") === todayKey ? ms(state.first_activity_at) : null,
+    lastActivityAt: ms(state?.last_activity_at),
+    disconnectedAt: connected ? null : lastSeen,
+    toleranceMs: settings.toleranceMin * 60_000,
+    warmupUntil: presenceProcessStartedAt + PRESENCE_WARMUP_MS,
+  };
+  let changed = false;
+  // 1) Turno automatico rimasto aperto da un giorno precedente.
+  const stale = await pool.query(
+    `SELECT * FROM time_shifts
+      WHERE user_id = $1 AND shift_date < $2::date AND clock_in_at IS NOT NULL
+        AND clock_out_at IS NULL AND status = 'open' AND anomaly_flags ? 'auto_in'
+      ORDER BY shift_date DESC LIMIT 1`,
+    [String(userId), todayKey],
+  );
+  if (stale.rowCount) {
+    const action = decidePresenceAction({ ...common, shift: presenceShiftFromRow(stale.rows[0]) });
+    if (action?.type === "clock_out") changed = (await applyPresenceAction(userId, action, state)) || changed;
+  }
+  // 2) Oggi.
+  const todayRes = await pool.query(
+    `SELECT * FROM time_shifts WHERE user_id = $1 AND shift_date = $2::date LIMIT 1`,
+    [String(userId), todayKey],
+  );
+  const action = decidePresenceAction({ ...common, shift: presenceShiftFromRow(todayRes.rows[0] || null) });
+  if (action) changed = (await applyPresenceAction(userId, action, state)) || changed;
+  if (changed) broadcastToUser(userId, "timesheet-changed", { source: PRESENCE_AUTO_SOURCE });
+  return changed;
+}
+
+async function processPresenceOnce() {
+  if (!USE_POSTGRES || presenceJobRunning) return;
+  presenceJobRunning = true;
+  let lockClient = null;
+  let locked = false;
+  try {
+    const settings = await getPresenceSettings({ fresh: true });
+    if (!settings.networks.length || !settings.userIds.length) return;
+    const pool = await getPgPool();
+    lockClient = await pool.connect();
+    locked = Boolean((await lockClient.query("SELECT pg_try_advisory_lock($1) AS locked", [PRESENCE_LOCK_KEY])).rows[0]?.locked);
+    if (!locked) return;
+    const store = await readJson(STORE_PATH, {});
+    const users = new Map((Array.isArray(store.users) ? store.users : []).map((user) => [String(user.id), user]));
+    for (const userId of settings.userIds) {
+      const user = users.get(userId);
+      if (!user || !userIsEmployee(user) || user.status !== "active") continue;
+      try {
+        await processPresenceForUser(userId, settings);
+      } catch (err) {
+        console.warn(`[presence] ${userId}:`, err?.message || err);
+      }
+    }
+  } finally {
+    if (lockClient) {
+      if (locked) await lockClient.query("SELECT pg_advisory_unlock($1)", [PRESENCE_LOCK_KEY]).catch(() => {});
+      lockClient.release();
+    }
+    presenceJobRunning = false;
+  }
+}
+
+function startPresenceMonitor(intervalMs = PRESENCE_TICK_MS) {
+  setInterval(() => {
+    processPresenceOnce().catch((err) => console.error("[presence] tick failed:", err?.message || err));
+  }, intervalMs).unref?.();
+  console.log(`[presence] presenze automatiche: controllo ogni ${Math.round(intervalMs / 1000)}s`);
 }
 
 async function listShiftsForUser(userId, { from, to } = {}) {
@@ -4101,7 +4417,7 @@ async function getMonthlyStatsForUser(userId, year, month) {
   const fromDate = `${year}-${monthStr}-01`;
   const toDate = `${year}-${monthStr}-${String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`;
   const { rows } = await pool.query(
-    `SELECT shift_date, worked_minutes, clock_in_at, clock_out_at, anomaly_flags
+    `SELECT shift_date, worked_minutes, break_minutes, clock_in_at, clock_out_at, anomaly_flags
        FROM time_shifts
       WHERE user_id = $1 AND shift_date >= $2 AND shift_date <= $3
       ORDER BY shift_date ASC`,
@@ -4118,6 +4434,7 @@ async function getMonthlyStatsForUser(userId, year, month) {
     days: rows.map((r) => ({
       date: r.shift_date instanceof Date ? r.shift_date.toISOString().slice(0, 10) : String(r.shift_date),
       workedMinutes: Number(r.worked_minutes) || 0,
+      breakMinutes: Number(r.break_minutes) || 0,
       clockIn: r.clock_in_at ? new Date(r.clock_in_at).toISOString() : null,
       clockOut: r.clock_out_at ? new Date(r.clock_out_at).toISOString() : null,
       anomalies: Array.isArray(r.anomaly_flags) ? r.anomaly_flags : [],
@@ -4487,8 +4804,8 @@ async function insertJobEvent(orderId, eventType, ctx = {}) {
   const { rows } = await pool.query(
     `INSERT INTO job_events
       (order_id, installation_id, event_type, occurred_at, user_id, user_name, crew_name,
-       lat, lng, gps_accuracy_m, photos, notes, source, ip_address, user_agent, device_id, meta)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17::jsonb)
+       lat, lng, gps_accuracy_m, photos, notes, source, ip_address, user_agent, device_id, meta, client_ref)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16,$17::jsonb,$18)
      RETURNING *`,
     [
       String(orderId),
@@ -4508,9 +4825,22 @@ async function insertJobEvent(orderId, eventType, ctx = {}) {
       String(ctx.userAgent || "").slice(0, 500) || null,
       String(ctx.deviceId || "") || null,
       JSON.stringify(normalizeJobEventMeta(eventType, ctx.meta)),
+      normalizeClientRef(ctx.clientRef) || null,
     ],
   );
   return dbRowToJobEvent(rows[0]);
+}
+
+async function findJobEventByClientRef(userId, clientRef) {
+  const ref = normalizeClientRef(clientRef);
+  if (!USE_POSTGRES || !ref || !userId) return null;
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query(
+    `SELECT * FROM job_events WHERE user_id = $1 AND client_ref = $2 LIMIT 1`,
+    [String(userId), ref],
+  );
+  return rows[0] ? dbRowToJobEvent(rows[0]) : null;
 }
 
 async function voidJobEvent(orderId, eventId, voidedBy) {
@@ -15315,7 +15645,17 @@ async function handleApi(req, res, url) {
     try {
       const body = await readBody(req);
       if (!JOB_EVENT_TYPES.has(body.eventType)) return sendJson(res, 400, { error: "invalid_eventType" });
+      // Passaggio fatto senza rete: arriva dopo con la sua ora e il suo codice.
+      const offlineAt = body.occurredAt ? parseOfflineOccurredAt(body.occurredAt) : null;
+      if (body.occurredAt && !offlineAt) return sendJson(res, 400, { error: "occurred_at_out_of_range" });
+      const clientRef = normalizeClientRef(body.clientRef);
+      if (clientRef) {
+        const existing = await findJobEventByClientRef(currentUser.id, clientRef);
+        if (existing) return sendJson(res, 200, existing);
+      }
       const event = await insertJobEvent(orderId, body.eventType, {
+        occurredAt: offlineAt || undefined,
+        clientRef,
         installationId: body.installationId,
         userId: currentUser.id,
         userName: currentUser.name || currentUser.email || "",
@@ -15325,7 +15665,7 @@ async function handleApi(req, res, url) {
         gpsAccuracyM: body.gpsAccuracyM,
         photos: body.photos,
         notes: body.notes,
-        source: body.source || "manual",
+        source: offlineAt ? "offline" : (body.source || "manual"),
         ipAddress: extractClientIp(req),
         userAgent: req.headers["user-agent"] || "",
         deviceId: body.deviceId,
@@ -16339,6 +16679,83 @@ async function handleApi(req, res, url) {
   // Ruoli: warehouse, office (dipendenti). Crew esclusi.
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ── Presenze automatiche dalla rete del capannone ──
+  // POST /api/presence/ping { activity } → battito del portale aperto.
+  if (url.pathname === "/api/presence/ping" && req.method === "POST") {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (!USE_POSTGRES || !userIsEmployee(currentUser)) return sendJson(res, 200, { enabled: false });
+    try {
+      const body = await readBody(req).catch(() => ({}));
+      const settings = await getPresenceSettings();
+      if (!presenceEnabledFor(settings, currentUser.id)) return sendJson(res, 200, { enabled: false });
+      const ip = presenceClientIp(req);
+      const inSede = isCompanyNetwork(ip, settings.networks);
+      let changed = false;
+      if (inSede) {
+        const activity = Boolean(body?.activity);
+        await recordPresencePing(currentUser.id, ip, { activity });
+        // Arrivo o rientro: si timbra subito, senza aspettare il giro del minuto.
+        if (activity) changed = await processPresenceForUser(currentUser.id, settings).catch(() => false);
+      }
+      return sendJson(res, 200, { enabled: true, inSede, changed });
+    } catch (err) {
+      console.warn("[presence] ping failed:", err?.message || err);
+      return sendJson(res, 200, { enabled: true, inSede: false, changed: false });
+    }
+  }
+
+  // GET/POST /api/presence/config → impostazioni (solo ufficio).
+  if (url.pathname === "/api/presence/config" && ["GET", "POST"].includes(req.method)) {
+    if (!currentUser) return sendJson(res, 401, { error: "unauthorized" });
+    if (currentUser.role !== "office") return sendJson(res, 403, { error: "forbidden" });
+    if (!USE_POSTGRES) return sendJson(res, 400, { error: "postgres_required" });
+    try {
+      let settings;
+      if (req.method === "POST") {
+        const body = await readBody(req);
+        const current = await getPresenceSettings({ fresh: true });
+        settings = await savePresenceSettings({
+          networks: Array.isArray(body.networks) ? body.networks : current.networks,
+          userIds: Array.isArray(body.userIds) ? body.userIds : current.userIds,
+          toleranceMin: body.toleranceMin ?? current.toleranceMin,
+        });
+        writeAuditLog("settings", PRESENCE_SETTINGS_KEY, "update", settings, currentUser.email || null).catch(() => {});
+      } else {
+        settings = await getPresenceSettings({ fresh: true });
+      }
+      const store = await readJson(STORE_PATH, {});
+      const employees = (Array.isArray(store.users) ? store.users : [])
+        .filter((user) => userIsEmployee(user) && user.status === "active")
+        .map((user) => ({ id: String(user.id), name: String(user.name || user.email || ""), role: user.role }));
+      const pool = await getPgPool();
+      const { rows } = await pool.query(
+        `SELECT user_id, last_seen_at, last_activity_at FROM presence_state WHERE user_id = ANY($1::text[])`,
+        [employees.map((employee) => employee.id)],
+      );
+      const now = Date.now();
+      const stateByUser = new Map(rows.map((row) => [String(row.user_id), row]));
+      const currentIp = presenceClientIp(req);
+      return sendJson(res, 200, {
+        settings,
+        currentIp,
+        currentInSede: isCompanyNetwork(currentIp, settings.networks),
+        employees: employees.map((employee) => {
+          const row = stateByUser.get(employee.id);
+          const lastSeenAt = row?.last_seen_at ? new Date(row.last_seen_at).toISOString() : null;
+          return {
+            ...employee,
+            enabled: settings.userIds.includes(employee.id),
+            lastSeenAt,
+            inSede: Boolean(lastSeenAt && now - new Date(lastSeenAt).getTime() <= PRESENCE_CONNECTED_WINDOW_MS),
+          };
+        }),
+      });
+    } catch (err) {
+      console.error("[presence] config failed:", err?.message || err);
+      return sendJson(res, err?.status || 500, { error: String(err?.message || "presence_config_failed") });
+    }
+  }
+
   // POST /api/timesheet/clock-in
   // Body: { deviceId, notes }   (deviceId è UUID generato lato client una sola volta)
   if (url.pathname === "/api/timesheet/clock-in" && req.method === "POST") {
@@ -16346,8 +16763,13 @@ async function handleApi(req, res, url) {
     if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
     try {
       const body = await readBody(req);
+      // Timbratura fatta offline: arriva dopo con la sua ora e il suo codice.
+      const offlineAt = body.occurredAt ? parseOfflineOccurredAt(body.occurredAt) : null;
+      if (body.occurredAt && !offlineAt) return sendJson(res, 400, { error: "occurred_at_out_of_range" });
       const result = await insertTimeEntry(currentUser.id, "clock_in", {
-        source: "manual",
+        source: offlineAt ? "offline" : "manual",
+        occurredAt: offlineAt || undefined,
+        clientRef: body.clientRef,
         ipAddress: extractClientIp(req),
         userAgent: String(req.headers["user-agent"] || ""),
         deviceId: String(body.deviceId || ""),
@@ -16374,8 +16796,13 @@ async function handleApi(req, res, url) {
     if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
     try {
       const body = await readBody(req);
+      // Timbratura fatta offline: arriva dopo con la sua ora e il suo codice.
+      const offlineAt = body.occurredAt ? parseOfflineOccurredAt(body.occurredAt) : null;
+      if (body.occurredAt && !offlineAt) return sendJson(res, 400, { error: "occurred_at_out_of_range" });
       const result = await insertTimeEntry(currentUser.id, "clock_out", {
-        source: "manual",
+        source: offlineAt ? "offline" : "manual",
+        occurredAt: offlineAt || undefined,
+        clientRef: body.clientRef,
         ipAddress: extractClientIp(req),
         userAgent: String(req.headers["user-agent"] || ""),
         deviceId: String(body.deviceId || ""),
@@ -16402,8 +16829,12 @@ async function handleApi(req, res, url) {
     if (!userIsEmployee(currentUser)) return sendJson(res, 403, { error: "forbidden_role" });
     try {
       const shift = await getCurrentShiftForUser(currentUser.id);
+      const presenceSettings = await getPresenceSettings().catch(() => null);
+      const autoPresence = Boolean(presenceSettings && presenceEnabledFor(presenceSettings, currentUser.id));
       return sendJson(res, 200, {
         shift,
+        autoPresence,
+        autoPresenceInSede: autoPresence ? isCompanyNetwork(presenceClientIp(req), presenceSettings.networks) : false,
         networkConfigured: _companyCidrs.length > 0,
         geofenceConfigured: COMPANY_OFFICE_LAT != null && COMPANY_OFFICE_LNG != null,
       });
@@ -16884,7 +17315,7 @@ async function handleApi(req, res, url) {
         );
         await pool.query(
           `UPDATE time_shifts SET worked_minutes =
-             EXTRACT(EPOCH FROM (clock_out_at - clock_in_at))::int / 60
+             GREATEST(0, EXTRACT(EPOCH FROM (clock_out_at - clock_in_at))::int / 60 - COALESCE(break_minutes, 0))
            WHERE user_id = $1 AND shift_date = $2 AND clock_in_at IS NOT NULL AND clock_out_at IS NOT NULL`,
           [entry.user_id, shiftDate],
         );
@@ -21879,6 +22310,9 @@ async function startRelationalBackgroundServices(reason = "schema-ok") {
   // Avviso "mancata timbratura": solo Postgres (come tutto il modulo timesheet).
   try { startAttendanceMonitor(60 * 60_000); }
   catch (err) { console.warn("[attendance-monitor] start failed:", err?.message || err); }
+  // Presenze automatiche dalla rete del capannone: solo Postgres.
+  try { startPresenceMonitor(); }
+  catch (err) { console.warn("[presence] start failed:", err?.message || err); }
   // Scalda la cache dei commerciali assegnabili (catalogo "sales_assignment"):
   // senza questo, all'avvio l'assegnazione CRM a un commerciale aggiunto
   // dall'ufficio (oltre a Ivan/Gabriele) fallirebbe finché non arriva la
