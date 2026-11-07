@@ -31070,6 +31070,39 @@ html[data-palette="chiaro"] .sidebar :is(.sidebar-section, .sidebar-divider-line
 }
 
 /* Impostazioni → Presenze automatiche dalla rete del capannone (nov 2026) */
+/* Squadre in Impostazioni: registro unico (rinomina, non più attive). */
+.crew-reg-intro { margin: 0 0 12px; }
+.crew-reg-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.crew-reg-row { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--ui-line, #e5e9e4); border-radius: 12px; background: #fff; }
+.crew-reg-row.is-archived { background: #f7f8f7; }
+.crew-reg-row.is-archived .crew-reg-main strong { color: var(--ui-muted, #6b7b72); }
+.crew-reg-row.is-busy { opacity: 0.6; }
+.crew-reg-main { flex: 1 1 200px; min-width: 0; display: grid; gap: 2px; }
+.crew-reg-main strong { overflow-wrap: anywhere; }
+.crew-reg-main small, .crew-reg-hint { color: var(--ui-muted, #6b7b72); font-size: 12px; }
+.crew-reg-capacity, .crew-add-capacity { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-muted, #6b7b72); font-size: 12px; }
+.crew-reg-capacity input { width: 76px; min-height: 34px; padding: 4px 8px; border: 1px solid var(--ui-line, #d9dfda); border-radius: 8px; font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
+.crew-reg-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.crew-reg-actions .danger { color: #b42318; }
+.crew-reg-rename { display: flex; flex: 1 1 260px; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.crew-reg-rename .text-input { flex: 1 1 180px; min-width: 0; }
+.crew-reg-hint { flex-basis: 100%; padding-left: 20px; }
+.crew-reg-archived { display: grid; gap: 8px; margin-top: 4px; }
+.crew-reg-archived summary { padding: 6px 2px; font-weight: 700; cursor: pointer; }
+.crew-reg-archived summary small { margin-left: 6px; color: var(--ui-muted, #6b7b72); font-weight: 400; }
+.crew-add-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.crew-add-form > .text-input { flex: 1 1 200px; min-width: 0; }
+.crew-add-capacity .text-input { width: 90px; }
+#installations .sg-crew small.sg-crew-archived { grid-column: 2; font-style: italic; }
+@media (max-width: 720px) {
+  /* Telefono: nome e lavori in alto, sotto mq/g e pulsanti affiancati. */
+  .crew-reg-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+  .crew-reg-row > .crew-dot { align-self: start; margin-top: 6px; }
+  .crew-reg-capacity, .crew-reg-actions, .crew-reg-rename, .crew-reg-hint { grid-column: 2; }
+  .crew-reg-hint { padding-left: 0; }
+  .crew-reg-actions .ghost-button, .crew-reg-rename .primary-button, .crew-reg-rename .ghost-button { width: auto; flex: 0 0 auto; }
+  .crew-add-form .ghost-button { width: auto; }
+}
 .presence-auto-editor { display: grid; gap: 14px; margin-top: 8px; }
 .presence-auto-block { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--ui-line, #e5e9e4); }
 .presence-auto-block:first-child { padding-top: 0; border-top: 0; }

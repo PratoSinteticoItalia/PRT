@@ -19,8 +19,8 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400&display=swap"
       rel="stylesheet"
     />
-    <link rel="preload" href="./styles.css?v=20261105-presenze-offline-5" as="style" />
-    <link rel="stylesheet" href="./styles.css?v=20261105-presenze-offline-5" />
+    <link rel="preload" href="./styles.css?v=20261107-squadre-registro-2" as="style" />
+    <link rel="stylesheet" href="./styles.css?v=20261107-squadre-registro-2" />
   </head>
   <body>
     <div id="shell-launch" class="shell-launch" aria-hidden="true">
@@ -2316,17 +2316,22 @@
                 <div id="crew-expense-monthly-report" class="detail-stack"></div>
               </section>
 
-              <!-- Pannello Crew -->
+              <!-- Squadre: registro unico (lib/crew-registry.js) -->
               <section class="panel" id="crew-catalog-panel" data-settings-section="team">
                 <div class="panel-head">
-                  <h2>Squadre operative</h2>
+                  <div>
+                    <p class="panel-eyebrow">Squadre</p>
+                    <h2>Squadre operative</h2>
+                  </div>
                 </div>
-                <div id="crew-catalog-list" class="catalog-list"></div>
-                <form id="crew-catalog-form" class="inline-form">
-                  <input class="text-input" name="value" placeholder="Nome squadra (es. Alpha)" required />
-                  <input class="text-input" name="capacity" type="number" placeholder="Capacità mq/giorno" value="120" />
+                <p class="panel-note crew-reg-intro">Compaiono in Pose, nei sopralluoghi e nei menu di assegnazione. «Rinomina» corregge il nome dappertutto, anche sulle pose già fatte. «Non più attiva» toglie la squadra da calendario e menu ma ne conserva lo storico.</p>
+                <div id="crew-registry-editor" class="crew-reg-list"></div>
+                <form id="crew-catalog-form" class="inline-form crew-add-form">
+                  <input class="text-input" name="value" placeholder="Nome della squadra nuova" maxlength="60" required />
+                  <label class="crew-add-capacity"><input class="text-input" name="capacity" type="number" min="1" max="5000" value="120" aria-label="Metri quadri al giorno" /><span>mq/g</span></label>
                   <button type="submit" class="ghost-button small-button">+ Aggiungi</button>
                 </form>
+                <div id="crew-registry-status" class="panel-note hidden"></div>
               </section>
 
               <!-- Pannello Assegnazioni CRM -->
@@ -2830,7 +2835,7 @@
     </dialog>
 
     <script src="./shipping-tariffs.js"></script>
-    <script src="./vendor/signature_pad.umd.min.js?v=20261105-presenze-offline-5" defer></script>
-    <script src="./app.js?v=20261105-presenze-offline-5" type="module"></script>
+    <script src="./vendor/signature_pad.umd.min.js?v=20261107-squadre-registro-2" defer></script>
+    <script src="./app.js?v=20261107-squadre-registro-2" type="module"></script>
   </body>
 </html>

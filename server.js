@@ -48,6 +48,10 @@ import {
   reopenBreakMinutes, workedMinutesWithBreaks, PRESENCE_AUTO_SOURCE,
 } from "./lib/office-presence.js";
 import {
+  crewKey as crewRegistryKey, cleanCrewName, normalizeCrewRegistry, findCrewEntry,
+  planCrewRename, renameCrewInInstallation, renameCrewInPlanner, crewUsageTotal,
+} from "./lib/crew-registry.js";
+import {
   buildInstagramSingleImageParams,
   isMarketingStoryFormat,
   validateMarketingStoryPublish,
@@ -4972,6 +4976,238 @@ async function saveCoveragePlannerToDb(data) {
   } catch (err) {
     console.warn("[db] saveCoveragePlannerToDb:", err?.message);
   }
+}
+
+// ——— Registro squadre (lib/crew-registry.js) ———
+// Righe "crew" di catalog_items: attiva = squadra operativa, non attiva =
+// «non più attiva» (storico conservato). Arriva a tutti con la sessione, così
+// ogni pagina e ogni dispositivo vede subito le stesse squadre.
+let _crewRegistryCache = null;
+let _crewRegistryCacheAt = 0;
+const CREW_REGISTRY_CACHE_MS = 30_000;
+
+function invalidateCrewRegistryCache() { _crewRegistryCache = null; _crewRegistryCacheAt = 0; }
+
+async function readCrewCatalogRows() {
+  if (!USE_POSTGRES) return [];
+  await ensureRelationalSchema();
+  const pool = await getPgPool();
+  const { rows } = await pool.query(
+    "SELECT value, label, metadata, active FROM catalog_items WHERE category='crew' ORDER BY position, created_at",
+  );
+  return rows;
+}
+
+async function listCrewRegistryFromDb({ fresh = false } = {}) {
+  if (!USE_POSTGRES) return [];
+  if (!fresh && _crewRegistryCache && Date.now() - _crewRegistryCacheAt < CREW_REGISTRY_CACHE_MS) return _crewRegistryCache;
+  try {
+    const registry = normalizeCrewRegistry(await readCrewCatalogRows());
+    _crewRegistryCache = registry;
+    _crewRegistryCacheAt = Date.now();
+    return registry;
+  } catch (err) {
+    console.warn("[db] listCrewRegistryFromDb:", err?.message);
+    return _crewRegistryCache || [];
+  }
+}
+
+// Quanto ha lavorato ogni squadra (per chiave del nome): pose, account,
+// sopralluoghi, sistemazioni, verbali, passaggi di cantiere. Serve a mostrare
+// lo storico e a permettere «Elimina» solo a chi non ha mai lavorato.
+const CREW_USAGE_TABLES = [
+  ["site_surveys", "crew_name", "surveys"],
+  ["service_repairs", "assigned_crew", "repairs"],
+  ["work_completion_reports", "crew_name", "reports"],
+  ["job_events", "crew_name", "events"],
+];
+
+async function collectCrewUsage(store) {
+  const usage = new Map();
+  const touch = (rawName) => {
+    const name = cleanCrewName(rawName);
+    const key = crewRegistryKey(name);
+    if (!key) return null;
+    let entry = usage.get(key);
+    if (!entry) {
+      entry = { key, names: [], pose: 0, lastPoseDate: "", accounts: 0, surveys: 0, repairs: 0, reports: 0, events: 0 };
+      usage.set(key, entry);
+    }
+    if (!entry.names.includes(name)) entry.names.push(name);
+    return entry;
+  };
+  const ordersById = new Map();
+  (store.orders || []).forEach((order) => { if (order?.id) ordersById.set(String(order.id), order.operations?.installation || {}); });
+  if (USE_POSTGRES) {
+    try {
+      const pool = await getPgPool();
+      const { rows } = await pool.query("SELECT id, installation FROM orders WHERE COALESCE(installation->>'crew', '') <> ''");
+      rows.forEach((row) => { if (!ordersById.has(String(row.id))) ordersById.set(String(row.id), row.installation || {}); });
+    } catch (err) {
+      console.warn("[crews] usage orders:", err?.message);
+    }
+  }
+  ordersById.forEach((installation) => {
+    const entry = touch(installation?.crew);
+    if (!entry) return;
+    entry.pose += 1;
+    const day = String(installation?.installEndDate || installation?.installDate || "").slice(0, 10);
+    if (day > entry.lastPoseDate) entry.lastPoseDate = day;
+  });
+  (store.users || []).forEach((user) => {
+    if (user?.role !== "crew") return;
+    const entry = touch(user.crewName || user.name);
+    if (entry) entry.accounts += 1;
+  });
+  if (USE_POSTGRES) {
+    const pool = await getPgPool();
+    for (const [table, column, field] of CREW_USAGE_TABLES) {
+      try {
+        const { rows } = await pool.query(
+          `SELECT ${column} AS name, COUNT(*)::int AS n FROM ${table} WHERE COALESCE(${column}, '') <> '' GROUP BY ${column}`,
+        );
+        rows.forEach((row) => {
+          const entry = touch(row.name);
+          if (entry) entry[field] += Number(row.n) || 0;
+        });
+      } catch (err) {
+        console.warn(`[crews] usage ${table}:`, err?.message);
+      }
+    }
+  }
+  return usage;
+}
+
+async function readCoveragePlannerForCrews(store) {
+  return normalizeCoveragePlanner((await getCoveragePlannerFromDb()) || store.coveragePlanner || {});
+}
+
+async function saveCoveragePlannerForCrews(store, planner) {
+  store.coveragePlanner = normalizeCoveragePlanner(planner);
+  await saveCoveragePlannerToDb(store.coveragePlanner);
+}
+
+// Rinomina (o unisce) una squadra dappertutto: registro, ordini (anche quelli
+// già fatti), account squadra, sopralluoghi, sistemazioni, verbali, passaggi
+// di cantiere, vecchi lavori, assenze.
+async function renameCrewEverywhere(store, { from = "", to = "", actor = null } = {}) {
+  const rawRows = USE_POSTGRES ? await readCrewCatalogRows() : [];
+  const registry = normalizeCrewRegistry(rawRows);
+  const plan = planCrewRename(registry, from, to);
+  if (plan.error) return { error: plan.error };
+  const { fromKey, toKey, finalName } = plan;
+  const counts = { orders: 0, accounts: 0, surveys: 0, repairs: 0, reports: 0, events: 0, jobs: 0 };
+
+  if (USE_POSTGRES) {
+    const pool = await getPgPool();
+    // 1. Registro: resta una riga sola, col nome finale.
+    const keepValue = plan.target?.value || plan.source?.value || "";
+    const rowKey = (row) => crewRegistryKey(row.label || row.value);
+    const dropValues = rawRows
+      .filter((row) => [fromKey, toKey].includes(rowKey(row)) && row.value !== keepValue)
+      .map((row) => row.value);
+    if (dropValues.length) {
+      await pool.query("DELETE FROM catalog_items WHERE category='crew' AND value = ANY($1)", [dropValues]);
+    }
+    const metadataPatch = { ...(plan.capacity ? { capacity: plan.capacity } : {}), ...(plan.archived ? {} : { archivedAt: null }) };
+    if (keepValue) {
+      await pool.query(
+        `UPDATE catalog_items SET value=$2, label=$2, active=$3, metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb
+         WHERE category='crew' AND value=$1`,
+        [keepValue, finalName, !plan.archived, JSON.stringify(metadataPatch)],
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO catalog_items (category, value, label, position, metadata, active)
+         VALUES ('crew', $1, $1, 0, $2::jsonb, TRUE)
+         ON CONFLICT (category, value) DO UPDATE SET label=EXCLUDED.label, active=TRUE`,
+        [finalName, JSON.stringify({ capacity: 120 })],
+      );
+    }
+  }
+
+  // 2. Ordini: blob e database.
+  const changedOrderIds = new Set();
+  (store.orders || []).forEach((order, index) => {
+    const installation = order?.operations?.installation;
+    const result = renameCrewInInstallation(installation, fromKey, finalName);
+    if (!result.changed) return;
+    store.orders[index] = { ...order, operations: { ...(order.operations || {}), installation: result.installation } };
+    changedOrderIds.add(String(order.id));
+  });
+  (store.jobs || []).forEach((job, index) => {
+    if (job && typeof job.crew === "string" && job.crew && crewRegistryKey(job.crew) === fromKey && job.crew !== finalName) {
+      store.jobs[index] = { ...job, crew: finalName };
+      counts.jobs += 1;
+    }
+  });
+  if (USE_POSTGRES) {
+    const pool = await getPgPool();
+    const { rows } = await pool.query("SELECT id, installation, operations_json FROM orders");
+    for (const row of rows) {
+      const inst = renameCrewInInstallation(row.installation || {}, fromKey, finalName);
+      const opsInst = renameCrewInInstallation(row.operations_json?.installation || null, fromKey, finalName);
+      if (!inst.changed && !opsInst.changed) continue;
+      const operations = opsInst.changed ? { ...(row.operations_json || {}), installation: opsInst.installation } : row.operations_json;
+      await pool.query(
+        "UPDATE orders SET installation=$2::jsonb, operations_json=$3::jsonb, updated_at=NOW() WHERE id=$1",
+        [row.id, JSON.stringify(inst.installation || {}), JSON.stringify(operations || {})],
+      );
+      changedOrderIds.add(String(row.id));
+    }
+    invalidateOrdersDbCache();
+  }
+  counts.orders = changedOrderIds.size;
+
+  // 3. Account squadra.
+  (store.users || []).forEach((user, index) => {
+    if (user?.role !== "crew") return;
+    let changed = false;
+    const next = { ...user };
+    if (next.crewName && crewRegistryKey(next.crewName) === fromKey && next.crewName !== finalName) { next.crewName = finalName; changed = true; }
+    if (next.name && crewRegistryKey(next.name) === fromKey) {
+      // «Squadra Alpha» → «Squadra Alfa Verde»: la parola davanti resta.
+      const prefix = String(next.name).match(/^\s*(squadra|team|crew)\s+/i);
+      const renamed = prefix && !new RegExp(`^${prefix[1]}\\b`, "i").test(finalName)
+        ? `${prefix[1]} ${finalName}`
+        : finalName;
+      if (renamed !== next.name) { next.name = renamed; changed = true; }
+    }
+    if (changed) { store.users[index] = next; counts.accounts += 1; }
+  });
+
+  // 4. Tabelle con il nome della squadra.
+  if (USE_POSTGRES) {
+    const pool = await getPgPool();
+    const tables = [...CREW_USAGE_TABLES, ["jobs", "crew", "jobs"]];
+    for (const [table, column, field] of tables) {
+      try {
+        const { rows } = await pool.query(`SELECT DISTINCT ${column} AS name FROM ${table} WHERE COALESCE(${column}, '') <> ''`);
+        const values = rows.map((row) => row.name).filter((name) => crewRegistryKey(name) === fromKey && name !== finalName);
+        if (!values.length) continue;
+        const result = await pool.query(`UPDATE ${table} SET ${column}=$1 WHERE ${column} = ANY($2)`, [finalName, values]);
+        counts[field] = (counts[field] || 0) + (result.rowCount || 0);
+      } catch (err) {
+        console.warn(`[crews] rename ${table}:`, err?.message);
+      }
+    }
+  }
+
+  // 5. Assenze e colori del pianificatore.
+  const plannerResult = renameCrewInPlanner(await readCoveragePlannerForCrews(store), fromKey, finalName);
+  if (plannerResult.changed) await saveCoveragePlannerForCrews(store, plannerResult.planner);
+
+  invalidateCrewRegistryCache();
+  await writeJson(STORE_PATH, store);
+  writeAuditLog("crew", finalName, plan.merge ? "merge" : "rename", { from: cleanCrewName(from), to: finalName, counts }, actor).catch(() => {});
+  return {
+    ok: true,
+    name: finalName,
+    merged: plan.merge,
+    counts,
+    registry: await listCrewRegistryFromDb({ fresh: true }),
+    coveragePlanner: store.coveragePlanner,
+  };
 }
 
 async function writeAuditLog(entityType, entityId, action, diff, userId) {
@@ -14337,12 +14573,13 @@ async function handleApi(req, res, url) {
         return sum + msgs.length;
       }, 0);
     })() : 0;
-    const [sqlOrdersResult, sqlInventoryResult, sqlJobsResult, sqlSalesRequestsResult, sqlCoveragePlannerResult] = await Promise.allSettled([
+    const [sqlOrdersResult, sqlInventoryResult, sqlJobsResult, sqlSalesRequestsResult, sqlCoveragePlannerResult, crewRegistryResult] = await Promise.allSettled([
       getOrdersFromDb(),
       getInventoryFromDb(),
       getJobsFromDb(),
       getSalesRequestsFromDb(),
       getCoveragePlannerFromDb(),
+      currentUser ? listCrewRegistryFromDb() : Promise.resolve([]),
     ]);
     // Backfill proattivo requestedHeight: eseguito una sola volta dopo lo startup
     backfillSalesRequestHeightToDb().catch(() => {});
@@ -14464,6 +14701,9 @@ async function handleApi(req, res, url) {
       coveragePlanner: currentUser ? normalizeCoveragePlanner(
         (sqlCoveragePlannerResult.status === "fulfilled" && sqlCoveragePlannerResult.value) || store.coveragePlanner
       ) : normalizeCoveragePlanner(),
+      // Squadre (attive e non più attive): stesse per tutte le pagine e tutti
+      // i dispositivi, senza dover aprire Impostazioni.
+      crewRegistry: currentUser && crewRegistryResult.status === "fulfilled" ? crewRegistryResult.value : [],
       shopifySettings: currentUser ? serializeShopifySettings(store.shopifySettings) : {},
       users: sessionRole === "office" ? store.users.map(sanitizeUser) : [],
       communicationTargets: currentUser ? getAllowedCommunicationTargets(store, currentUser) : [],
@@ -20264,28 +20504,17 @@ async function handleApi(req, res, url) {
       && nextRole === "crew"
       && previousCrewName
       && nextCrewName
-      && normalizeCrewName(previousCrewName) !== normalizeCrewName(nextCrewName)
+      && crewRegistryKey(previousCrewName) !== crewRegistryKey(nextCrewName)
     ) {
-      store.orders = store.orders.map((order) => {
-        const assignedCrew = String(order.operations?.installation?.crew || "").trim();
-        if (!assignedCrew || normalizeCrewName(assignedCrew) !== normalizeCrewName(previousCrewName)) return order;
-        return {
-          ...order,
-          operations: normalizeOperations(
-            {
-              ...order,
-              operations: {
-                ...(order.operations || {}),
-                installation: {
-                  ...(order.operations?.installation || {}),
-                  crew: nextCrewName,
-                },
-              },
-            },
-            store.jobs.find((job) => job.sourceOrderId === order.id) || null,
-          ),
-        };
-      });
+      // Nome squadra cambiato dall'account: stessa rinomina completa di
+      // Impostazioni → Squadre (registro, pose nel blob e nel database,
+      // sopralluoghi, verbali, passaggi, assenze). Prima cambiava solo le pose
+      // del blob e i vecchi nomi restavano in giro.
+      const renameResult = await renameCrewEverywhere(store, { from: previousCrewName, to: nextCrewName, actor: currentUser.email || null });
+      // Se il nome nuovo era già un'altra squadra, le due si sono unite: vale il suo nome.
+      updated.crewName = renameResult?.name || nextCrewName;
+      const refreshed = store.users.findIndex((item) => item.id === userId);
+      if (refreshed >= 0) store.users[refreshed] = { ...store.users[refreshed], crewName: updated.crewName, name: updated.name };
     }
     pushSecurityEvent(store, "account_updated", currentUser.email, `Aggiornato account ${nextEmail}.`, {
       email: nextEmail,
@@ -21582,6 +21811,144 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, fresh);
   }
 
+  // --- Squadre (registro: lib/crew-registry.js) ---
+  // GET: registro + quanto ha lavorato ogni squadra (anche quelle trovate solo
+  // negli ordini o negli account, per poterle rinominare o archiviare).
+  if (url.pathname === "/api/crews" && req.method === "GET") {
+    if (requireOffice(res, currentUser)) return;
+    const [registry, usage] = await Promise.all([listCrewRegistryFromDb({ fresh: true }), collectCrewUsage(store)]);
+    return sendJson(res, 200, { registry, usage: [...usage.values()] });
+  }
+
+  if (url.pathname === "/api/crews" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "database_required" });
+    const body = await readBody(req);
+    const name = cleanCrewName(body?.name);
+    if (!crewRegistryKey(name)) return sendJson(res, 400, { error: "crew_name_required" });
+    const capacity = Math.round(Number(body?.capacity) || 120);
+    const existing = findCrewEntry(await listCrewRegistryFromDb({ fresh: true }), name);
+    if (existing) {
+      return sendJson(res, 409, { error: existing.archived ? "crew_archived_exists" : "crew_exists", name: existing.name });
+    }
+    const pool = await getPgPool();
+    await pool.query(
+      `INSERT INTO catalog_items (category, value, label, position, metadata, active)
+       VALUES ('crew', $1, $1, 0, $2::jsonb, TRUE)
+       ON CONFLICT (category, value) DO UPDATE SET label=EXCLUDED.label, metadata=EXCLUDED.metadata, active=TRUE`,
+      [name, JSON.stringify({ capacity: capacity > 0 ? capacity : 120 })],
+    );
+    invalidateCrewRegistryCache();
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("crew", name, "create", { capacity }, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, name, registry: await listCrewRegistryFromDb({ fresh: true }) });
+  }
+
+  if (url.pathname === "/api/crews/rename" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "database_required" });
+    const body = await readBody(req);
+    const result = await renameCrewEverywhere(store, { from: body?.from, to: body?.to, actor: currentUser.email || null });
+    if (result.error) return sendJson(res, 400, result);
+    return sendJson(res, 200, result);
+  }
+
+  // Non più attiva / di nuovo attiva. Lo storico non si tocca.
+  if (url.pathname === "/api/crews/archive" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "database_required" });
+    const body = await readBody(req);
+    const name = cleanCrewName(body?.name);
+    const key = crewRegistryKey(name);
+    if (!key) return sendJson(res, 400, { error: "crew_name_required" });
+    const archived = body?.archived !== false;
+    const pool = await getPgPool();
+    const rows = (await readCrewCatalogRows()).filter((row) => crewRegistryKey(row.label || row.value) === key);
+    const patch = JSON.stringify({ archivedAt: archived ? new Date().toISOString() : null });
+    if (rows.length) {
+      await pool.query(
+        "UPDATE catalog_items SET active=$2, metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb WHERE category='crew' AND value = ANY($1)",
+        [rows.map((row) => row.value), !archived, patch],
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO catalog_items (category, value, label, position, metadata, active)
+         VALUES ('crew', $1, $1, 0, $2::jsonb, $3)
+         ON CONFLICT (category, value) DO UPDATE SET active=EXCLUDED.active, metadata = COALESCE(catalog_items.metadata, '{}'::jsonb) || EXCLUDED.metadata`,
+        [name, JSON.stringify({ capacity: 120, archivedAt: archived ? new Date().toISOString() : null }), !archived],
+      );
+    }
+    // L'archivio vive nel registro. Nel vecchio archivio del pianificatore non
+    // si aggiunge nulla (cancellerebbe colore e assenze); riattivando si toglie
+    // anche da lì, se era stata archiviata con lo strumento di una volta.
+    if (!archived) {
+      const planner = await readCoveragePlannerForCrews(store);
+      const plannerArchived = planner.archivedTeams || [];
+      if (plannerArchived.some((item) => crewRegistryKey(item) === key)) {
+        await saveCoveragePlannerForCrews(store, { ...planner, archivedTeams: plannerArchived.filter((item) => crewRegistryKey(item) !== key) });
+      }
+    }
+    invalidateCrewRegistryCache();
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("crew", name, archived ? "archive" : "restore", {}, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, registry: await listCrewRegistryFromDb({ fresh: true }), coveragePlanner: store.coveragePlanner });
+  }
+
+  if (url.pathname === "/api/crews/capacity" && req.method === "POST") {
+    if (requireOffice(res, currentUser)) return;
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "database_required" });
+    const body = await readBody(req);
+    const name = cleanCrewName(body?.name);
+    const key = crewRegistryKey(name);
+    const capacity = Math.round(Number(body?.capacity));
+    if (!key) return sendJson(res, 400, { error: "crew_name_required" });
+    if (!(capacity > 0 && capacity <= 5000)) return sendJson(res, 400, { error: "capacity_invalid" });
+    const pool = await getPgPool();
+    const rows = (await readCrewCatalogRows()).filter((row) => crewRegistryKey(row.label || row.value) === key);
+    if (rows.length) {
+      await pool.query(
+        "UPDATE catalog_items SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE category='crew' AND value = ANY($1)",
+        [rows.map((row) => row.value), JSON.stringify({ capacity })],
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO catalog_items (category, value, label, position, metadata, active) VALUES ('crew', $1, $1, 0, $2::jsonb, TRUE)
+         ON CONFLICT (category, value) DO UPDATE SET metadata = COALESCE(catalog_items.metadata, '{}'::jsonb) || EXCLUDED.metadata`,
+        [name, JSON.stringify({ capacity })],
+      );
+    }
+    invalidateCrewRegistryCache();
+    await writeJson(STORE_PATH, store);
+    return sendJson(res, 200, { ok: true, registry: await listCrewRegistryFromDb({ fresh: true }) });
+  }
+
+  // Eliminare davvero si può solo se la squadra non ha mai lavorato
+  // (nessuna posa, account, sopralluogo, sistemazione, verbale, passaggio).
+  const crewDeleteMatch = url.pathname.match(/^\/api\/crews\/([^/]+)$/);
+  if (crewDeleteMatch && req.method === "DELETE") {
+    if (requireOffice(res, currentUser)) return;
+    if (!USE_POSTGRES) return sendJson(res, 503, { error: "database_required" });
+    const name = cleanCrewName(decodeURIComponent(crewDeleteMatch[1]));
+    const key = crewRegistryKey(name);
+    if (!key) return sendJson(res, 400, { error: "crew_name_required" });
+    const usage = (await collectCrewUsage(store)).get(key) || null;
+    if (crewUsageTotal(usage) > 0) return sendJson(res, 409, { error: "crew_has_history", usage });
+    const pool = await getPgPool();
+    const values = (await readCrewCatalogRows()).filter((row) => crewRegistryKey(row.label || row.value) === key).map((row) => row.value);
+    if (values.length) await pool.query("DELETE FROM catalog_items WHERE category='crew' AND value = ANY($1)", [values]);
+    const planner = await readCoveragePlannerForCrews(store);
+    const strip = (obj = {}) => Object.fromEntries(Object.entries(obj).filter(([teamName]) => crewRegistryKey(teamName) !== key));
+    await saveCoveragePlannerForCrews(store, {
+      teams: strip(planner.teams),
+      availability: strip(planner.availability),
+      archivedTeams: (planner.archivedTeams || []).filter((item) => crewRegistryKey(item) !== key),
+    });
+    invalidateCrewRegistryCache();
+    await writeJson(STORE_PATH, store);
+    writeAuditLog("crew", name, "delete", {}, currentUser.email || null).catch(() => {});
+    return sendJson(res, 200, { ok: true, registry: await listCrewRegistryFromDb({ fresh: true }), coveragePlanner: store.coveragePlanner });
+  }
+
   // --- Catalog API ---
   const catalogListMatch = url.pathname.match(/^\/api\/catalog\/([^/]+)$/);
   if (catalogListMatch && req.method === "GET") {
@@ -21620,6 +21987,7 @@ async function handleApi(req, res, url) {
       [category, value, label || value, position || 0, JSON.stringify(metadata || {})]
     );
     if (category === "sales_assignment") refreshSalesAssignmentCatalogCache().catch(() => {});
+    if (category === "crew") invalidateCrewRegistryCache();
     return sendJson(res, 200, result.rows[0]);
   }
 
@@ -21662,6 +22030,7 @@ async function handleApi(req, res, url) {
       [category, value]
     );
     if (category === "sales_assignment") refreshSalesAssignmentCatalogCache().catch(() => {});
+    if (category === "crew") invalidateCrewRegistryCache();
     return sendJson(res, 200, { ok: true });
   }
 

@@ -1,14 +1,15 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261105-presenze-offline-5";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261105-presenze-offline-5";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261105-presenze-offline-5";
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261107-squadre-registro-2";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261107-squadre-registro-2";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261107-squadre-registro-2";
 import {
   isOfflineCacheablePath, offlineCacheKey, newClientRef, outboxBackoffMs, classifyReplayError,
   outboxReadyItems, outboxSummary, kvGet, kvSet, kvClear, outboxAdd, outboxAll, outboxPut, outboxDelete,
-} from "./lib/offline-store.js?v=20261105-presenze-offline-5";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261105-presenze-offline-5";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261105-presenze-offline-5";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261105-presenze-offline-5";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261105-presenze-offline-5';
+} from "./lib/offline-store.js?v=20261107-squadre-registro-2";
+import { crewKey as crewRegistryKey, cleanCrewName, normalizeCrewRegistry, findCrewEntry, crewUsageTotal, renameCrewInInstallation } from "./lib/crew-registry.js?v=20261107-squadre-registro-2";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261107-squadre-registro-2";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261107-squadre-registro-2";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261107-squadre-registro-2";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261107-squadre-registro-2';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -23,9 +24,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261105-presenze-offline-5";
+} from "./lib/order-money.js?v=20261107-squadre-registro-2";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261105-presenze-offline-5";
+import { regionForCity } from "./lib/geo.js?v=20261107-squadre-registro-2";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -44,7 +45,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261105-presenze-offline-5";
+} from "./lib/shipping-eligibility.js?v=20261107-squadre-registro-2";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -55,7 +56,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261105-presenze-offline-5";
+} from "./lib/profit-split.js?v=20261107-squadre-registro-2";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -70,14 +71,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261105-presenze-offline-5";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261105-presenze-offline-5";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261105-presenze-offline-5";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261105-presenze-offline-5";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261105-presenze-offline-5";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261105-presenze-offline-5";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261105-presenze-offline-5";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261105-presenze-offline-5";
+} from "./lib/preventivo-pricing.js?v=20261107-squadre-registro-2";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261107-squadre-registro-2";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261107-squadre-registro-2";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261107-squadre-registro-2";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261107-squadre-registro-2";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261107-squadre-registro-2";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261107-squadre-registro-2";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261107-squadre-registro-2";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -85,13 +86,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261105-presenze-offline-5";
+} from "./lib/sales-assignment.js?v=20261107-squadre-registro-2";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261105-presenze-offline-5";
+} from "./lib/surveys.js?v=20261107-squadre-registro-2";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -105,7 +106,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261105-presenze-offline-5";
+const APP_SHELL_VERSION = "20261107-squadre-registro-2";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -1388,6 +1389,9 @@ const state = {
   leadIntakeStatus: null, // stato lettore contatti@ (avviso in Richieste), solo ufficio
   lastAccountsManagerSignature: "",
   catalogCrews: [],
+  // Registro squadre dalla sessione (lib/crew-registry.js): attive e «non più attive».
+  crewRegistry: [],
+  crewSettings: null,
   catalogSalesAssignments: [],
   lang: readSavedLanguage(),
   filters: {
@@ -7622,9 +7626,17 @@ function normalizeCoveragePlannerState(payload) {
   return { teams, availability, archivedTeams };
 }
 
+function getCrewRegistry() {
+  return Array.isArray(state.crewRegistry) ? state.crewRegistry : [];
+}
+
 function isCoverageCrewArchived(crewName = "", planner = state.coveragePlanner) {
   const normalized = String(crewName || "").trim();
   if (!normalized) return false;
+  // Il registro squadre decide: «non più attiva» lì = archiviata. Il vecchio
+  // archivio del pianificatore vale solo per nomi che il registro non conosce.
+  const entry = findCrewEntry(getCrewRegistry(), normalized);
+  if (entry) return Boolean(entry.archived);
   const archivedTeams = Array.isArray(planner?.archivedTeams) ? planner.archivedTeams : [];
   return archivedTeams.some((item) => isSameCrewName(item, normalized));
 }
@@ -7750,16 +7762,44 @@ function getInstallationCrewNames() {
     .map((order) => String(order.operations?.installation?.crew || "").trim())
     .filter(Boolean);
   const storedCrews = Object.keys(state.coveragePlanner?.teams || {});
+  // Prima il registro squadre (arriva con la sessione), poi i nomi trovati su
+  // account, pose e pianificatore che il registro non ha ancora.
+  const registryCrews = getCrewRegistry().filter((entry) => !entry.archived).map((entry) => entry.name);
   const catalogCrewNames = (state.catalogCrews || []).map((item) => item.label || item.value).filter(Boolean);
-  const baseCrews = catalogCrewNames.length ? catalogCrewNames : crews;
-  return Array.from(new Set([...baseCrews, ...accountCrews, ...orderCrews, ...storedCrews]))
-    .filter(Boolean)
-    // Una squadra archiviata (Coverage Planner) non è più operativa: doveva
-    // sparire dai filtri Kanban Pose e dal calcolo capacità aggregata come già
-    // succede in getCoverageManagedCrewNames, ma questa funzione gemella non
-    // filtrava mai gli archiviati — gonfiava "N squadre attive · X mq/giorno".
+  const baseCrews = registryCrews.length ? registryCrews : (catalogCrewNames.length ? catalogCrewNames : crews);
+  const seen = new Set();
+  return [...baseCrews, ...accountCrews, ...orderCrews, ...storedCrews]
+    .map((crewName) => String(crewName || "").trim())
+    .filter((crewName) => {
+      // Stessa squadra scritta in due modi («Team Campania» / «Campania»):
+      // una riga sola, col nome del registro.
+      const key = crewRegistryKey(crewName);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    // Una squadra «non più attiva» sparisce da calendario, filtri, menu e
+    // capacità; le sue pose passate restano col suo nome.
     .filter((crewName) => !isCoverageCrewArchived(crewName))
     .sort((left, right) => left.localeCompare(right, "it"));
+}
+
+// Elenco per un menu di scelta squadra: se il valore attuale non è tra le
+// squadre attive (es. squadra non più attiva) resta comunque scelto, così
+// salvando non si perde.
+function crewChoicesWithCurrent(current = "") {
+  const names = getInstallationCrewNames();
+  const value = String(current || "").trim();
+  if (!value) return { names, selected: "", extra: "" };
+  const match = names.find((name) => crewRegistryKey(name) === crewRegistryKey(value));
+  if (match) return { names, selected: match, extra: "" };
+  return { names: [...names, value], selected: value, extra: value };
+}
+
+function crewOptionLabel(name = "", extra = "") {
+  return extra && name === extra
+    ? `${name} (${state.lang === "it" ? "non più attiva" : "no longer active"})`
+    : name;
 }
 
 function getCrewLabelForUser(user = {}) {
@@ -7785,7 +7825,7 @@ function getCrewProfile(crewName = "") {
 
 function getCrewDailyCapacity(crewName = "") {
   const profile = crewName ? getCrewProfile(crewName) : null;
-  const capacity = Number(profile?.dailyCapacity || 0);
+  const capacity = Number(profile?.dailyCapacity || 0) || Number(findCrewEntry(getCrewRegistry(), crewName)?.capacity || 0);
   return capacity > 0 ? capacity : DEFAULT_CREW_DAILY_CAPACITY;
 }
 
@@ -7850,7 +7890,12 @@ function getCrewColor(crewName = "") {
   if (!name) return "#888780";
   const teamColor = state.coveragePlanner?.teams?.[name]?.color;
   if (teamColor) return teamColor;
-  const idx = Math.max(0, getInstallationCrewNames().indexOf(name));
+  // Posizione su tutte le squadre, anche non più attive: archiviarne una non
+  // cambia il colore delle altre.
+  const all = Array.from(new Set([...getInstallationCrewNames(), ...getCrewRegistry().map((entry) => entry.name)]))
+    .sort((left, right) => left.localeCompare(right, "it"));
+  const key = crewRegistryKey(name);
+  const idx = Math.max(0, all.findIndex((item) => crewRegistryKey(item) === key));
   return getCoverageDefaultColor(idx);
 }
 
@@ -7993,11 +8038,11 @@ function selectInstallationCrew(teamName) {
 
 function buildInstallationCrewOptions(selectedCrew = "") {
   const forcedCrew = getCrewForCurrentUser();
-  const crewNames = forcedCrew ? [forcedCrew] : getInstallationCrewNames();
-  const selectedValue = forcedCrew || selectedCrew || activeCrewLabelFromFilter() || getSelectedInstallationCrew();
+  const wanted = forcedCrew || selectedCrew || activeCrewLabelFromFilter() || getSelectedInstallationCrew();
+  const choices = forcedCrew ? { names: [forcedCrew], selected: forcedCrew, extra: "" } : crewChoicesWithCurrent(wanted);
   return [`<option value="">${state.lang === "it" ? "Seleziona squadra" : "Select crew"}</option>`]
     .concat(
-      crewNames.map((crewName) => `<option value="${escapeHtml(crewName)}" ${crewName === selectedValue ? "selected" : ""}>${escapeHtml(crewName)}</option>`)
+      choices.names.map((crewName) => `<option value="${escapeHtml(crewName)}" ${crewName === choices.selected ? "selected" : ""}>${escapeHtml(crewOptionLabel(crewName, choices.extra))}</option>`)
     )
     .join("");
 }
@@ -21586,8 +21631,11 @@ function buildInstallationCrewGrid() {
   const body = rows.map((row) => {
     const isUnassigned = row === UNASSIGNED_CREW_ROW;
     const crewName = isUnassigned ? "" : row;
-    const canToggle = !isUnassigned && (role === "office" || (role === "crew" && isSameCrewName(crewName, ownCrew)));
-    const canDrop = role === "office";
+    // Squadra «non più attiva»: la riga compare solo nelle settimane in cui ha
+    // lavorato (storico), senza assenze da segnare né pose da trascinarci.
+    const isArchivedCrew = Boolean(crewName) && role !== "crew" && isCoverageCrewArchived(crewName);
+    const canToggle = !isUnassigned && !isArchivedCrew && (role === "office" || (role === "crew" && isSameCrewName(crewName, ownCrew)));
+    const canDrop = role === "office" && !isArchivedCrew;
     const capacity = crewName ? getCrewDailyCapacity(crewName) : 0;
     const weekCount = new Set(weekKeys.flatMap((day) => (byCell.get(`${row}|${day}`)?.orders || []).map((order) => order.id))).size;
     const isActive = role !== "crew" && Boolean(activeFilter) && isSameCrewName(activeFilter, crewName);
@@ -21596,7 +21644,7 @@ function buildInstallationCrewGrid() {
       ? `<div class="sg-crew is-unassigned" role="rowheader"><span class="crew-dot" style="background:${getCrewColor("")}"></span><span class="sg-crew-name">${it ? "Senza squadra" : "No crew"}</span></div>`
       : role === "crew"
         ? `<div class="sg-crew" role="rowheader"><span class="crew-dot" style="background:${getCrewColor(crewName)}"></span><span class="sg-crew-name">${escapeHtml(crewName)}</span>${countLabel ? `<small>${countLabel}</small>` : ""}</div>`
-        : `<button class="sg-crew${isActive ? " is-active" : ""}" type="button" role="rowheader" data-action="set-installation-crew-filter" data-installation-filter="${escapeAttr(isActive ? "all" : crewName)}" title="${escapeAttr(isActive ? (it ? "Mostra tutte le squadre nella bacheca" : "Show all crews on the board") : (it ? `Mostra solo ${crewName} nella bacheca` : `Show only ${crewName} on the board`))}"><span class="crew-dot" style="background:${getCrewColor(crewName)}"></span><span class="sg-crew-name">${escapeHtml(crewName)}</span>${countLabel ? `<small>${countLabel}</small>` : ""}</button>`;
+        : `<button class="sg-crew${isActive ? " is-active" : ""}" type="button" role="rowheader" data-action="set-installation-crew-filter" data-installation-filter="${escapeAttr(isActive ? "all" : crewName)}" title="${escapeAttr(isActive ? (it ? "Mostra tutte le squadre nella bacheca" : "Show all crews on the board") : (it ? `Mostra solo ${crewName} nella bacheca` : `Show only ${crewName} on the board`))}"><span class="crew-dot" style="background:${getCrewColor(crewName)}"></span><span class="sg-crew-name">${escapeHtml(crewName)}</span>${countLabel ? `<small>${countLabel}</small>` : ""}${isArchivedCrew ? `<small class="sg-crew-archived">${it ? "non più attiva" : "no longer active"}</small>` : ""}</button>`;
     const cells = weekKeys.map((day) => {
       const cell = byCell.get(`${row}|${day}`) || { orders: [], surveys: [] };
       const orders = cell.orders.slice().sort(byTime);
@@ -30316,7 +30364,10 @@ function renderSurveyDetailView(survey) {
       <label class="survey-meta-field" title="${L("Squadra", "Crew")}">${surveyIcon("users", 13)}
         <select id="survey-crew-select">
           <option value="">${L("Da assegnare", "Unassigned")}</option>
-          ${getInstallationCrewNames().map((c) => `<option value="${escapeAttr(c)}" ${survey.crewName === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+          ${(() => {
+            const choices = crewChoicesWithCurrent(survey.crewName);
+            return choices.names.map((c) => `<option value="${escapeAttr(c)}" ${choices.selected === c ? "selected" : ""}>${escapeHtml(crewOptionLabel(c, choices.extra))}</option>`).join("");
+          })()}
         </select>
       </label>
       <label class="survey-meta-field" title="${L("Data prevista", "Scheduled date")}">${surveyIcon("calendar", 13)}
@@ -30839,7 +30890,8 @@ function renderSettings() {
   renderProductCatalogList();
   renderNativeProductCatalogList();
   if (state.currentUser?.role === "office") {
-    loadCatalogItems("crew");
+    renderCrewSettings();
+    void loadCrewSettings({ silent: true });
     loadCatalogItems("sales_assignment");
   }
 }
@@ -30886,6 +30938,357 @@ function renderSyncControlPanel() {
       </div>
     </div>
   `;
+}
+
+// ── Squadre in Impostazioni (registro: lib/crew-registry.js) ────────────────
+// Le squadre arrivano con la sessione (state.crewRegistry): qui si rinominano
+// (il nome cambia anche sullo storico, e se esiste già le due si uniscono), si
+// mettono «non più attive» (spariscono da calendario e menu, lo storico resta)
+// e si eliminano solo se non hanno mai lavorato.
+const crewL = (it, en) => (state.lang === "it" ? it : en);
+
+function crewSettingsState() {
+  if (!state.crewSettings) state.crewSettings = { usage: null, loading: false, loadedAt: 0, editing: "", busy: "", showArchived: false };
+  return state.crewSettings;
+}
+
+// Il conteggio dei lavori legge tutto lo storico: al massimo ogni 20 s, salvo
+// dopo una modifica (force).
+async function loadCrewSettings({ silent = false, force = false } = {}) {
+  const cs = crewSettingsState();
+  if (cs.loading) return;
+  if (!force && cs.usage && Date.now() - cs.loadedAt < 20_000) return;
+  cs.loading = true;
+  if (!silent) renderCrewSettings();
+  try {
+    const data = await apiFetch("/api/crews");
+    if (Array.isArray(data?.registry)) state.crewRegistry = normalizeCrewRegistry(data.registry);
+    cs.usage = new Map((Array.isArray(data?.usage) ? data.usage : []).map((item) => [item.key, item]));
+    cs.loadedAt = Date.now();
+  } catch (error) {
+    reportError("settings:loadCrews", error);
+  } finally {
+    cs.loading = false;
+    renderCrewSettings();
+  }
+}
+
+function crewUsageFor(name = "") {
+  const usage = crewSettingsState().usage;
+  return usage ? (usage.get(crewRegistryKey(name)) || { pose: 0, accounts: 0, surveys: 0, repairs: 0, reports: 0, events: 0, lastPoseDate: "" }) : null;
+}
+
+function crewOpenPoseCount(name = "") {
+  const key = crewRegistryKey(name);
+  return (state.orders || []).filter((order) => crewRegistryKey(order.operations?.installation?.crew) === key && getInstallationLane(order) !== "done").length;
+}
+
+function crewHasAccount(name = "") {
+  const key = crewRegistryKey(name);
+  return getCrewAccounts().some((user) => crewRegistryKey(getCrewLabelForUser(user)) === key);
+}
+
+function crewUsageText(name = "") {
+  const usage = crewUsageFor(name);
+  if (!usage) return crewL("conto i lavori…", "counting jobs…");
+  const parts = [];
+  if (usage.pose) {
+    const last = usage.lastPoseDate
+      ? new Date(`${usage.lastPoseDate}T00:00:00`).toLocaleDateString(state.lang === "it" ? "it-IT" : "en-GB", { day: "numeric", month: "short", year: "numeric" })
+      : "";
+    parts.push(`${usage.pose} ${usage.pose === 1 ? crewL("posa", "job") : crewL("pose", "jobs")}${last ? ` · ${crewL("ultima", "last")} ${last}` : ""}`);
+  }
+  if (usage.surveys) parts.push(`${usage.surveys} ${usage.surveys === 1 ? crewL("sopralluogo", "survey") : crewL("sopralluoghi", "surveys")}`);
+  if (usage.repairs) parts.push(`${usage.repairs} ${usage.repairs === 1 ? crewL("sistemazione", "repair") : crewL("sistemazioni", "repairs")}`);
+  if (usage.accounts) parts.push(crewL("account squadra", "crew account"));
+  return parts.length ? parts.join(" · ") : crewL("nessun lavoro finora", "no jobs yet");
+}
+
+function crewSettingsRows() {
+  const registry = getCrewRegistry();
+  const active = getInstallationCrewNames();
+  const seen = new Set(active.map((name) => crewRegistryKey(name)));
+  const archived = registry.filter((entry) => entry.archived).map((entry) => entry.name);
+  // Squadre archiviate col vecchio strumento della cartina: si possono riattivare.
+  (state.coveragePlanner?.archivedTeams || []).forEach((name) => {
+    const key = crewRegistryKey(name);
+    if (key && !findCrewEntry(registry, name) && !archived.some((item) => crewRegistryKey(item) === key)) archived.push(String(name).trim());
+  });
+  return {
+    active,
+    archived: archived.filter((name) => !seen.has(crewRegistryKey(name))).sort((a, b) => a.localeCompare(b, "it")),
+  };
+}
+
+function renderCrewSettingsRow(name, { archived = false } = {}) {
+  const cs = crewSettingsState();
+  const usage = crewUsageFor(name);
+  const total = crewUsageTotal(usage);
+  const busy = cs.busy && crewRegistryKey(cs.busy) === crewRegistryKey(name);
+  const disabled = cs.busy ? " disabled" : "";
+  const entry = findCrewEntry(getCrewRegistry(), name);
+  const capacity = entry?.capacity || "";
+  if (cs.editing && crewRegistryKey(cs.editing) === crewRegistryKey(name)) {
+    return `<div class="crew-reg-row is-editing">
+      <span class="crew-dot" style="background:${getCrewColor(name)}"></span>
+      <form class="crew-reg-rename" data-crew-rename-form="${escapeAttr(name)}">
+        <input class="text-input" name="to" value="${escapeAttr(name)}" maxlength="60" aria-label="${escapeAttr(crewL("Nuovo nome", "New name"))}" />
+        <button type="submit" class="primary-button small-button"${disabled}>${crewL("Salva", "Save")}</button>
+        <button type="button" class="ghost-button small-button" data-action="crew-rename-cancel"${disabled}>${crewL("Annulla", "Cancel")}</button>
+      </form>
+      <small class="crew-reg-hint">${crewL("Se scrivi il nome di un'altra squadra, le due si uniscono.", "Typing another crew's name merges the two.")}</small>
+    </div>`;
+  }
+  const canDelete = usage && total === 0;
+  return `<div class="crew-reg-row${archived ? " is-archived" : ""}${busy ? " is-busy" : ""}">
+    <span class="crew-dot" style="background:${getCrewColor(name)}"></span>
+    <div class="crew-reg-main">
+      <strong>${escapeHtml(name)}</strong>
+      <small>${escapeHtml(crewUsageText(name))}</small>
+    </div>
+    ${archived ? "" : `<label class="crew-reg-capacity" title="${escapeAttr(crewL("Metri quadri che la squadra posa in un giorno", "Square metres the crew lays per day"))}"><input type="number" min="1" max="5000" value="${escapeAttr(String(capacity))}" placeholder="${DEFAULT_CREW_DAILY_CAPACITY}" data-crew-capacity="${escapeAttr(name)}"${disabled} /><span>mq/g</span></label>`}
+    <div class="crew-reg-actions">
+      <button type="button" class="ghost-button small-button" data-action="crew-rename-start" data-crew="${escapeAttr(name)}"${disabled}>${crewL("Rinomina", "Rename")}</button>
+      ${archived
+        ? `<button type="button" class="ghost-button small-button" data-action="crew-restore" data-crew="${escapeAttr(name)}"${disabled}>${crewL("Riattiva", "Reactivate")}</button>`
+        : (canDelete ? "" : `<button type="button" class="ghost-button small-button" data-action="crew-archive" data-crew="${escapeAttr(name)}"${disabled}>${crewL("Non più attiva", "No longer active")}</button>`)}
+      ${canDelete ? `<button type="button" class="ghost-button small-button danger" data-action="crew-delete" data-crew="${escapeAttr(name)}"${disabled}>${crewL("Elimina", "Delete")}</button>` : ""}
+    </div>
+  </div>`;
+}
+
+function renderCrewSettings() {
+  const host = document.getElementById("crew-registry-editor");
+  if (!host) return;
+  const cs = crewSettingsState();
+  const { active, archived } = crewSettingsRows();
+  // Un ridisegno mentre si scrive il nome nuovo non deve cancellarlo.
+  const draftInput = host.querySelector("[data-crew-rename-form] input[name=to]");
+  const draft = draftInput ? { crew: draftInput.form?.dataset.crewRenameForm || "", value: draftInput.value, focused: document.activeElement === draftInput } : null;
+  host.innerHTML = `
+    ${active.length ? active.map((name) => renderCrewSettingsRow(name)).join("") : `<div class="info-card">${crewL("Nessuna squadra attiva: aggiungine una qui sotto.", "No active crews: add one below.")}</div>`}
+    ${archived.length ? `<details class="crew-reg-archived"${cs.showArchived ? " open" : ""}>
+      <summary>${crewL("Non più attive", "No longer active")} (${archived.length}) <small>${crewL("restano nello storico di pose, verbali e conti", "kept in the history of jobs, reports and accounts")}</small></summary>
+      ${archived.map((name) => renderCrewSettingsRow(name, { archived: true })).join("")}
+    </details>` : ""}`;
+  host.querySelector(".crew-reg-archived")?.addEventListener("toggle", (event) => { cs.showArchived = event.target.open; });
+  host.querySelectorAll("[data-crew-rename-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void submitCrewRename(form.dataset.crewRenameForm, form.elements.to.value);
+    });
+    const input = form.elements.to;
+    if (!input) return;
+    if (draft && draft.crew === form.dataset.crewRenameForm) {
+      input.value = draft.value;
+      if (draft.focused) input.focus();
+    } else {
+      input.focus();
+      input.select();
+    }
+  });
+  host.querySelectorAll("[data-crew-capacity]").forEach((input) => {
+    input.addEventListener("change", () => { void saveCrewCapacity(input.dataset.crewCapacity, input.value); });
+  });
+}
+
+function setCrewSettingsStatus(tone, message) {
+  const el = document.getElementById("crew-registry-status");
+  if (!el) return;
+  if (message) setStatus(el, tone, message);
+  else clearStatus(el);
+}
+
+// Dopo una modifica: registro e pianificatore dal server, poi ridisegno e
+// sessione aggiornata (gli altri dispositivi la ricevono dal server).
+function applyCrewServerResult(result = {}) {
+  if (Array.isArray(result.registry)) state.crewRegistry = normalizeCrewRegistry(result.registry);
+  if (result.coveragePlanner && typeof result.coveragePlanner === "object") {
+    state.coveragePlanner = normalizeCoveragePlannerState(result.coveragePlanner);
+    try { window.localStorage.setItem(COVERAGE_STORAGE_KEY, JSON.stringify(state.coveragePlanner)); } catch {}
+  }
+}
+
+async function runCrewSettingsAction(name, work) {
+  const cs = crewSettingsState();
+  if (cs.busy) return null;
+  cs.busy = name || "…";
+  renderCrewSettings();
+  try {
+    return await work();
+  } catch (error) {
+    const code = String(error?.payload?.error || error?.code || "");
+    if (code === "crew_has_history") {
+      setCrewSettingsStatus("error", crewL("Questa squadra ha già lavorato: mettila «non più attiva» invece di eliminarla.", "This crew has history: mark it no longer active instead."));
+    } else {
+      setCrewSettingsStatus("error", describeApiSaveError(error) || crewL("Non salvato, riprova.", "Not saved, try again."));
+    }
+    return null;
+  } finally {
+    cs.busy = "";
+    renderCrewSettings();
+  }
+}
+
+function knownCrewNameFor(name = "") {
+  const key = crewRegistryKey(name);
+  if (!key) return "";
+  const pool = [...getInstallationCrewNames(), ...crewSettingsRows().archived];
+  return pool.find((item) => crewRegistryKey(item) === key) || "";
+}
+
+async function submitCrewRename(from = "", rawTo = "") {
+  const to = cleanCrewName(rawTo);
+  if (!crewRegistryKey(to)) {
+    setCrewSettingsStatus("error", crewL("Scrivi il nome della squadra.", "Enter the crew name."));
+    return;
+  }
+  const cs = crewSettingsState();
+  if (to === from) {
+    cs.editing = "";
+    renderCrewSettings();
+    return;
+  }
+  const existing = crewRegistryKey(to) !== crewRegistryKey(from) ? knownCrewNameFor(to) : "";
+  const usage = crewUsageFor(from);
+  const pose = usage?.pose || 0;
+  const message = existing
+    ? crewL(
+      `«${existing}» esiste già. Unire «${from}» in «${existing}»?\n\nPose, sopralluoghi, verbali, spese e account di «${from}» passano a «${existing}». Non si torna indietro.`,
+      `«${existing}» already exists. Merge «${from}» into «${existing}»?\n\nJobs, surveys, reports, expenses and accounts of «${from}» move to «${existing}». This cannot be undone.`)
+    : crewL(
+      `Rinominare «${from}» in «${to}»?\n\nIl nome cambia dappertutto${pose ? `, anche sulle ${pose === 1 ? "pose già fatte" : `${pose} pose`}` : ""}, nei sopralluoghi, nei verbali e nell'account della squadra.`,
+      `Rename «${from}» to «${to}»?\n\nThe name changes everywhere${pose ? `, including ${pose} jobs` : ""}, surveys, reports and the crew account.`);
+  if (!window.confirm(message)) return;
+  const result = await runCrewSettingsAction(from, () => apiFetch("/api/crews/rename", {
+    method: "POST",
+    body: JSON.stringify({ from, to: existing || to }),
+  }));
+  if (!result?.ok) return;
+  cs.editing = "";
+  applyCrewServerResult(result);
+  // Subito anche qui, senza aspettare la sessione: pose, sopralluoghi, account.
+  const fromKey = crewRegistryKey(from);
+  const finalName = result.name;
+  state.orders = (state.orders || []).map((order) => {
+    const renamed = renameCrewInInstallation(order.operations?.installation, fromKey, finalName);
+    return renamed.changed ? { ...order, operations: { ...(order.operations || {}), installation: renamed.installation } } : order;
+  });
+  state.surveys = (state.surveys || []).map((survey) => (crewRegistryKey(survey.crewName) === fromKey ? { ...survey, crewName: finalName } : survey));
+  state.users = (state.users || []).map((user) => (user.role === "crew" && crewRegistryKey(user.crewName) === fromKey ? { ...user, crewName: finalName } : user));
+  if (state.selectedInstallationCrew && crewRegistryKey(state.selectedInstallationCrew) === fromKey) state.selectedInstallationCrew = finalName;
+  const c = result.counts || {};
+  const done = [
+    c.orders ? `${c.orders} ${c.orders === 1 ? crewL("posa", "job") : crewL("pose", "jobs")}` : "",
+    c.surveys ? `${c.surveys} ${c.surveys === 1 ? crewL("sopralluogo", "survey") : crewL("sopralluoghi", "surveys")}` : "",
+    c.reports ? `${c.reports} ${c.reports === 1 ? crewL("verbale", "report") : crewL("verbali", "reports")}` : "",
+    c.accounts ? crewL("account squadra", "crew account") : "",
+  ].filter(Boolean).join(", ");
+  showToast(result.merged
+    ? crewL(`«${from}» unita a «${finalName}»${done ? `: ${done}` : ""}.`, `«${from}» merged into «${finalName}»${done ? `: ${done}` : ""}.`)
+    : crewL(`Ora si chiama «${finalName}»${done ? `: aggiornati ${done}` : ""}.`, `Now called «${finalName}»${done ? `: updated ${done}` : ""}.`), "success", 6000);
+  setCrewSettingsStatus("success", "");
+  void loadCrewSettings({ silent: true, force: true });
+  void keepSessionAlive({ silent: true, force: true }).catch(() => false);
+}
+
+async function setCrewArchived(name = "", archived = true) {
+  if (archived) {
+    const usage = crewUsageFor(name);
+    const open = crewOpenPoseCount(name);
+    const lines = [
+      crewL(`Mettere «${name}» tra le non più attive?`, `Mark «${name}» as no longer active?`),
+      crewL(
+        `Sparisce da calendario, menu e capacità.${usage?.pose ? ` Le sue ${usage.pose} pose restano nello storico col suo nome.` : ""} Si può riattivare quando vuoi.`,
+        `It disappears from calendar, menus and capacity.${usage?.pose ? ` Its ${usage.pose} jobs stay in the history.` : ""} You can reactivate it anytime.`),
+    ];
+    if (open) lines.push(crewL(`Attenzione: ha ancora ${open === 1 ? "1 posa da fare" : `${open} pose da fare`}, restano sue finché non le sposti.`, `Note: it still has ${open} open jobs; they stay assigned until you move them.`));
+    if (crewHasAccount(name)) lines.push(crewL("L'account della squadra resta attivo: se non serve più, disattivalo in Utenti.", "The crew account stays active: disable it in Users if no longer needed."));
+    if (!window.confirm(lines.join("\n\n"))) return;
+  }
+  const result = await runCrewSettingsAction(name, () => apiFetch("/api/crews/archive", {
+    method: "POST",
+    body: JSON.stringify({ name, archived }),
+  }));
+  if (!result?.ok) return;
+  applyCrewServerResult(result);
+  crewSettingsState().showArchived = archived ? crewSettingsState().showArchived : false;
+  showToast(archived
+    ? crewL(`«${name}» non è più attiva. Lo storico resta.`, `«${name}» is no longer active. History is kept.`)
+    : crewL(`«${name}» è di nuovo attiva.`, `«${name}» is active again.`), "success", 4500);
+  void keepSessionAlive({ silent: true, force: true }).catch(() => false);
+}
+
+async function deleteCrew(name = "") {
+  if (!window.confirm(crewL(`Eliminare «${name}»? Non ha mai lavorato: sparisce del tutto.`, `Delete «${name}»? It has never worked: it will be removed completely.`))) return;
+  const result = await runCrewSettingsAction(name, () => apiFetch(`/api/crews/${encodeURIComponent(name)}`, { method: "DELETE" }));
+  if (!result?.ok) return;
+  applyCrewServerResult(result);
+  showToast(crewL(`«${name}» eliminata.`, `«${name}» deleted.`), "success", 4000);
+  void keepSessionAlive({ silent: true, force: true }).catch(() => false);
+}
+
+async function saveCrewCapacity(name = "", rawValue = "") {
+  const capacity = Math.round(Number(rawValue));
+  if (!(capacity > 0 && capacity <= 5000)) {
+    setCrewSettingsStatus("error", crewL("Metri quadri al giorno: un numero da 1 a 5000.", "Square metres per day: a number from 1 to 5000."));
+    return;
+  }
+  const result = await runCrewSettingsAction(name, () => apiFetch("/api/crews/capacity", {
+    method: "POST",
+    body: JSON.stringify({ name, capacity }),
+  }));
+  if (!result?.ok) return;
+  applyCrewServerResult(result);
+  showToast(crewL(`${name}: ${capacity} mq al giorno.`, `${name}: ${capacity} sqm per day.`), "success", 3000);
+}
+
+async function addCrewFromSettings(form) {
+  const fd = new FormData(form);
+  const name = cleanCrewName(fd.get("value"));
+  if (!crewRegistryKey(name)) {
+    setCrewSettingsStatus("error", crewL("Scrivi il nome della squadra.", "Enter the crew name."));
+    return;
+  }
+  const existing = knownCrewNameFor(name);
+  if (existing) {
+    const archivedMatch = crewSettingsRows().archived.find((item) => crewRegistryKey(item) === crewRegistryKey(name));
+    if (archivedMatch) {
+      if (window.confirm(crewL(`«${archivedMatch}» c'è già tra le non più attive. Riattivarla?`, `«${archivedMatch}» is among the inactive crews. Reactivate it?`))) {
+        await setCrewArchived(archivedMatch, false);
+        form.reset();
+        form.elements.capacity.value = "120";
+      }
+      return;
+    }
+    if (findCrewEntry(getCrewRegistry(), name)) {
+      setCrewSettingsStatus("error", crewL(`«${existing}» c'è già.`, `«${existing}» already exists.`));
+      return;
+    }
+  }
+  const capacity = Math.round(Number(fd.get("capacity") || 120)) || 120;
+  const result = await runCrewSettingsAction(name, () => apiFetch("/api/crews", {
+    method: "POST",
+    body: JSON.stringify({ name, capacity }),
+  }));
+  if (!result?.ok) return;
+  applyCrewServerResult(result);
+  form.reset();
+  form.elements.capacity.value = "120";
+  showToast(crewL(`Squadra «${result.name}» aggiunta.`, `Crew «${result.name}» added.`), "success", 3500);
+  void loadCrewSettings({ silent: true, force: true });
+  void keepSessionAlive({ silent: true, force: true }).catch(() => false);
+}
+
+function handleCrewSettingsAction(action, button) {
+  const cs = crewSettingsState();
+  const name = String(button?.dataset?.crew || "");
+  if (action === "crew-rename-start") { cs.editing = name; renderCrewSettings(); return true; }
+  if (action === "crew-rename-cancel") { cs.editing = ""; renderCrewSettings(); return true; }
+  if (action === "crew-archive") { void setCrewArchived(name, true); return true; }
+  if (action === "crew-restore") { void setCrewArchived(name, false); return true; }
+  if (action === "crew-delete") { void deleteCrew(name); return true; }
+  return false;
 }
 
 // --- Catalog API helpers ---
@@ -31564,6 +31967,8 @@ function applySessionPayload(session = {}) {
     resetMarketingSyncFlagOnUserChange();
   }
   state.coveragePlanner = mergeCoveragePlannerState(session.coveragePlanner || state.coveragePlanner, state.coveragePlanner);
+  // Le copie offline o le risposte vecchie senza registro non lo azzerano.
+  if (Array.isArray(session.crewRegistry)) state.crewRegistry = normalizeCrewRegistry(session.crewRegistry);
   state.settings = session.shopifySettings || {};
   state.users = Array.isArray(session.users) ? session.users.map((user) => normalizeUserRecord(user)).filter(Boolean) : [];
   state.communicationTargets = Array.isArray(session.communicationTargets) ? session.communicationTargets : [];
@@ -38216,6 +38621,9 @@ function handleGlobalClick(event) {
   if (action.startsWith("presence-") && handlePresenceAutoAction(action, button)) {
     return;
   }
+  if (action.startsWith("crew-") && handleCrewSettingsAction(action, button)) {
+    return;
+  }
   if (action === "reload-dashboard-sales") {
     void loadDashboardCommandSalesSnapshot({ force: true });
     return;
@@ -43711,16 +44119,7 @@ if (crewCatalogForm) {
     const fd = new FormData(crewCatalogForm);
     const value = String(fd.get("value") || "").trim();
     if (!value) return;
-    const capacity = Number(fd.get("capacity") || 120);
-    await saveCatalogItem("crew", {
-      value,
-      label: value,
-      position: 0,
-      metadata: { capacity },
-    }).catch((e) => reportError("settings:saveCrewCatalog", e, { notify: true }));
-    crewCatalogForm.reset();
-    crewCatalogForm.querySelector("[name='capacity']").value = "120";
-    await loadCatalogItems("crew");
+    await addCrewFromSettings(crewCatalogForm);
   });
 }
 
