@@ -364,6 +364,14 @@ async function main() {
     assertIncludes(expenseBody, "Number(error?.status) === 0", "Offline: la spesa salvata mentre cade la rete dà errore invece di andare in coda", failures);
   }
   assertIncludes(extractFunctionBody(appJs, "markOnlineConfirmed"), "force: true", "Offline: al ritorno della rete la coda aspetta il prossimo tentativo invece di partire subito", failures);
+  // Squadre: registro unico (lib/crew-registry.js), novembre 2026.
+  assertIncludes(extractFunctionBody(appJs, "getInstallationCrewNames"), "getCrewRegistry()", "Squadre: l'elenco non parte più dal registro (le squadre si vedono solo aprendo Impostazioni)", failures);
+  assertIncludes(extractFunctionBody(appJs, "isCoverageCrewArchived"), "findCrewEntry(getCrewRegistry()", "Squadre: «non più attiva» nel registro non nasconde più la squadra", failures);
+  assertIncludes(extractFunctionBody(appJs, "applySessionPayload"), "state.crewRegistry = normalizeCrewRegistry(session.crewRegistry)", "Squadre: il registro non arriva più con la sessione", failures);
+  assertIncludes(extractFunctionBody(appJs, "buildInstallationCrewOptions"), "crewChoicesWithCurrent(", "Squadre: il menu squadra perde la squadra attuale se non è attiva (salvando si cancella)", failures);
+  assertIncludes(serverJs, "crewRegistry: currentUser && crewRegistryResult.status", "Squadre: la sessione non manda più il registro squadre", failures);
+  assertIncludes(serverJs, "await renameCrewEverywhere(store, { from: previousCrewName", "Squadre: cambiare il nome squadra dall'account rinomina di nuovo solo una parte dei dati", failures);
+  assertIncludes(serverJs, "if (crewUsageTotal(usage) > 0) return sendJson(res, 409", "Squadre: si può eliminare una squadra che ha già lavorato", failures);
   assertIncludes(extractFunctionBody(appJs, "clearSessionCache"), "kvClear(userId)", "Offline: all'uscita le copie dei dati dell'account restano sul dispositivo", failures);
   assertIncludes(extractFunctionBody(appJs, "applySessionPayload"), "state.offline = null", "Cambio account: lo stato offline del precedente resta in memoria", failures);
   assertIncludes(serverJs, "findJobEventByClientRef(currentUser.id, clientRef)", "Offline: un passaggio inviato due volte verrebbe registrato due volte", failures);
