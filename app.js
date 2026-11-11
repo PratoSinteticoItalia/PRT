@@ -1,15 +1,15 @@
-import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261107-squadre-registro-2";
-import { translateItToEn } from "./lib/i18n-en.js?v=20261107-squadre-registro-2";
-import { createDomTranslator } from "./lib/i18n-dom.js?v=20261107-squadre-registro-2";
+import { validateAbsenceInput } from "./lib/timesheet-absence.js?v=20261111-richieste-stati";
+import { translateItToEn } from "./lib/i18n-en.js?v=20261111-richieste-stati";
+import { createDomTranslator } from "./lib/i18n-dom.js?v=20261111-richieste-stati";
 import {
   isOfflineCacheablePath, offlineCacheKey, newClientRef, outboxBackoffMs, classifyReplayError,
   outboxReadyItems, outboxSummary, kvGet, kvSet, kvClear, outboxAdd, outboxAll, outboxPut, outboxDelete,
-} from "./lib/offline-store.js?v=20261107-squadre-registro-2";
-import { crewKey as crewRegistryKey, cleanCrewName, normalizeCrewRegistry, findCrewEntry, crewUsageTotal, renameCrewInInstallation } from "./lib/crew-registry.js?v=20261107-squadre-registro-2";
-import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261107-squadre-registro-2";
-import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261107-squadre-registro-2";
-import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261107-squadre-registro-2";
-import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261107-squadre-registro-2';
+} from "./lib/offline-store.js?v=20261111-richieste-stati";
+import { crewKey as crewRegistryKey, cleanCrewName, normalizeCrewRegistry, findCrewEntry, crewUsageTotal, renameCrewInInstallation } from "./lib/crew-registry.js?v=20261111-richieste-stati";
+import { filterProfitHistory, profitPaymentBalance } from "./lib/profit-history.js?v=20261111-richieste-stati";
+import { mountAccountingWorkspace, showAccountingPane, showAccountingOrders } from "./lib/accounting-workspace.js?v=20261111-richieste-stati";
+import { orderPaymentState } from "./lib/accounting-workspace-data.js?v=20261111-richieste-stati";
+import { normalizeSupplierProduct } from './lib/supplier-product-units.js?v=20261111-richieste-stati';
 // Matematica denaro (residuo, pagamenti, totali) — unica copia in lib/order-money.js,
 // pura e testata (test/order-money.test.js). Vedi Fase 0 hardening.
 import {
@@ -24,9 +24,9 @@ import {
   getOrderNetSubtotal,
   getOpenBalance,
   getCollectedAmount,
-} from "./lib/order-money.js?v=20261107-squadre-registro-2";
+} from "./lib/order-money.js?v=20261111-richieste-stati";
 // Derivazione regione dalla città (i clienti lasciano solo la località).
-import { regionForCity } from "./lib/geo.js?v=20261107-squadre-registro-2";
+import { regionForCity } from "./lib/geo.js?v=20261111-richieste-stati";
 // "Questo ordine ha ancora bisogno di azione logistica?" — unica copia in
 // lib/shipping-eligibility.js, pura e testata (test/shipping-eligibility.test.js).
 // Estratta per evitare che badge e bacheca tornino a divergere (vedi commento
@@ -45,7 +45,7 @@ import {
   getShippingStageLane,
   orderNeedsShippingAction,
   ddtOrderHasNumber,
-} from "./lib/shipping-eligibility.js?v=20261107-squadre-registro-2";
+} from "./lib/shipping-eligibility.js?v=20261111-richieste-stati";
 // Matematica riparto utili pose — unica copia in lib/profit-split.js, pura e
 // testata (test/profit-split.test.js). Vedi nota in cima a quel file.
 import {
@@ -56,7 +56,7 @@ import {
   isProfitSplitExpenseLineBlank,
   addProfitSplitExpenseLine,
   computeProfitSplitScenario as computeProfitSplitScenarioPure,
-} from "./lib/profit-split.js?v=20261107-squadre-registro-2";
+} from "./lib/profit-split.js?v=20261111-richieste-stati";
 // Motore di prezzo del preventivo — unica copia PURA e testata in
 // lib/preventivo-pricing.js (test/preventivo-pricing.test.js). Fase 1 della
 // riscrittura nativa del generatore: primitiva IVA unica (applyIva) condivisa tra
@@ -71,14 +71,14 @@ import {
   ACCESSORIES as PREVENTIVO_ACCESSORIES,
   PRODUCTS as PREVENTIVO_PRODUCTS,
   IVA_RATE as PREVENTIVO_IVA_RATE,
-} from "./lib/preventivo-pricing.js?v=20261107-squadre-registro-2";
-import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261107-squadre-registro-2";
-import { inventoryStockValue } from "./lib/inventory-value.js?v=20261107-squadre-registro-2";
-import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261107-squadre-registro-2";
-import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261107-squadre-registro-2";
-import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261107-squadre-registro-2";
-import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261107-squadre-registro-2";
-import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261107-squadre-registro-2";
+} from "./lib/preventivo-pricing.js?v=20261111-richieste-stati";
+import { computeQuoteMargin, marginTone, maxTurfDiscountForMargin, DEFAULT_MARGIN_CONFIG } from "./lib/preventivo-margin.js?v=20261111-richieste-stati";
+import { inventoryStockValue } from "./lib/inventory-value.js?v=20261111-richieste-stati";
+import { formatInstallRange, installationDays, lastInstallationDay, normalizeInstallEndDate, shiftInstallationDays } from "./lib/install-days.js?v=20261111-richieste-stati";
+import { ordersByMonth, periodMonths, romeMonthKey, sumBy } from "./lib/analytics.js?v=20261111-richieste-stati";
+import { DAY_STEPS, diaryByDay, formatMinutes, minutesBetween, romeDateKey, siteDayState } from "./lib/job-site-day.js?v=20261111-richieste-stati";
+import { tripsTotals, vanDeadlineStatus, VAN_COST_FIELDS, VAN_DEADLINES } from "./lib/fleet.js?v=20261111-richieste-stati";
+import { barList, columnChart, dataTable, lineChart, monthShort } from "./lib/analytics-charts.js?v=20261111-richieste-stati";
 import {
   DEFAULT_SALES_ASSIGNMENTS,
   getSalesAssignmentOptionLabels,
@@ -86,13 +86,13 @@ import {
   normalizeSalesAssignmentFilterValue,
   normalizeSalesAssignmentKey,
   normalizeSalesAssignmentValue,
-} from "./lib/sales-assignment.js?v=20261107-squadre-registro-2";
+} from "./lib/sales-assignment.js?v=20261111-richieste-stati";
 import {
   canAdvanceSurveyStatus,
   describeSurveyForNotification,
   normalizeSurveyRecord,
   SURVEY_STATUS_RANK,
-} from "./lib/surveys.js?v=20261107-squadre-registro-2";
+} from "./lib/surveys.js?v=20261111-richieste-stati";
 
 // Prezzi/nome prato editabili + nuovi modelli da Impostazioni → Dati tecnici
 // prodotti: questa è la lista "effettiva" (default + override + modelli
@@ -106,7 +106,7 @@ function getEffectivePreventivoProducts() {
   return mergeCustomProductsPure(applyProductOverridesPure(PREVENTIVO_PRODUCTS, overrides), overrides);
 }
 
-const APP_SHELL_VERSION = "20261107-squadre-registro-2";
+const APP_SHELL_VERSION = "20261111-richieste-stati";
 const APP_SHELL_VERSION_STORAGE_KEY = "psi-shell-version";
 const RDF_PORTAL_URL = "https://rdf.spedisci.online/login";
 const crews = ["Alpha", "Beta", "Delta"];
@@ -490,26 +490,25 @@ const roleViews = {
   rivenditore: ["dashboard", "installations", "installations-scheduled", "sales-generator", "sales-requests", "sales-content", "garden-planner", "communications", "reseller-profile"],
 };
 const NAV_BADGE_DISABLED_VIEWS = new Set(["dashboard", "analytics", "fleet", "sales-generator", "profit-split", "reseller-report", "settings", "marketing", "garden-planner", "ddt", "supplier-prices", "order-requests", "reseller-orders", "reseller-profile"]);
+// Stati del percorso operativo; i valori storici non vengono riscritti.
 const SALES_REQUEST_STATUS_REFERENCE = [
-  "follow up eseguito",
-  "nuovo contatto",
-  "1° contatto",
-  "preventivo confermato",
-  "ordine eseguito",
-  "fare follow up",
-  "declinata",
-  "campione acquistato",
-  "Preventivo inviato",
-  "preventivo da inviare",
-  "Lead non qualificato",
-  "In attesa di risposta",
-  "NESSUNA RISPOSTA",
-  "RICONTATTATO",
-  "da richiamare",
-  "Chiamare",
-  "Email",
-  "email inviata",
+  "nuovo contatto", "1° contatto", "da richiamare", "preventivo da inviare",
+  "Preventivo inviato", "fare follow up", "follow up eseguito",
+  "preventivo confermato", "ordine eseguito", "declinata",
 ];
+function crmVisualTone(status) {
+  const key = String(status || "").toLowerCase().trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+  if (/follow ?up eseguito|ricontattato/.test(key)) return "followed";
+  if (/follow ?up|richiam|^chiamare$/.test(key)) return "recall";
+  if (/attesa|nessuna risposta/.test(key)) return "waiting";
+  if (/da inviare/.test(key)) return "draft";
+  if (/confermato|ordine eseguito|campione acquistato/.test(key)) return "won";
+  if (/declinat|non qualificato|pers[oa]|chius[oa]|closed/.test(key)) return "lost";
+  if (/preventivo inviato|quoted/.test(key)) return "quoted";
+  if (/1° contatto|primo contatto|first contact|^email/.test(key)) return "contacted";
+  if (!key || /^(new|new contact|nuov[oa]( contatto)?)$/.test(key)) return "new";
+  return "other";
+}
 const SALES_REQUEST_ASSIGNMENT_REFERENCE = DEFAULT_SALES_ASSIGNMENTS;
 const SALES_REQUEST_FIRST_CONTACT_START_HOUR = 8;
 const SALES_REQUEST_FIRST_CONTACT_END_HOUR = 20;
@@ -5272,52 +5271,8 @@ function isSalesRequestClosedStatus(status = "") {
   return getSalesRequestStatusCode(status) === "closed";
 }
 
-function getSalesRequestStatusesFromSheet() {
-  const rows = state.salesRequests
-    .filter((item) => String(item.source || "").trim() === "google-sheets")
-    .sort((left, right) => {
-      const leftRow = Number(left.sourceRowNumber || 0);
-      const rightRow = Number(right.sourceRowNumber || 0);
-      if (leftRow && rightRow && leftRow !== rightRow) return leftRow - rightRow;
-      const leftCreated = new Date(left.createdAt || 0).getTime();
-      const rightCreated = new Date(right.createdAt || 0).getTime();
-      return leftCreated - rightCreated;
-    });
-  const values = [];
-  const seen = new Set();
-  rows.forEach((item) => {
-    const value = String(item.status || "").trim();
-    if (!value) return;
-    const key = value.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    values.push(value);
-  });
-  return values;
-}
-
 function getSalesRequestStatusOptions() {
-  const options = [];
-  const seen = new Set();
-  const append = (value) => {
-    const next = String(value || "").trim();
-    if (!next) return;
-    const key = next.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    options.push(next);
-  };
-  SALES_REQUEST_STATUS_REFERENCE.forEach(append);
-  getSalesRequestStatusesFromSheet().forEach(append);
-  if (!options.length) {
-    [
-      state.lang === "it" ? "Nuova" : "New",
-      state.lang === "it" ? "In preventivo" : "Quoted",
-      state.lang === "it" ? "Follow-up" : "Follow-up",
-      state.lang === "it" ? "Chiusa" : "Closed",
-    ].forEach(append);
-  }
-  return options;
+  return SALES_REQUEST_STATUS_REFERENCE;
 }
 
 function getSalesRequestAssignmentOptions() {
@@ -5350,9 +5305,9 @@ function getSalesRequestStatusFilterOptions(items = state.salesRequests) {
   return [
     { value: "all",       label: state.lang === "it" ? "Tutti gli stati" : "All statuses" },
     { value: "new",       label: state.lang === "it" ? "🔵 Nuovo contatto" : "🔵 New" },
-    { value: "contacted", label: state.lang === "it" ? "🟡 1° contatto" : "🟡 1st contact" },
+    { value: "contacted", label: state.lang === "it" ? "1° contatto" : "1st contact" },
     { value: "followup",  label: state.lang === "it" ? "🟠 Follow-up / Richiamo" : "🟠 Follow-up" },
-    { value: "quoting",   label: state.lang === "it" ? "🟣 In preventivo" : "🟣 Quoting" },
+    { value: "quoting",   label: state.lang === "it" ? "In preventivo" : "Quoting" },
     { value: "quoted",    label: state.lang === "it" ? "🟣 Preventivo inviato" : "🟣 Quote sent" },
     { value: "won",       label: state.lang === "it" ? "🟢 Confermato / Ordine" : "🟢 Confirmed / Won" },
     { value: "lost",      label: state.lang === "it" ? "🔴 Perso / Declinato" : "🔴 Lost" },
@@ -5969,6 +5924,16 @@ function syncSalesRequestStatusField(value = "") {
     fragment.append(option);
   };
   options.forEach((status) => appendOption(status, getSalesRequestStatusLabel(status), true));
+  // Altri stati compaiono soltanto se presenti nelle richieste disponibili.
+  const inUse = document.createElement("optgroup");
+  inUse.label = state.lang === "it" ? "Altri stati in uso" : "Other statuses in use";
+  for (const record of [...(state.crmServerPage?.items || []), ...(state.salesRequests || [])]) {
+    const raw = String(record.status || "").trim();
+    if (!raw || lcToActualValue.has(raw.toLowerCase())) continue;
+    appendOption(raw, getSalesRequestStatusLabel(raw), true);
+    inUse.append(fragment.lastElementChild);
+  }
+  if (inUse.childElementCount) fragment.append(inUse);
   if (!lcToActualValue.has(nextValueLc)) {
     appendOption(nextValue, getSalesRequestStatusLabel(nextValue), true);
   }
@@ -14957,7 +14922,7 @@ function getCrmV2SourceIcon(item = {}) {
 function renderCrmV2Row(item, selected, bulkSelectedIds) {
   const assignmentLabel = getSalesRequestAssignmentLabel(item);
   const assignmentTone = getSalesRequestAssignmentTone(item);
-  const statusToneV2 = getCrmV2StatusTone(item);
+  const statusToneV2 = "crm-tone-" + crmVisualTone(item.status);
   const statusLabel = getSalesRequestStatusLabel(item.status);
   const isBulkSelected = bulkSelectedIds.has(item.id);
   const requestSqm = getSalesRequestSqm(item);
@@ -14997,7 +14962,7 @@ function renderCrmV2Row(item, selected, bulkSelectedIds) {
               title="${escapeHtml(statusLabel)} — clicca per cambiare">
       </button>
       <div class="crm-row-main">
-        <div class="crm-row-name">${escapeHtml(getSalesRequestDisplayName(item))}</div>
+        <div class="crm-row-name">${escapeHtml(getSalesRequestDisplayName(item))}<span class="crm-stage-caption ${statusToneV2}">${escapeHtml(statusLabel)}</span></div>
         <div class="crm-row-meta">
           <span>${escapeHtml(cityLabel)}${regionLabel ? ` <span class="crm-row-region">· ${escapeHtml(regionLabel)}</span>` : ""}</span>
           ${serviceLabel ? `<span class="crm-row-meta-dot">·</span><span class="crm-row-service-tag">${escapeHtml(serviceLabel)}</span>` : ""}
@@ -15035,14 +15000,12 @@ function openCrmV2StatusPopoverPortal(recordId, anchorRect) {
   const wrapper = document.createElement("div");
   wrapper.id = "crm-v2-status-popover-portal";
   wrapper.style.position = "fixed";
-  wrapper.style.left = `${Math.round(anchorRect.left + 16)}px`;
-  // Posiziona SOTTO il pallino; se troppo vicino al fondo, sopra
-  const spaceBelow = window.innerHeight - anchorRect.bottom;
-  if (spaceBelow > 240) {
-    wrapper.style.top = `${Math.round(anchorRect.bottom + 8)}px`;
-  } else {
-    wrapper.style.top = `${Math.round(anchorRect.top - 250)}px`;
-  }
+  const below = window.innerHeight - anchorRect.bottom - 16;
+  const above = anchorRect.top - 16;
+  wrapper.style.left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 232)) + "px";
+  if (below >= above) wrapper.style.top = (anchorRect.bottom + 6) + "px";
+  else wrapper.style.bottom = (window.innerHeight - anchorRect.top + 6) + "px";
+  wrapper.style.setProperty("--crm-menu-height", Math.max(60, Math.max(above, below)) + "px");
   wrapper.style.zIndex = "9999";
   wrapper.innerHTML = renderCrmV2StatusPopover(item);
   document.body.appendChild(wrapper);
@@ -15054,36 +15017,15 @@ function closeCrmV2StatusPopoverPortal() {
 }
 
 function renderCrmV2StatusPopover(item) {
-  const currentTone = getCrmV2StatusTone(item);
-  // Stati che l'utente può scegliere dal popover.
-  // I valori DEVONO matchare ESATTAMENTE (case inclusa) le opzioni in
-  // SALES_REQUEST_STATUS_REFERENCE, altrimenti la select del dettaglio
-  // non riesce a selezionare l'option corrispondente.
-  const options = [
-    { tone: "is-new",       label: state.lang === "it" ? "Nuovo contatto" : "New",            value: "nuovo contatto" },
-    { tone: "is-contacted", label: state.lang === "it" ? "1° contatto"   : "1st contact",     value: "1° contatto" },
-    { tone: "is-quoted",    label: state.lang === "it" ? "Preventivo inviato" : "Quote sent", value: "Preventivo inviato" },
-    { tone: "is-won",       label: state.lang === "it" ? "Preventivo confermato"  : "Confirmed", value: "preventivo confermato" },
-    { tone: "is-lost",      label: state.lang === "it" ? "Perso" : "Lost",                    value: "declinata" },
-  ];
-  return `
-    <div class="crm-status-popover" data-action="crm-status-popover" data-id="${item.id}">
-      ${options.map((opt) => {
-        const dotClass = opt.tone === "is-new" ? "dot-new" :
-                         opt.tone === "is-contacted" ? "dot-contacted" :
-                         opt.tone === "is-quoted" ? "dot-quoted" :
-                         opt.tone === "is-won" ? "dot-won" : "dot-lost";
-        const isCurrent = opt.tone === currentTone;
-        return `
-          <div class="crm-status-popover-item ${dotClass} ${isCurrent ? "is-current" : ""}"
-               data-action="crm-set-status" data-id="${item.id}" data-status="${escapeHtml(opt.value)}">
-            <span class="crm-status-popover-item-dot"></span>
-            ${escapeHtml(opt.label)}
-          </div>
-        `;
-      }).join("")}
-    </div>
-  `;
+  const current = String(item.status || "new").trim();
+  const options = [...getSalesRequestStatusOptions()];
+  if (!options.some(value => value.toLowerCase() === current.toLowerCase())) options.push(current);
+  return `<div class="crm-status-popover" data-action="crm-status-popover" data-id="${escapeHtml(item.id)}">
+    ${options.map(value => `<button type="button" class="crm-status-popover-item crm-tone-${crmVisualTone(value)} ${value.toLowerCase() === current.toLowerCase() ? "is-current" : ""}"
+      data-action="crm-set-status" data-id="${escapeHtml(item.id)}" data-status="${escapeHtml(value)}">
+      <span class="crm-status-popover-item-dot"></span>${escapeHtml(getSalesRequestStatusLabel(value))}
+    </button>`).join("")}
+  </div>`;
 }
 
 function renderCrmV2Banner() {
